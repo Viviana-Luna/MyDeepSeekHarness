@@ -1,0 +1,14 @@
+# 仓库文本统一使用 LF；二进制资源不参与文本规范化。
+* text=auto eol=lf
+*.icns binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+
+# 固定上游声明保留原始字节，只豁免这三份快照已有的行尾空格。
+packages/llm/llm/types/message.d.ts whitespace=-blank-at-eol
+packages/preset/agent-presets/types/specifier.d.ts whitespace=-blank-at-eol
+packages/session/session-persistence-jsonl/types/storage.d.ts whitespace=-blank-at-eol
+# 统一差异补丁用单个空格表示空白上下文行，不能删除该标记。
+scripts/core/patches/*.patch whitespace=-blank-at-eol

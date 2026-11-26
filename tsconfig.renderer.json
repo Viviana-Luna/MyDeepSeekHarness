@@ -1,0 +1,37 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "rootDir": ".",
+    "types": [
+      "node",
+      "./src/renderer/src/.umi/typings"
+    ],
+    "paths": {
+      "@/*": [
+        "./src/renderer/src/*"
+      ],
+      "@@/*": [
+        "./src/renderer/src/.umi/*"
+      ]
+    },
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": [
+    "src/renderer/src",
+    "src/shared/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "lib",
+    "dist",
+    "build",
+    "src/renderer/src/.umi*"
+  ]
+}

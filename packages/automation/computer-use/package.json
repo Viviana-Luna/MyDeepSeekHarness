@@ -1,0 +1,34 @@
+{
+  "name": "@mydsh/computer-use",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MyDSH 系统级 Computer Use（macOS + Windows 双端原生）Agent 工具包",
+  "main": "lib/index.js",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./lib/index.js"
+    },
+    "./tools": {
+      "types": "./src/tools.ts",
+      "default": "./lib/tools.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "license": "GPL-3.0-or-later",
+  "files": [
+    "lib",
+    "src",
+    "README.md"
+  ],
+  "dependencies": {
+    "@deepseek-ai/cordis": "workspace:*",
+    "@deepseek-ai/dsh-attachment": "workspace:*",
+    "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-user-questions": "workspace:*",
+    "@mydsh/connection-access": "workspace:*"
+  }
+}

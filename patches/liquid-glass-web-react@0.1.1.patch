@@ -1,0 +1,126 @@
+diff --git a/dist/index.js b/dist/index.js
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -43,8 +43,8 @@
+ // src/core/displacementMap.ts
+-function computeDisplacementMap(p) {
++function computeDisplacementMap(p, height = p.size) {
+   const size = p.size;
+   const half = size >> 1;
+-  const data = new Uint8ClampedArray(size * size * 4);
++  const data = new Uint8ClampedArray(size * height * 4);
+   const hw = p.halfWidth;
+   const hh = p.halfHeight;
+   const cornerR = Math.min(p.radius, Math.min(hw, hh));
+@@ -61,7 +61,7 @@
+   const glowInv = glowRange > 1e-3 ? 1 / glowRange : 0;
+   const edgeInv = p.edgeWidth > 0 ? 1 / p.edgeWidth : 0;
+   const stepX = 2 * hw / size;
+-  const stepY = 2 * hh / size;
++  const stepY = 2 * hh / height;
+   const invW = 1 / hw;
+   const invH = 1 / hh;
+   const dome = p.domeDepth > 0 ? computeDomeConstants(p.domeDepth, hw, hh) : null;
+@@ -80,8 +80,8 @@
+   const splayMix = 1 - p.splay;
+   const splayHalf = 0.5 * Math.min(hw, hh);
+   const splayInv = splayHalf > 0 ? 1 / splayHalf : 0;
+-  for (let row = 0; row < half; row++) {
+-    const mirrorRow = size - 1 - row;
++  for (let row = 0; row < (height >> 1); row++) {
++    const mirrorRow = height - 1 - row;
+     const ay = -((row + 0.5) * stepY - hh);
+     const sdfY = ay - hh + cornerR;
+     const fallY = ay - innerH + innerR;
+@@ -187,13 +187,13 @@
+   }
+   return data;
+ }
+-function renderDisplacementMap(p, canvas = document.createElement("canvas")) {
++function renderDisplacementMap(p, canvas = document.createElement("canvas"), height = p.size) {
+   canvas.width = p.size;
+-  canvas.height = p.size;
++  canvas.height = height;
+   const ctx = canvas.getContext("2d");
+   if (!ctx) return "";
+-  const image = ctx.createImageData(p.size, p.size);
+-  image.data.set(computeDisplacementMap(p));
++  const image = ctx.createImageData(p.size, height);
++  image.data.set(computeDisplacementMap(p, height));
+   ctx.putImageData(image, 0, 0);
+   return canvas.toDataURL();
+ }
+@@ -468,7 +468,9 @@
+         edgeExponent: o.edgeExponent,
+         specularAngle: o.specularAngle
+       },
+-      this.mapCanvas
++      this.mapCanvas,
++      // MyDSH：短边保留四倍采样，避免细长透镜生成巨大的正方形纹理。
++      Math.min(o.quality, 4 * Math.ceil(o.quality * o.height / o.width))
+     );
+     this.feImageEl?.setAttribute("href", this.mapUrl);
+     this.onMap?.(this.mapUrl);
+diff --git a/dist/index.cjs b/dist/index.cjs
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -66,8 +66,8 @@
+ // src/core/displacementMap.ts
+-function computeDisplacementMap(p) {
++function computeDisplacementMap(p, height = p.size) {
+   const size = p.size;
+   const half = size >> 1;
+-  const data = new Uint8ClampedArray(size * size * 4);
++  const data = new Uint8ClampedArray(size * height * 4);
+   const hw = p.halfWidth;
+   const hh = p.halfHeight;
+   const cornerR = Math.min(p.radius, Math.min(hw, hh));
+@@ -84,7 +84,7 @@
+   const glowInv = glowRange > 1e-3 ? 1 / glowRange : 0;
+   const edgeInv = p.edgeWidth > 0 ? 1 / p.edgeWidth : 0;
+   const stepX = 2 * hw / size;
+-  const stepY = 2 * hh / size;
++  const stepY = 2 * hh / height;
+   const invW = 1 / hw;
+   const invH = 1 / hh;
+   const dome = p.domeDepth > 0 ? computeDomeConstants(p.domeDepth, hw, hh) : null;
+@@ -103,8 +103,8 @@
+   const splayMix = 1 - p.splay;
+   const splayHalf = 0.5 * Math.min(hw, hh);
+   const splayInv = splayHalf > 0 ? 1 / splayHalf : 0;
+-  for (let row = 0; row < half; row++) {
+-    const mirrorRow = size - 1 - row;
++  for (let row = 0; row < (height >> 1); row++) {
++    const mirrorRow = height - 1 - row;
+     const ay = -((row + 0.5) * stepY - hh);
+     const sdfY = ay - hh + cornerR;
+     const fallY = ay - innerH + innerR;
+@@ -210,13 +210,13 @@
+   }
+   return data;
+ }
+-function renderDisplacementMap(p, canvas = document.createElement("canvas")) {
++function renderDisplacementMap(p, canvas = document.createElement("canvas"), height = p.size) {
+   canvas.width = p.size;
+-  canvas.height = p.size;
++  canvas.height = height;
+   const ctx = canvas.getContext("2d");
+   if (!ctx) return "";
+-  const image = ctx.createImageData(p.size, p.size);
+-  image.data.set(computeDisplacementMap(p));
++  const image = ctx.createImageData(p.size, height);
++  image.data.set(computeDisplacementMap(p, height));
+   ctx.putImageData(image, 0, 0);
+   return canvas.toDataURL();
+ }
+@@ -491,7 +491,9 @@
+         edgeExponent: o.edgeExponent,
+         specularAngle: o.specularAngle
+       },
+-      this.mapCanvas
++      this.mapCanvas,
++      // MyDSH：短边保留四倍采样，避免细长透镜生成巨大的正方形纹理。
++      Math.min(o.quality, 4 * Math.ceil(o.quality * o.height / o.width))
+     );
+     this.feImageEl?.setAttribute("href", this.mapUrl);
+     this.onMap?.(this.mapUrl);

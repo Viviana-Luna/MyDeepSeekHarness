@@ -1,0 +1,279 @@
+* {
+  box-sizing: border-box;
+}
+
+/* 根链只裁剪、不做滚动容器：overflow: hidden 仍允许 focus 与 scrollIntoView 程序化滚动，
+   偏移留在根上会把浮岛外壳顶出视口，底部因此多出一条空白画布。 */
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: clip;
+}
+
+body {
+  color: var(--text);
+  background: transparent;
+  font-family: var(--font-ui);
+  font-size: var(--text-body);
+  font-weight: var(--weight-regular);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.48;
+  /* 使用系统原生文字渲染，避免 macOS 暗色背景下人为削薄中文 400 字重笔画。 */
+}
+
+/* 与原生背景共用同一圆弧；命中区域留出覆盖像素，前景按真实 alpha 抗锯齿。 */
+:root[data-platform='win32'] body {
+  clip-path: inset(
+    0 var(--window-clip-right, 0px) var(--window-clip-bottom, 0px) 0 round
+      var(--window-clip-radius, 18px)
+  );
+}
+
+button,
+input,
+textarea,
+select {
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  -webkit-app-region: no-drag;
+}
+/* 弹层经 Portal 离开浮岛后仍是交互区域，不能落入 Windows 的原生拖动命中范围。 */
+a,
+dialog,
+[role='menu'],
+[role='listbox'],
+[role='dialog'] {
+  -webkit-app-region: no-drag;
+}
+.ant-select-dropdown,
+.ant-dropdown,
+.ant-picker-dropdown,
+.ant-popover,
+[role='option'],
+[role='menuitem'] {
+  -webkit-app-region: no-drag;
+}
+
+/* 裁切只改变绘制，定位与键盘滚动仍使用菜单的完整尺寸。 */
+[data-menu-motion]:not([data-menu-morph]) {
+  --menu-fold: -64px -64px 58% -64px;
+  opacity: 1;
+  clip-path: inset(-64px);
+  transition:
+    opacity var(--menu-enter) ease-out,
+    clip-path var(--menu-enter) var(--menu-ease);
+}
+[data-menu-motion='closing'] {
+  pointer-events: none;
+}
+[data-menu-motion='closing']:not([data-menu-morph]) {
+  opacity: 0;
+  clip-path: inset(var(--menu-fold));
+  transition-duration: var(--menu-exit);
+  transition-timing-function: ease-in;
+}
+@starting-style {
+  [data-menu-motion='open']:not([data-menu-morph]) {
+    opacity: 0;
+    clip-path: inset(var(--menu-fold));
+  }
+}
+
+[data-menu-morph='active'] {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.anchored-menu-morph-svg {
+  position: fixed;
+  z-index: 169;
+  display: none;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.anchored-menu-morph-svg path {
+  fill: var(--morph-fill, var(--surface));
+  stroke: color-mix(
+    in srgb,
+    var(--line-strong) calc(var(--morph-stroke-opacity, 1) * 100%),
+    transparent
+  );
+  stroke-width: 1px;
+  filter: drop-shadow(0 16px 32px rgb(0 0 0 / 0.24));
+}
+
+@media (forced-colors: active) {
+  .anchored-menu-morph-svg mask {
+    forced-color-adjust: none;
+  }
+  .anchored-menu-morph-svg path {
+    fill: Canvas;
+    stroke: CanvasText;
+    filter: none;
+  }
+}
+
+button {
+  border: 0;
+  background: transparent;
+}
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, white);
+  outline-offset: 2px;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+}
+
+strong {
+  font-weight: var(--weight-semibold);
+}
+small {
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+h1,
+h2,
+h3,
+p {
+  margin-block-start: 0;
+}
+
+::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.fatal-screen {
+  display: grid;
+  place-content: center;
+  min-height: 100%;
+  gap: 8px;
+  padding: 32px;
+  color: var(--text);
+  background: var(--canvas-bg);
+  text-align: center;
+}
+.fatal-screen strong {
+  font-size: 18px;
+}
+.fatal-screen p {
+  color: var(--muted);
+}
+.fatal-screen button {
+  justify-self: center;
+  padding: 8px 12px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  cursor: pointer;
+}
+
+/* 弹性按压期间统一保护中心原点、提升层级，并屏蔽组件库自带 transform 过渡造成跟手拖影。 */
+[data-press='hover'],
+[data-press='active'] {
+  z-index: 2;
+  transform-origin: center;
+  will-change: transform;
+  transition-property: background-color, border-color, color, box-shadow, opacity !important;
+}
+
+[data-press='active'] {
+  user-select: none;
+  touch-action: none;
+  -webkit-user-drag: none;
+}
+
+[data-press-tint='idle'] {
+  transition:
+    opacity 250ms ease-in-out,
+    filter 250ms ease-in-out !important;
+}
+
+[data-press-tint='active'] {
+  transition:
+    opacity 60ms ease-out,
+    filter 60ms ease-out !important;
+  filter: contrast(0.67) brightness(1.2);
+}
+
+:root[data-color-scheme='light'] [data-press-tint='active'] {
+  opacity: 0.75;
+  filter: none;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-color-scheme='dark']) [data-press-tint='active'] {
+    opacity: 0.75;
+    filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-press='hover'],
+  [data-press='active'] {
+    will-change: auto;
+    transform: none !important;
+  }
+  [data-press-tint] {
+    filter: none !important;
+  }
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* 扩展通知独立于四浮岛布局；通知内容使用插件自己的普通组件。 */
+.plugin-notifications {
+  position: fixed;
+  top: 72px;
+  right: 24px;
+  z-index: 20;
+  display: grid;
+  gap: 8px;
+  max-width: min(360px, calc(100vw - 48px));
+}

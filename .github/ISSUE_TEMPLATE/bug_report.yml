@@ -1,0 +1,50 @@
+name: 缺陷反馈
+description: 报告 MyDSH 中的异常行为、崩溃或界面问题
+title: '[Bug] '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！提交前请确认已移除 API Key、本地凭据和隐私路径等敏感信息。
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 简明描述遇到了什么问题，以及预期应该发生什么。
+      placeholder: 例如：在单标签模式下切换至终端标签时，右上角操作按钮未正确避让……
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 按顺序列出稳定复现该问题的操作步骤。
+      placeholder: |
+        1. 启动 MyDSH 并打开任意项目
+        2. 执行……
+        3. 观察到……
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 运行平台
+      options:
+        - macOS (Apple Silicon)
+        - Windows 11 (x64)
+        - 其他（请在下方补充）
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 应用版本或提交哈希
+      placeholder: 例如：preview 安装包或源码 commit hash
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 诊断日志或截图（请先脱敏）
+      description: 可贴上启动诊断、报错文本或界面截图。

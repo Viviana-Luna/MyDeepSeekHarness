@@ -1,0 +1,68 @@
+.matrix {
+  display: grid;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  grid-template-columns: repeat(3, 1fr);
+  align-items: center;
+  justify-items: center;
+  gap: 2px;
+  color: var(--accent);
+}
+.matrix i {
+  width: 2.5px;
+  height: 2.5px;
+  border-radius: 0.6px;
+  background: currentColor;
+  animation: wave 1.25s ease-in-out infinite;
+  animation-delay: calc(var(--phase) * 110ms);
+}
+.matrix i[data-center] {
+  box-shadow: 0 0 6px currentColor;
+}
+.matrix[data-variant='star'] {
+  color: color-mix(in srgb, #a88bfa 82%, var(--accent));
+}
+.matrix[data-variant='star'] i {
+  animation: star 1.2s ease-in-out infinite;
+}
+.matrix[data-variant='star'] i[data-cross] {
+  animation-delay: 600ms;
+}
+.matrix[data-variant='scan'] i {
+  animation: wave 1.05s ease-in-out infinite;
+  animation-delay: calc(var(--phase) * 140ms);
+}
+@keyframes wave {
+  0%,
+  100% {
+    opacity: 0.16;
+    transform: scale(0.72);
+  }
+  35% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes star {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: scale(0.72);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce), (forced-colors: active) {
+  .matrix i {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+    box-shadow: none;
+  }
+  .matrix {
+    color: currentColor;
+  }
+}

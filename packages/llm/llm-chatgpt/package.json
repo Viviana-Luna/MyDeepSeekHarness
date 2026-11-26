@@ -1,0 +1,46 @@
+{
+  "name": "@mydsh/llm-chatgpt",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MyDSH 独立的 ChatGPT 订阅模型提供商",
+  "main": "lib/index.js",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json",
+    "./types": "./types.d.ts",
+    "./typert": {
+      "types": "./lib/typert.host.d.ts",
+      "default": "./lib/typert.host.js"
+    },
+    "./remote": {
+      "types": "./lib/typert.remote-client.d.ts",
+      "default": "./lib/typert.remote-client.js"
+    }
+  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "types.d.ts",
+    "lib/typert.host.js",
+    "lib/typert.host.d.ts",
+    "lib/typert.remote-client.js",
+    "lib/typert.remote-client.d.ts"
+  ],
+  "license": "GPL-3.0-or-later",
+  "dependencies": {
+    "@deepseek-ai/cordis": "workspace:*",
+    "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-credentials": "workspace:*",
+    "eventsource-parser": "3.1.1",
+    "@deepseek-ai/dsh-authorization": "workspace:*",
+    "@deepseek-ai/dsh-typert-protocol": "workspace:*",
+    "jose": "6.2.12",
+    "@deepseek-ai/dsh-attachment": "workspace:*"
+  }
+}

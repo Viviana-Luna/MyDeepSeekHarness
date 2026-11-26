@@ -1,0 +1,128 @@
+diff --git a/packages/sandbox/sandbox-local/src/index.ts b/packages/sandbox/sandbox-local/src/index.ts
+index 5f18066..e12c080 100644
+--- a/packages/sandbox/sandbox-local/src/index.ts
++++ b/packages/sandbox/sandbox-local/src/index.ts
+@@ -566,7 +566,8 @@ export class LocalSandboxProvider extends SandboxProvider {
+     const override = this.internals.windowsAclRunnerArgs
+     if (override !== undefined) return override
+     const builtEntry = this.internals.windowsAclRunnerEntry ?? fileURLToPath(import.meta.resolve('@deepseek-ai/dsh-sandbox-windows-acl/runner'))
+-    if (existsSync(builtEntry)) return [process.execPath, builtEntry]
++    // MyDSH 的 utilityProcess 不能作为独立 Node 程序启动；由应用可执行文件承载 runner。
++    if (existsSync(builtEntry)) return [process.env.MYDSH_NODE_EXECUTABLE ?? process.execPath, builtEntry]
+     const sourceEntry = fileURLToPath(import.meta.resolve('@deepseek-ai/dsh-sandbox-windows-acl/src/runner.ts'))
+     const sourceConfig = fileURLToPath(new URL('../../../../tsconfig.base.json', import.meta.url))
+     const registration = `import { register } from ${JSON.stringify(import.meta.resolve('tsx/esm/api'))}; register({ tsconfig: ${JSON.stringify(sourceConfig)} });`
+diff --git a/packages/shell/pwsh-local/src/resolve.ts b/packages/shell/pwsh-local/src/resolve.ts
+index 191abba..96da19e 100644
+--- a/packages/shell/pwsh-local/src/resolve.ts
++++ b/packages/shell/pwsh-local/src/resolve.ts
+@@ -70,6 +70,8 @@ export function resolvePwshPath(
+   platform: NodeJS.Platform = process.platform,
+ ): string {
+   if (configured !== undefined && configured.length > 0) return configured
++  // MyDSH 的 Agent 与持久 Shell 共用随包 PowerShell，不受开发机 PATH 影响。
++  if (platform === 'win32' && env.MYDSH_PWSH_EXECUTABLE) return env.MYDSH_PWSH_EXECUTABLE
+   if (platform === 'win32') {
+     for (const candidate of candidatePwshPaths(env)) {
+       if (candidateExists(candidate)) return candidate
+diff --git a/packages/subprocess/subprocess-local/src/index.ts b/packages/subprocess/subprocess-local/src/index.ts
+index ff03dae..dafe238 100644
+--- a/packages/subprocess/subprocess-local/src/index.ts
++++ b/packages/subprocess/subprocess-local/src/index.ts
+@@ -269,6 +269,8 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
+     const activity = prepareShellActivity(spec, env, this.internals.platform ?? process.platform)
+     const launch = activity === undefined ? spec : { ...spec, argv: activity.argv, env: activity.env }
+     const options: IPtyForkOptions = {
++      // MyDSH：使用随包 ConPTY，释放时不派生依赖宿主 Node 启动模式的 console-list agent。
++      ...((this.internals.platform ?? process.platform) === 'win32' ? { useConptyDll: true } : {}),
+       name: spec.terminalType,
+       rows: spec.rows,
+       cols: spec.cols,
+@@ -313,6 +315,8 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
+       spec.shellActivity === true,
+     )
+     this.terminals.add(handle)
++    try { await handle.ready(spec.signal) }
++    catch (error) { await handle.terminate(); throw error }
+     const release = async (): Promise<void> => {
+       // terminate() can wait on this direct-exit promise.
+       directSettlement.resolve()
+diff --git a/packages/subprocess/subprocess-local/src/terminal.ts b/packages/subprocess/subprocess-local/src/terminal.ts
+index b99303a..adb771d 100644
+--- a/packages/subprocess/subprocess-local/src/terminal.ts
++++ b/packages/subprocess/subprocess-local/src/terminal.ts
+@@ -57,7 +57,7 @@ function signalName(number: number | undefined): NodeJS.Signals | null {
+  * the tracking a remote provider needs.
+  */
+ export class LocalTerminalHandle implements SubprocessTerminalHandle {
+-  readonly pid: number
++  get pid(): number { return this.terminal.pid }
+   readonly output = new PassThrough()
+   readonly done: Promise<SubprocessOutcome>
+ 
+@@ -74,7 +74,7 @@ export class LocalTerminalHandle implements SubprocessTerminalHandle {
+   private quiescent = false
+   private managedRangeEmpty = false
+   /** The spawned shell's start identity; scans stop adopting members once the root pid no longer carries it. */
+-  private readonly rootIdentity: ProcessIdentity | undefined
++  private rootIdentity: ProcessIdentity | undefined
+ 
+   /**
+    * @param terminal - allocated node-pty process.
+@@ -93,7 +93,6 @@ export class LocalTerminalHandle implements SubprocessTerminalHandle {
+     private readonly onQuiescence?: () => void,
+     private readonly observeShellExit = false,
+   ) {
+-    this.pid = terminal.pid
+     try { this.rootIdentity = inspector.snapshot().tree(this.pid).find(member => member.pid === this.pid) }
+     catch (_rootIdentityUnavailable) { this.rootIdentity = undefined }
+     this.done = this.outcome.promise
+@@ -131,6 +130,17 @@ export class LocalTerminalHandle implements SubprocessTerminalHandle {
+     })
+   }
+ 
++  /** MyDSH：ConPTY 在连接工作线程后才公布 PID，先订阅输出，再等待身份可用。 */
++  async ready(signal?: AbortSignal): Promise<void> {
++    if (this.platform !== 'win32') { signal?.throwIfAborted(); return }
++    const deadline = Date.now() + 10_000
++    while (this.pid <= 0 && !this.exited && Date.now() < deadline) await delay(10)
++    if (this.pid <= 0) throw new Error('Windows 终端未能在期限内分配进程')
++    this.rootIdentity = this.inspector.snapshot().tree(this.pid).find(member => member.pid === this.pid)
++    if (!this.rootIdentity && !this.exited) throw new Error('无法确认 Windows 终端进程身份')
++    signal?.throwIfAborted()
++  }
++
+   /** Whether node-pty has not yet published the top-level exit event. */
+   get running(): boolean {
+     return !this.exited
+@@ -254,7 +264,7 @@ export class LocalTerminalHandle implements SubprocessTerminalHandle {
+       return
+     }
+     try {
+-      this.terminal.kill('SIGKILL')
++      this.terminal.kill(this.platform === 'win32' ? undefined : 'SIGKILL')
+     } catch (_unidentifiedShellExitedDuringHostExit) {
+       // Without a captured identity, node-pty is the only root kill primitive.
+     }
+@@ -423,6 +433,8 @@ export class LocalTerminalHandle implements SubprocessTerminalHandle {
+       throw new Error(`terminal cleanup failed; surviving pids: ${survivors.map(member => member.pid).join(', ')}`)
+     }
+     this.settleExitIfGone()
++    // MyDSH：身份校验与进程树清理结束后，还需释放 ConPTY 管道和原生句柄。
++    if (this.platform === 'win32') this.terminal.kill()
+     this.dataDisposable.dispose()
+     this.exitDisposable.dispose()
+   }
+diff --git a/packages/session/session-persistence-jsonl/src/index.ts b/packages/session/session-persistence-jsonl/src/index.ts
+index 1392637..130bfb9 100644
+--- a/packages/session/session-persistence-jsonl/src/index.ts
++++ b/packages/session/session-persistence-jsonl/src/index.ts
+@@ -1256,6 +1256,8 @@ class JsonlSessionPersistence extends SessionPersistence {
+   /** fsync a POSIX directory so a just-created/renamed entry is crash-durable. */
+   /* v8 ignore start -- Windows uses write-through namespace operations; POSIX coverage exercises directory fsync. */
+   private async syncDirPosix(dir: string): Promise<void> {
++    // MyDSH：永久删除也走此入口；Windows 不支持对只读目录句柄 fsync。
++    if (process.platform === 'win32') return
+     const handle = await open(dir, 'r')
+     try {
+       await handle.sync()

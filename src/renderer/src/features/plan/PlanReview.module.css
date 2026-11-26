@@ -1,0 +1,173 @@
+.review {
+  flex: 0 0 auto !important;
+  max-height: min(260px, 45vh);
+  overflow-y: auto;
+  border-radius: 20px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--warning) 6%, var(--surface-raised)),
+    var(--surface)
+  );
+  box-shadow: inset 0 1px color-mix(in srgb, var(--warning) 35%, var(--island-rim));
+}
+.reviewHeader > span {
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  font-weight: 600;
+}
+.reviewHeader,
+.reviewHeader > span,
+.footer,
+.footer > div,
+.previewHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.reviewHeader {
+  justify-content: space-between;
+  color: var(--warning);
+  font-size: var(--text-caption);
+}
+.review button,
+.previewHeader button,
+.history {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 10px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.review button {
+  min-height: 30px;
+  padding: 0 13px;
+  border-radius: 999px;
+}
+.review button:hover:not(:disabled),
+.previewHeader button:hover,
+.history:hover {
+  background: var(--surface-hover);
+}
+.review button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.summary {
+  padding: 10px 0 12px;
+  min-width: 0;
+}
+.summary h2 {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-body);
+}
+.summary p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.footer {
+  justify-content: space-between;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  flex-wrap: wrap;
+}
+.footer > span {
+  color: var(--muted);
+  font-size: var(--text-caption);
+  flex: 1 1 180px;
+}
+.footer > div {
+  margin-left: auto;
+}
+.review .approve {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-color: var(--accent);
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 0.28),
+    0 4px 12px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+.review .approve:hover:not(:disabled) {
+  background: var(--accent);
+  filter: brightness(1.08);
+}
+.preview {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  color: var(--text);
+}
+/* 阅读计划时为正文留出最小宽度，关闭后立即恢复外壳原有尺寸偏好。 */
+:global(.app-shell):has(:global(.info-island) .preview[data-plan-id]) {
+  --information-width: calc(
+    min(max(420px, var(--information-expanded-width)), var(--information-width-limit)) *
+      var(--information-reveal)
+  );
+}
+.previewHeader {
+  flex: 0 0 auto;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.previewHeader strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-control);
+}
+.previewHeader > svg,
+.previewHeader button {
+  flex-shrink: 0;
+}
+.document {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 18px 20px 36px;
+  scrollbar-gutter: stable;
+}
+.history {
+  max-width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  margin: 6px 0;
+}
+.history > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (forced-colors: active) {
+  .reviewHeader {
+    color: CanvasText;
+  }
+  .review .approve {
+    background: Highlight;
+    color: HighlightText;
+    border-color: ButtonText;
+  }
+}

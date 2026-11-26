@@ -1,0 +1,975 @@
+/* 画布底板：中心与浮岛核心缝隙保持 100% 实色以遮挡背后窗口文字，向四边与四角平滑衰减至 84% 实色（约 16% 柔和通透）。 */
+.background-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-color: transparent;
+  background-image: radial-gradient(
+    ellipse 64% 64% at 50% 50%,
+    color-mix(in srgb, var(--canvas-layer-bg, var(--canvas-bg)) 100%, transparent) 0%,
+    color-mix(in srgb, var(--canvas-layer-bg, var(--canvas-bg)) 100%, transparent) 60%,
+    color-mix(in srgb, var(--canvas-layer-bg, var(--canvas-bg)) 95%, transparent) 82%,
+    color-mix(in srgb, var(--canvas-layer-bg, var(--canvas-bg)) 84%, transparent) 100%
+  );
+  opacity: 1;
+  transition:
+    background-color 160ms ease,
+    opacity 160ms ease;
+}
+
+@property --navigation-reveal {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 1;
+}
+@property --information-reveal {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 1;
+}
+@property --session-chrome-reveal {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 1;
+}
+
+.app-shell {
+  --navigation-reveal: 1;
+  --information-reveal: 1;
+  --session-chrome-reveal: 1;
+  --panel-motion-duration: 420ms;
+  --panel-motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* 左侧导航浮岛较中央主画布微沉半档，拉出前景与侧栏的自然层次，避免全屏同色依赖粗边线硬切。 */
+  --island-face: light-dark(#fafbfe, #171a21);
+  --sidebar-face: light-dark(#f2f4f9, #13161c);
+  --island-outline: light-dark(rgb(15 23 42 / 0.095), rgb(255 255 255 / 0.085));
+  --relief-light: light-dark(rgb(255 255 255 / 0.68), rgb(226 234 248 / 0.065));
+  --relief-dark: light-dark(rgb(15 23 42 / 0.12), rgb(0 0 0 / 0.34));
+  --relief-raised: inset 0 1px 0 var(--relief-light), 0 2px 6px var(--relief-dark);
+  --relief-recessed: inset 0 1px 2px var(--relief-dark), inset 0 -1px 0 var(--relief-light);
+  /* 阴影随间隙收窄，给两块浮岛之间的画布留出可见空间。 */
+  --island-shadow-offset: min(3px, calc(var(--window-gap) / 4));
+  --island-shadow-blur: calc(var(--island-shadow-offset) * 2);
+  --sidebar-rail-width: var(--mode-rail-width);
+  --navigation-width: calc(var(--navigation-expanded-width) * var(--navigation-reveal));
+  --sidebar-width: calc(var(--sidebar-rail-width) + var(--navigation-width) + 2px);
+  --information-width-limit: calc(
+    100vw - var(--window-edge) * 2 - var(--sidebar-width) - 420px - var(--window-gap)
+  );
+  --information-width: calc(
+    min(var(--information-expanded-width), var(--information-width-limit)) *
+      var(--information-reveal)
+  );
+  --workspace-row: 2;
+  --workspace-top: calc(
+    var(--window-edge) + (var(--session-chrome-height) + var(--window-gap)) *
+      var(--session-chrome-reveal)
+  );
+  /* 输入区读数条：单行高度与卡片间距；存在时占用 --composer-readings-extra。 */
+  --composer-readings-gap: 2px;
+  --composer-readings-size: 24px;
+  --composer-readings-extra: 0px;
+  --composer-todos-extra: 0px;
+  --composer-bottom-inset: var(--composer-inset);
+  --composer-block-size: clamp(
+    104px,
+    var(--composer-height),
+    calc(
+      100vh - var(--window-controls-height, 0px) - var(--window-edge) * 2 - var(--composer-inset) -
+        var(--composer-bottom-inset) - 222px - var(--composer-readings-extra) -
+        var(--composer-todos-extra)
+    )
+  );
+  /* 外壳钉在视口上：根链一旦被程序化滚动（见 base.css 与 app.tsx），
+     相对定位的外壳会连同四周留白一起被顶出视口，上边缘消失、底部多出等高空带。 */
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(420px, 1fr) calc(
+      var(--information-width) + var(--window-gap) * var(--information-reveal)
+    );
+  grid-template-rows: calc(var(--session-chrome-height) * var(--session-chrome-reveal)) minmax(
+      0,
+      1fr
+    );
+  row-gap: calc(var(--window-gap) * var(--session-chrome-reveal));
+  padding: var(--window-edge);
+  transition:
+    --navigation-reveal var(--panel-motion-duration) var(--panel-motion-ease),
+    --information-reveal var(--panel-motion-duration) var(--panel-motion-ease),
+    --session-chrome-reveal var(--panel-motion-duration) var(--panel-motion-ease);
+}
+
+/* 读数条在卡片下方单独占一行时，卡片上沿到浮岛底边多出这一行；
+   右下角把手与卡片高度上限都按它让位。 */
+.app-shell:has(.composer-dock [data-composer-readings]) {
+  --composer-readings-extra: calc(var(--composer-readings-size) + var(--composer-readings-gap));
+  --composer-bottom-inset: 6px;
+}
+
+/* 为待办预留高度，拖高输入框后展开清单也不会把正文和操作挤出窗口。 */
+.app-shell:has(.composer-dock .todo-card) {
+  --composer-todos-extra: 44px;
+}
+.app-shell:has(.composer-dock .todo-card__list) {
+  --composer-todos-extra: 232px;
+}
+
+.app-shell[data-session-tabs-visible='false'] {
+  --session-chrome-reveal: 0;
+}
+
+.app-shell[data-pending-interaction='true'] {
+  --composer-block-size: max(
+    180px,
+    min(
+      420px,
+      calc(
+        100vh - var(--window-controls-height, 0px) - var(--window-edge) * 2 -
+          var(--composer-inset) - var(--composer-bottom-inset) - 222px -
+          var(--composer-readings-extra) - var(--composer-todos-extra)
+      )
+    )
+  );
+}
+
+.window-drag-region {
+  position: absolute;
+  inset: 0;
+  -webkit-app-region: drag;
+}
+
+.sidebar-island {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  display: grid;
+  grid-template-columns: var(--sidebar-rail-width) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  background-color: var(--sidebar-face);
+}
+
+.sidebar-island > .project-focus {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 31px;
+  padding: 1px 6px 1px 76px;
+  -webkit-app-region: drag;
+}
+
+.mode-rail {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  padding: 10px 4px 10px;
+  border-right: 1px solid var(--line);
+  background: light-dark(
+    color-mix(in srgb, var(--sidebar-face) 78%, var(--canvas-bg)),
+    color-mix(in srgb, var(--sidebar-face) 64%, var(--canvas-bg))
+  );
+  -webkit-app-region: drag;
+}
+
+.app-shell[data-navigation-collapsed='true'] {
+  --navigation-reveal: 0;
+}
+.app-shell[data-navigation-collapsed='true'] .sidebar-island {
+  grid-row: 2;
+  grid-template-rows: 0 minmax(0, 1fr);
+}
+.app-shell[data-navigation-collapsed='true'] .mode-rail {
+  border-right-color: transparent;
+}
+.app-shell[data-navigation-collapsed='true'] .project-focus {
+  display: none;
+}
+.app-shell[data-information-collapsed='true'] {
+  --information-reveal: 0;
+}
+
+.island {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--island-outline);
+  border-radius: var(--island-radius);
+  background-color: var(--island-face);
+  box-shadow:
+    inset 0 1px 0 var(--relief-light),
+    var(--island-shadow-offset) var(--island-shadow-offset) var(--island-shadow-blur)
+      var(--relief-dark);
+  -webkit-app-region: no-drag;
+}
+
+.navigation-island {
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  width: var(--navigation-expanded-width);
+  flex-direction: column;
+  padding: 8px 8px 10px;
+  overflow: hidden;
+  background-image:
+    linear-gradient(
+      color-mix(in srgb, var(--sidebar-face) 92%, transparent),
+      color-mix(in srgb, var(--sidebar-face) 92%, transparent)
+    ),
+    var(--sidebar-image);
+  background-position: center;
+  background-size: cover;
+  transform-origin: center bottom;
+  transition:
+    transform var(--panel-motion-duration) var(--panel-motion-ease),
+    opacity 180ms ease,
+    visibility 0s;
+}
+
+.main-island {
+  grid-column: 2;
+  grid-row: var(--workspace-row);
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  margin-left: var(--window-gap);
+}
+.main-island-layer {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.main-island-layer[hidden] {
+  display: none;
+}
+
+.info-island {
+  grid-column: 3;
+  grid-row: var(--workspace-row);
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  margin-left: calc(var(--window-gap) * var(--information-reveal));
+  padding: 12px;
+  overflow: hidden;
+  transform-origin: center bottom;
+  transition:
+    transform var(--panel-motion-duration) var(--panel-motion-ease),
+    opacity 180ms ease,
+    visibility 0s;
+}
+.workspace-island--parked {
+  display: none;
+}
+.workspace-island-toolbar {
+  flex: none;
+}
+.workspace-island-toolbar[hidden] {
+  display: none;
+}
+.workspace-island-content {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.workspace-island-content[data-placement='right'] {
+  overflow: auto;
+  padding: 2px;
+}
+.workspace-island-content[data-placement='right'] > * {
+  position: relative;
+  z-index: 1;
+}
+.info-island .composer-dock {
+  flex-basis: clamp(116px, 24vh, 190px);
+  width: 100%;
+  max-width: 100%;
+  margin: 6px 0 0;
+}
+/* 输入区：卡片按 --composer-block-size 固定高度，读数条在卡片下方单独占一行，
+   整个 dock 的高度因此是「卡片 + 间距 + 读数条」。除卡片以外的元素都不参与卡片几何，
+   卡片底边距浮岛底边因此等于「读数条高度 + 间距 + --composer-bottom-inset」。 */
+.composer-dock {
+  position: relative;
+  display: flex;
+  align-self: center;
+  flex: 0 0 auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--composer-readings-gap);
+  width: var(--conversation-width);
+  max-width: calc(100% - var(--composer-inset) * 2);
+  margin: 8px var(--composer-inset) var(--composer-bottom-inset);
+}
+.composer-card {
+  position: relative;
+  container: composer / inline-size;
+  display: flex;
+  flex: 0 0 var(--composer-block-size);
+  min-height: 0;
+  flex-direction: column;
+  /* 允许边缘按钮（如右下角发送键）弹性拉伸时略微越出卡片边线而不被裁切 */
+  overflow: visible;
+  padding: 11px 13px 10px;
+  border: 1px solid light-dark(rgb(15 23 42 / 0.11), rgb(255 255 255 / 0.11));
+  border-radius: 18px;
+  background: light-dark(
+    linear-gradient(180deg, #ffffff 0%, #f7f9fc 100%),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-raised) 88%, var(--island-face)) 0%,
+      color-mix(in srgb, var(--surface-raised) 56%, var(--island-face)) 100%
+    )
+  );
+  box-shadow:
+    light-dark(0 8px 24px rgb(15 23 42 / 0.07), 0 10px 28px rgb(0 0 0 / 0.28)),
+    light-dark(0 1px 3px rgb(15 23 42 / 0.05), 0 2px 6px rgb(0 0 0 / 0.16)),
+    inset 0 1px 0 light-dark(rgb(255 255 255 / 0.92), rgb(255 255 255 / 0.09));
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+.composer-card:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line-strong));
+  box-shadow:
+    light-dark(0 10px 28px rgb(15 23 42 / 0.09), 0 12px 32px rgb(0 0 0 / 0.34)),
+    0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent),
+    inset 0 1px 0 light-dark(rgb(255 255 255 / 0.95), rgb(255 255 255 / 0.11));
+}
+/* 待响应交互卡片按内容收缩：它的高度不受输入卡片基准约束，同时保持圆角裁切。 */
+.composer-dock > .pending-interaction-card {
+  flex-basis: auto;
+  overflow: hidden;
+}
+.composer-dock > .pending-interaction-card:not([data-plan-review-key]) {
+  max-height: var(--composer-block-size);
+}
+.composer-dock > .todo-card {
+  flex: none;
+  margin: 0 0 4px;
+}
+
+.composer-dock:has(.composer-attachments, .composer-file-attachments) > .composer-card {
+  flex-basis: auto;
+  min-height: max(164px, var(--composer-block-size));
+}
+.composer-dock--collapsed {
+  align-items: center;
+  margin: 4px var(--composer-inset) 8px;
+}
+.composer-dock__toggle-slot {
+  position: absolute;
+  z-index: 9;
+  top: -10px;
+  inset-inline: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.composer-dock__toggle-slot.is-collapsed {
+  position: static;
+}
+.composer-dock__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 9px;
+  border: 1px solid var(--island-outline);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  box-shadow: var(--relief-raised);
+  color: var(--muted);
+  font-size: var(--text-meta);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0.9;
+  transition:
+    opacity 150ms ease,
+    color 150ms ease,
+    border-color 150ms ease,
+    background-color 150ms ease;
+  -webkit-app-region: no-drag;
+}
+.composer-dock__toggle.is-collapsed {
+  height: 26px;
+  padding: 0 11px;
+  font-size: var(--text-control);
+  opacity: 0.96;
+}
+.composer-dock__toggle:is(:hover, :focus-visible) {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line-strong));
+  background: var(--surface-hover);
+  color: var(--text);
+  opacity: 1;
+}
+@media (forced-colors: active) {
+  .composer-dock__toggle {
+    border-color: ButtonText;
+    background: ButtonFace;
+    color: ButtonText;
+    box-shadow: none;
+    opacity: 1;
+  }
+}
+
+.app-shell[data-navigation-collapsed='true'] .navigation-island,
+.app-shell[data-information-collapsed='true'] .info-island {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: perspective(900px) translateY(28px) rotateX(-8deg);
+  transition:
+    transform var(--panel-motion-duration) var(--panel-motion-ease),
+    opacity 180ms ease,
+    visibility 0s var(--panel-motion-duration);
+}
+
+.panel-divider {
+  position: absolute;
+  z-index: 8;
+  top: var(--workspace-top);
+  bottom: var(--window-edge);
+  width: var(--window-gap);
+  cursor: col-resize;
+  touch-action: none;
+  -webkit-app-region: no-drag;
+}
+.panel-divider::before {
+  position: absolute;
+  inset: var(--island-radius) 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 46%, transparent);
+  content: '';
+  opacity: 0;
+  pointer-events: none;
+}
+.panel-divider.is-resizing::before {
+  opacity: 1;
+}
+.panel-divider[aria-orientation='vertical']::before {
+  transform: scaleY(0);
+  transform-origin: center;
+  transition:
+    transform 240ms cubic-bezier(0.4, 0, 0.7, 0.4),
+    opacity 150ms ease 90ms;
+}
+.panel-divider[aria-orientation='vertical'][aria-disabled='false']:is(
+    :hover,
+    :focus-visible,
+    :has(:focus-visible),
+    .is-resizing
+  )::before {
+  opacity: 1;
+  transform: scaleY(1);
+  transition:
+    transform 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 150ms ease;
+}
+.panel-divider[aria-orientation='vertical'][aria-disabled='false']:hover:not(
+    :has(:focus-visible)
+  ):not(.is-resizing)::before {
+  transition-delay: 1s;
+}
+.panel-divider.is-resizing::before {
+  background: color-mix(in srgb, var(--accent) 74%, transparent);
+}
+.panel-divider--navigation {
+  left: calc(var(--window-edge) + var(--sidebar-width));
+}
+.panel-divider--information {
+  right: calc(var(--window-edge) + var(--information-width));
+}
+.panel-divider--composer {
+  inset: -5px 0 auto;
+  width: auto;
+  height: 5px;
+  cursor: row-resize;
+}
+.panel-divider--composer::before {
+  inset: 0 var(--island-radius);
+  border-radius: 999px;
+}
+.panel-resize-corner {
+  position: absolute;
+  z-index: 10;
+  right: calc(var(--window-edge) + var(--information-width) + var(--window-gap) / 2 - 12px);
+  bottom: calc(
+    var(--window-edge) + 1px + var(--composer-bottom-inset) + var(--composer-block-size) +
+      var(--composer-readings-extra) + 2.5px - 12px
+  );
+  width: 24px;
+  height: 24px;
+  cursor: nwse-resize;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface-raised);
+  color: var(--muted);
+  opacity: 0;
+  touch-action: none;
+  transition:
+    opacity 120ms ease,
+    color 120ms ease,
+    background-color 120ms ease;
+  -webkit-app-region: no-drag;
+}
+.panel-resize-corner::before,
+.panel-resize-corner::after {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 7px;
+  height: 1px;
+  transform: rotate(-45deg);
+  background: currentColor;
+  content: '';
+}
+.panel-resize-corner::after {
+  right: 8px;
+  bottom: 8px;
+}
+.panel-resize-corner:hover,
+.panel-resize-corner:focus-visible,
+.panel-resize-corner.is-resizing {
+  color: var(--text);
+  background: var(--surface-hover);
+  opacity: 1;
+}
+.app-shell[data-information-collapsed='true'] .panel-resize-corner {
+  display: none;
+}
+.app-shell[data-information-collapsed='true'] .panel-divider--information {
+  right: calc((var(--window-edge) - var(--window-gap)) / 2);
+  cursor: default;
+}
+.app-shell[data-navigation-collapsed='true'] .panel-divider--navigation,
+.app-shell[data-information-collapsed='true'] .panel-divider--information {
+  cursor: default;
+}
+.app-shell[data-navigation-collapsed='true'] .panel-divider--navigation .panel-divider__capsule,
+.app-shell[data-information-collapsed='true'] .panel-divider--information .panel-divider__capsule {
+  pointer-events: auto;
+}
+.panel-divider__capsule {
+  --capsule-scale-x: 0.18;
+  --capsule-scale-y: 0.68;
+  --capsule-icon-opacity: 0;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 48px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 150ms ease 90ms,
+    color 150ms ease;
+}
+.panel-divider__capsule::before {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--capsule-border, var(--island-outline));
+  border-radius: inherit;
+  background-color: var(--island-face);
+  box-shadow: var(--relief-raised);
+  transform: scale(var(--capsule-scale-x), var(--capsule-scale-y));
+  transition:
+    transform var(--capsule-duration, 240ms) var(--capsule-ease, cubic-bezier(0.4, 0, 0.7, 0.4)),
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+  content: '';
+  pointer-events: none;
+}
+.panel-divider__capsule > svg {
+  position: relative;
+  opacity: var(--capsule-icon-opacity);
+  transition: opacity 120ms ease;
+}
+.panel-divider:hover .panel-divider__capsule,
+.panel-divider:focus-visible .panel-divider__capsule,
+.panel-divider:focus-within .panel-divider__capsule,
+.panel-divider__capsule:hover,
+.panel-divider.is-resizing .panel-divider__capsule,
+.app-shell[data-panel-capsules-persistent='true'] .panel-divider__capsule {
+  --capsule-scale-x: 1;
+  --capsule-scale-y: 1;
+  --capsule-icon-opacity: 1;
+  --capsule-duration: 420ms;
+  --capsule-ease: cubic-bezier(0.18, 1.45, 0.4, 1);
+  color: var(--text);
+  opacity: 1;
+  pointer-events: auto;
+  transition-delay: 0s;
+}
+.panel-divider:hover .panel-divider__capsule,
+.panel-divider__capsule:focus-visible {
+  --capsule-border: color-mix(in srgb, var(--accent) 48%, var(--line-strong));
+}
+.panel-divider.is-resizing .panel-divider__capsule,
+.panel-divider__capsule:active {
+  --capsule-scale-x: 1.16;
+  --capsule-scale-y: 0.94;
+  --capsule-border: var(--accent);
+  color: var(--accent);
+}
+.panel-divider.is-resizing .panel-divider__capsule::before,
+.panel-divider__capsule:active::before {
+  background-color: color-mix(in srgb, var(--accent) 12%, var(--island-face));
+  box-shadow: var(--relief-recessed);
+}
+.panel-divider:focus-visible {
+  outline: none;
+}
+.panel-divider__capsule:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, white);
+  outline-offset: 2px;
+}
+
+.workspace-view {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background-image:
+    linear-gradient(
+      color-mix(in srgb, var(--island-face) calc(var(--scrim-alpha) * 100%), transparent),
+      color-mix(in srgb, var(--island-face) calc(var(--scrim-alpha) * 100%), transparent)
+    ),
+    var(--content-image);
+  background-position: center;
+  background-size: cover;
+}
+.right-island-layer::-webkit-scrollbar-track:vertical,
+.workspace-view::-webkit-scrollbar-track:vertical {
+  margin-block: 12px;
+}
+.workspace-view::-webkit-scrollbar-track:horizontal {
+  margin-inline: 12px;
+}
+.workspace-empty {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  padding: 48px;
+  text-align: center;
+}
+.workspace-empty h2 {
+  margin: 12px 0 5px;
+  font-size: 19px;
+}
+.workspace-empty p {
+  max-width: 520px;
+  margin: 0;
+  color: var(--muted);
+}
+
+@media (max-width: 1268px) {
+  .app-shell {
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+    column-gap: var(--window-gap);
+  }
+  .panel-divider--information,
+  .panel-resize-corner {
+    display: none;
+  }
+  .main-island,
+  .app-shell[data-information-collapsed='true'] .main-island {
+    grid-column: 2;
+    margin-left: 0;
+  }
+
+  .info-island,
+  .app-shell[data-information-collapsed='true'] .info-island {
+    display: none;
+  }
+}
+
+@media (max-width: 780px) {
+  .app-shell {
+    --navigation-reveal: 0;
+  }
+  .navigation-island,
+  .sidebar-island .project-selector {
+    display: none;
+  }
+  .sidebar-island > .project-focus {
+    justify-content: center;
+    padding: 42px 0 0;
+    border-bottom: 0;
+  }
+  .panel-divider--navigation {
+    cursor: default;
+    pointer-events: none;
+  }
+  .panel-divider--navigation .panel-divider__capsule {
+    pointer-events: auto;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .island,
+  .navigation-island,
+  .workspace-view {
+    background-color: var(--island-face) !important;
+    background-image: none !important;
+    backdrop-filter: none !important;
+  }
+  .sidebar-island,
+  .navigation-island {
+    background-color: var(--sidebar-face) !important;
+  }
+  .composer-card {
+    background: var(--surface-raised) !important;
+  }
+  .background-layer {
+    background-color: var(--canvas-layer-bg, var(--canvas-bg)) !important;
+    background-image: none !important;
+    opacity: 1 !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-divider__capsule::before {
+    transform: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .background-layer {
+    background: Canvas !important;
+    opacity: 1 !important;
+  }
+  .session-row.is-active {
+    border-color: Highlight;
+  }
+  .panel-divider.is-resizing::before {
+    background: Highlight;
+    forced-color-adjust: none;
+    box-shadow: none;
+  }
+  .island,
+  .mode-rail,
+  .composer-card,
+  .project-selector,
+  .session-search-trigger,
+  .session-search-dialog,
+  .git-card button {
+    border: 1px solid CanvasText;
+  }
+  .island,
+  .composer-card {
+    background: Canvas;
+    box-shadow: none;
+  }
+  .composer-card:focus-within {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  .panel-divider__capsule::before {
+    border-color: ButtonText;
+    background: ButtonFace !important;
+    backdrop-filter: none;
+    box-shadow: none !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .app-shell {
+    --island-outline: var(--line-strong);
+    --relief-raised: none;
+    --relief-recessed: none;
+  }
+  .island,
+  .composer-card {
+    box-shadow: none;
+  }
+  .composer-card {
+    border-color: var(--line-strong);
+    background: var(--surface-raised);
+  }
+  .composer-card:focus-within {
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+}
+
+/* Windows 自绘顶部按钮；原生背景合成不可用时保留实色画布。 */
+:root[data-platform='win32'] {
+  background-color: var(--canvas-bg);
+}
+:root[data-platform='win32'][data-canvas-composition='acrylic'] {
+  background-color: transparent;
+}
+:root[data-platform='win32'] .sidebar-island > .project-focus {
+  padding-left: 6px;
+}
+:root[data-platform='win32'] .app-shell[data-navigation-collapsed='true'] .session-chrome {
+  padding-left: 0;
+}
+
+/* 内容实例共享稳定网格；检查栏在双窗格时让出宽度，用户偏好保持原值。 */
+.workbench-surface {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--window-gap);
+  overflow: hidden;
+}
+.workbench-surface[hidden],
+.work-tab-panel[hidden] {
+  display: none;
+}
+.workbench-surface[data-workbench-split] {
+  gap: 0;
+}
+/* Windows 顶栏收起且右栏隐藏时，由工作标签主浮岛顶部承接唯一窗口控制条，下方内容顺移到第二行。 */
+.workbench-surface:has(> .windows-chrome) {
+  grid-template-rows: auto minmax(0, 1fr);
+  row-gap: 0;
+}
+.workbench-surface > .windows-chrome {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+.workbench-surface:has(> .windows-chrome) > .work-tab-panel,
+.workbench-surface:has(> .windows-chrome) > .workbench-divider {
+  grid-row: 2;
+}
+.work-tab-panel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  grid-row: 1;
+  overflow: hidden;
+}
+.workbench-surface[data-workbench-split] .work-tab-panel[data-focused] {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
+}
+@media (max-width: 1640px) {
+  .app-shell[data-workspace-split],
+  body[data-workbench-dragging] .app-shell {
+    --information-reveal: 0;
+  }
+  .app-shell[data-workspace-split] > .info-island,
+  .app-shell[data-workspace-split] > .panel-divider--information,
+  .app-shell[data-workspace-split] > .panel-resize-corner,
+  body[data-workbench-dragging] .app-shell > .info-island,
+  body[data-workbench-dragging] .app-shell > .panel-divider--information,
+  body[data-workbench-dragging] .app-shell > .panel-resize-corner {
+    display: none;
+  }
+}
+
+.workbench-surface[data-workbench-split] {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.workbench-surface:not([data-workbench-split]) > .work-tab-panel {
+  border: 0;
+  border-radius: 0;
+}
+
+.workspace-island[hidden] {
+  display: none;
+}
+.view-tabs__indicator[hidden] {
+  display: none;
+}
+
+@media (forced-colors: active) {
+  .workbench-surface[data-workbench-split] .work-tab-panel[data-focused] {
+    border-color: Highlight;
+  }
+}
+
+.workbench-divider {
+  position: relative;
+  grid-column: 2;
+  grid-row: 1;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+  z-index: 2;
+}
+.workbench-divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 36px;
+  border: 1px solid var(--mode-lens-border);
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  background: var(--mode-lens);
+  box-shadow: var(--mode-lens-shadow);
+  opacity: 0.7;
+}
+.workbench-divider:is(:hover, :focus-visible)::after,
+body[data-workbench-resizing] .workbench-divider::after {
+  background: var(--accent);
+  opacity: 1;
+}
+.workbench-surface[data-workbench-split] .work-tab-panel[data-focused] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.workbench-surface:not([data-workbench-split]) > .work-tab-panel {
+  width: 100%;
+  transform-origin: top left;
+}
+body[data-workbench-dragging]
+  .workbench-surface:not([data-workbench-split])
+  > .work-tab-panel:not([hidden]) {
+  transition:
+    width 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.workbench-surface:not([data-workbench-split])[data-drop-side] > .work-tab-panel:not([hidden]) {
+  width: calc((100% - var(--window-gap)) / 2);
+  border-radius: var(--island-radius);
+}
+.workbench-surface:not([data-workbench-split])[data-drop-side='left']
+  > .work-tab-panel:not([hidden]) {
+  transform: translateX(calc(100% + var(--window-gap)));
+}
+@media (forced-colors: active) {
+  .workbench-divider::after {
+    border-color: ButtonText;
+    background: ButtonText;
+    box-shadow: none;
+    opacity: 1;
+  }
+  .workbench-divider:focus-visible {
+    outline: 2px solid Highlight;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-workbench-dragging] .workbench-surface > .work-tab-panel {
+    transition: none !important;
+  }
+}

@@ -1,0 +1,3 @@
+name: 极简模式
+description: 纯粹编码预设：仅保留读取、精确编辑、写入与 Shell 四项基础工具（Windows 自动补充文件检索），零外围工具开销。
+order: 2

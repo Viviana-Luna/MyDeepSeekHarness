@@ -1,0 +1,30 @@
+/* 直接附加到目标控件自身，不改变其原有 display 或布局。 */
+.pressTarget {
+  transform-origin: center;
+  user-select: none;
+  touch-action: none;
+  -webkit-user-drag: none;
+}
+
+/* 多节点回退外壳，保持行内弹性排列。 */
+.press {
+  display: inline-flex;
+  transform-origin: center;
+  user-select: none;
+  touch-action: none;
+  -webkit-user-drag: none;
+}
+
+/* 仅在按压与回弹期间提升合成层和层级，平时不常驻额外图层或遮挡邻居。 */
+.pressTarget[data-press='active'],
+.press[data-press='active'] {
+  z-index: 2;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pressTarget[data-press='active'],
+  .press[data-press='active'] {
+    will-change: auto;
+  }
+}

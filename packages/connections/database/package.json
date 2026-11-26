@@ -1,0 +1,51 @@
+{
+  "name": "@mydsh/database",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MyDSH 数据库工作区与模型可控 SQL/DDL 工具",
+  "main": "lib/index.js",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./lib/index.js"
+    },
+    "./types": "./types.d.ts",
+    "./tools": {
+      "types": "./src/tools.ts",
+      "default": "./lib/tools.js"
+    },
+    "./typert": {
+      "types": "./lib/typert.host.d.ts",
+      "default": "./lib/typert.host.js"
+    },
+    "./remote": {
+      "types": "./lib/typert.remote-client.d.ts",
+      "default": "./lib/typert.remote-client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "license": "GPL-3.0-or-later",
+  "files": [
+    "lib",
+    "src",
+    "types.d.ts",
+    "README.md",
+    "lib/typert.host.js",
+    "lib/typert.host.d.ts",
+    "lib/typert.remote-client.js",
+    "lib/typert.remote-client.d.ts"
+  ],
+  "dependencies": {
+    "@deepseek-ai/cordis": "workspace:*",
+    "@deepseek-ai/dsh-credentials": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-typert-protocol": "workspace:*",
+    "@deepseek-ai/dsh-user-questions": "workspace:*",
+    "@mydsh/connection-access": "workspace:*",
+    "@mydsh/ssh": "workspace:*",
+    "mysql2": "3.24.6",
+    "pg": "8.23.1"
+  }
+}

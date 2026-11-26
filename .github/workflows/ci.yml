@@ -1,0 +1,53 @@
+name: 桌面端检查
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: pnpm run check
+      - run: pnpm run verify:core
+      - run: node scripts/package-macos.mjs
+      - run: node scripts/make-macos.mjs
+      - run: pnpm run verify:package:made
+      - run: pnpm run verify:package:runtime
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: pnpm run check
+      - run: pnpm run verify:core
+      - run: node scripts/verify-source-runtime.mjs
+      - run: pnpm run verify:window
+      - run: node scripts/package-windows.mjs
+      - run: node scripts/make-windows.mjs
+      - run: pnpm run verify:package:win -- --made

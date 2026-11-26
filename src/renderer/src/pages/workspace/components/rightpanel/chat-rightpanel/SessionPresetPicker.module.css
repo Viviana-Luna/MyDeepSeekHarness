@@ -1,0 +1,213 @@
+/* renderer 会话预设：空会话中复用相同数据与锁定规则的液态玻璃胶囊滑块样式。 */
+.preset {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin-bottom: 24px;
+}
+
+/* 上下预留 10px 独立绘制缓冲（以负外边距抵消排版占位），使透镜鼓起和高光边缘不被裁切。 */
+.track {
+  display: flex;
+  max-width: 100%;
+  margin-block: -7px;
+  padding: 10px 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  isolation: isolate;
+}
+
+.options {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 3px;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.options[data-dragging],
+.options[data-dragging] .pill {
+  cursor: grabbing;
+}
+
+/* 材质盒上下各延展 10px，保证 SVG objectBoundingBox 滤镜完整覆盖透镜纵向鼓起后的高光与折射。 */
+.material {
+  position: absolute;
+  z-index: 0;
+  inset: -10px -4px;
+  pointer-events: none;
+  will-change: filter;
+}
+
+.material::before {
+  position: absolute;
+  inset: 7px 0;
+  border: 1px solid var(--mode-track-border);
+  border-radius: 17px;
+  background: var(--surface-raised);
+  box-shadow: var(--mode-track-shadow);
+  content: '';
+}
+
+.defs {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.options:not([data-glass-ready]) .material {
+  filter: none !important;
+}
+
+.lens {
+  transition:
+    box-shadow 140ms ease,
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.lens[data-moving] {
+  border-color: color-mix(in srgb, var(--mode-lens-border) 80%, white);
+  box-shadow:
+    0 4px 10px rgb(0 0 0 / 0.14),
+    inset 0 1px 0 rgb(255 255 255 / 0.24);
+}
+
+.lens[data-pressed] {
+  border-color: color-mix(in srgb, var(--mode-lens-border) 88%, white);
+  background: color-mix(in srgb, var(--surface) 14%, transparent);
+  box-shadow:
+    0 5px 14px rgb(0 0 0 / 0.18),
+    inset 0 1px 0 rgb(255 255 255 / 0.34),
+    0 0 0 1px color-mix(in srgb, var(--mode-lens-border) 60%, transparent);
+}
+
+.pill {
+  position: relative;
+  z-index: 2;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 28px;
+  overflow: hidden;
+  padding: 0 clamp(6px, 1.1vw, 13px);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--muted);
+  cursor: pointer;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.more {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+}
+
+.menu {
+  position: fixed;
+  z-index: 120;
+  display: grid;
+  min-width: min(188px, calc(100vw - 16px));
+  max-width: min(280px, calc(100vw - 16px));
+  overflow: auto;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 15px;
+  background: var(--surface);
+  box-shadow:
+    inset 0 1px var(--island-rim),
+    var(--island-shadow);
+}
+
+.menu button {
+  display: flex;
+  min-width: 0;
+  min-height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 8px;
+  border-radius: 9px;
+  color: var(--text);
+  text-align: start;
+}
+
+.menu button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu button:is(:hover, :focus-visible, [aria-checked='true']):not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.menu svg {
+  flex: none;
+}
+
+.pill:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.pill[aria-pressed='true'] {
+  border-color: var(--mode-lens-border);
+  background: var(--mode-lens);
+  box-shadow: var(--mode-lens-shadow);
+  color: var(--text);
+}
+
+.options[data-glass-ready] .pill[aria-pressed='true'] {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.preset p {
+  color: var(--negative);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lens {
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
+  .material {
+    filter: none !important;
+  }
+  .material::before {
+    background: var(--surface);
+  }
+  .lens {
+    display: none;
+  }
+  .options[data-glass-ready] .pill[aria-pressed='true'] {
+    border-color: var(--line-strong);
+    background: var(--surface-raised);
+  }
+}
+
+@media (forced-colors: active) {
+  .material::before {
+    border-color: CanvasText;
+    background: Canvas;
+    box-shadow: none;
+  }
+  .menu {
+    border-color: CanvasText;
+  }
+  .pill[aria-pressed='true'],
+  .menu button[aria-checked='true'] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}

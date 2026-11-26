@@ -1,0 +1,186 @@
+.panel {
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid var(--line);
+}
+.panel > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.alert {
+  margin-top: 9px;
+}
+.taskList {
+  display: grid;
+  gap: 5px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.taskList > li {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-raised);
+}
+.taskMain {
+  display: grid;
+  min-width: 0;
+  color: var(--text);
+  text-align: left;
+}
+.taskMain > span {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+.taskMain strong,
+.taskMain small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.taskMain small,
+.taskList > li > small {
+  color: var(--faint);
+  font: var(--text-caption)/1.35 var(--font-mono);
+}
+.actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.actions button {
+  width: 24px;
+  height: 24px;
+}
+.dialog {
+  width: min(620px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  -webkit-app-region: no-drag;
+}
+.dialog::backdrop {
+  background: rgb(0 0 0 / 0.48);
+  backdrop-filter: blur(4px);
+}
+.dialogFrame {
+  display: flex;
+  max-height: calc(100vh - 48px);
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 24px 72px rgb(0 0 0 / 0.42);
+}
+.dialogFrame > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 13px;
+  border-bottom: 1px solid var(--line);
+}
+.dialogFrame h2 {
+  margin: 2px 0 0;
+  font-size: var(--text-title);
+}
+.dialogFrame header button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 7px;
+  color: var(--muted);
+}
+.dialogFrame header button:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.form {
+  display: grid;
+  gap: 11px;
+  padding: 15px 18px;
+  overflow-y: auto;
+}
+.form > label:not(.checkbox) {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+.form input,
+.form textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  outline: 0;
+  background: var(--surface-raised);
+  color: var(--text);
+  font: var(--text-control)/1.45 var(--font-mono);
+}
+.form input {
+  height: 34px;
+  padding: 0 9px;
+}
+.form textarea {
+  padding: 8px 9px;
+  resize: vertical;
+}
+.form input:focus,
+.form textarea:focus {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line-strong));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 13%, transparent);
+}
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: var(--text-control);
+}
+.checkbox input {
+  width: 15px;
+  height: 15px;
+}
+.form > p {
+  margin: 0;
+  color: var(--faint);
+  font-size: var(--text-meta);
+  line-height: 1.5;
+}
+.dialogFrame > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-raised);
+}
+.dialogFrame > footer button {
+  display: inline-flex;
+  height: 31px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--muted);
+  background: var(--surface);
+}
+.dialogFrame > footer .primary {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--line));
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+}

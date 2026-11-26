@@ -1,0 +1,68 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "MyDSH：启动应用",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
+      "windows": {
+        "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron.cmd"
+      },
+      "runtimeArgs": [
+        ".",
+        "--remote-debugging-port=9222"
+      ],
+      "preLaunchTask": "构建 MyDSH",
+      "outputCapture": "std",
+      "console": "integratedTerminal",
+      "sourceMaps": true,
+      "outFiles": [
+        "${workspaceFolder}/lib/**/*.js"
+      ],
+      "resolveSourceMapLocations": [
+        "${workspaceFolder}/**",
+        "!**/node_modules/**"
+      ],
+      "skipFiles": [
+        "<node_internals>/**",
+        "${workspaceFolder}/node_modules/**"
+      ],
+      "env": {
+        "ELECTRON_ENABLE_LOGGING": "1",
+        "NODE_OPTIONS": "--enable-source-maps"
+      },
+      "presentation": {
+        "group": "mydsh",
+        "order": 1
+      }
+    },
+    {
+      "name": "MyDSH：附加 React Renderer",
+      "type": "chrome",
+      "request": "attach",
+      "port": 9222,
+      "webRoot": "${workspaceFolder}",
+      "sourceMaps": true,
+      "timeout": 30000,
+      "skipFiles": [
+        "${workspaceFolder}/node_modules/**"
+      ],
+      "presentation": {
+        "group": "mydsh",
+        "order": 2
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "MyDSH：主进程 + React Renderer",
+      "configurations": [
+        "MyDSH：启动应用",
+        "MyDSH：附加 React Renderer"
+      ],
+      "stopAll": true
+    }
+  ]
+}

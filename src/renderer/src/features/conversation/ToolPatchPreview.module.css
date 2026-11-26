@@ -1,0 +1,54 @@
+/* renderer 补丁输入预览：颜色只区分记录中的增删，不代表实际写入成功。 */
+.preview {
+  min-width: 0;
+  margin: 6px 10px 4px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+}
+
+.header {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+
+.preview pre {
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  padding: 6px 0;
+  font: var(--text-meta)/1.55 var(--font-mono);
+}
+
+.preview pre span {
+  display: block;
+  min-width: max-content;
+  padding: 0 10px;
+  color: var(--muted);
+}
+
+.preview pre span[data-kind='addition'] {
+  background: color-mix(in srgb, var(--positive) 12%, transparent);
+  color: var(--text);
+}
+
+.preview pre span[data-kind='deletion'] {
+  background: color-mix(in srgb, var(--negative) 12%, transparent);
+  color: var(--text);
+}
+
+.preview p {
+  margin: 0;
+  padding: 5px 10px;
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+
+@media (forced-colors: active) {
+  .preview {
+    border-color: CanvasText;
+  }
+}

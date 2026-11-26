@@ -1,0 +1,3314 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MyDSH · MVP 视觉风格全画板展示（Abyssal Glass · 深海折光浮岛）</title>
+    <link rel="icon" href="../assets/app-icon.png" />
+    <link rel="stylesheet" href="./styles/tokens.css" />
+    <link rel="stylesheet" href="./styles/shell.css" />
+    <link rel="stylesheet" href="./styles/views.css" />
+    <link rel="stylesheet" href="./styles/pixel-motion.css" />
+    <link rel="stylesheet" href="./styles/overlays.css" />
+    <script defer src="./scripts/glass-engine.js"></script>
+    <script defer src="./scripts/pixel-stream.js"></script>
+    <script defer src="./scripts/showcase.js"></script>
+  </head>
+  <body>
+    <!-- SVG 边缘折射位移滤镜与统一 1.65px 圆角描边图标精灵库 -->
+    <svg width="0" height="0" style="position: absolute; pointer-events: none" aria-hidden="true">
+      <defs>
+        <filter
+          id="mydsh-liquid-lens-filter"
+          x="0%"
+          y="0%"
+          width="100%"
+          height="100%"
+          color-interpolation-filters="sRGB"
+        >
+          <feImage
+            id="mydsh-lens-feimage"
+            x="0"
+            y="0"
+            width="100%"
+            height="100%"
+            preserveAspectRatio="none"
+            result="dispMap"
+          />
+          <feDisplacementMap
+            in="SourceGraphic"
+            in2="dispMap"
+            scale="14"
+            xChannelSelector="R"
+            yChannelSelector="G"
+          />
+        </filter>
+
+        <symbol
+          id="ic-folder"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.65"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            d="M2.8 5.6a1.8 1.8 0 0 1 1.8-1.8h3.3l1.7 1.9h5.8a1.8 1.8 0 0 1 1.8 1.8v6.9a1.8 1.8 0 0 1-1.8 1.8H4.6a1.8 1.8 0 0 1-1.8-1.8V5.6Z"
+          />
+        </symbol>
+        <symbol
+          id="ic-search"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.65"
+          stroke-linecap="round"
+        >
+          <circle cx="9" cy="9" r="5.3" />
+          <path d="m13.2 13.2 3.6 3.6" />
+        </symbol>
+        <symbol
+          id="ic-chat"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.65"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            d="M4.2 4.4h11.6a1.6 1.6 0 0 1 1.6 1.6v7a1.6 1.6 0 0 1-1.6 1.6H8.3L4.4 17v-2.4H4.2a1.6 1.6 0 0 1-1.6-1.6V6a1.6 1.6 0 0 1 1.6-1.6Z"
+          />
+        </symbol>
+        <symbol
+          id="ic-git"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.65"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <circle cx="6" cy="5.5" r="2" />
+          <circle cx="6" cy="14.5" r="2" />
+          <circle cx="14" cy="8.5" r="2" />
+          <path d="M6 7.5v5M14 10.5c0 2.5-2.2 3.2-6 3.5" />
+        </symbol>
+        <symbol
+          id="ic-files"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.65"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            d="M5.5 3.2h5.8l3.7 3.7v9.3a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 4 16.2v-11.5A1.5 1.5 0 0 1 5.5 3.2Z"
+          />
+          <path d="M11.2 3.2V7H15" />
+        </symbol>
+        <symbol
+          id="ic-ssh"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.65"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <rect x="3" y="4" width="14" height="5" rx="1.5" />
+          <rect x="3" y="11" width="14" height="5" rx="1.5" />
+          <circle cx="6" cy="6.5" r="0.8" fill="currentColor" />
+          <circle cx="6" cy="13.5" r="0.8" fill="currentColor" />
+        </symbol>
+        <symbol
+          id="ic-db"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.65"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <ellipse cx="10" cy="5" rx="6" ry="2.3" />
+          <path d="M4 5v5c0 1.3 2.7 2.3 6 2.3s6-1 6-2.3V5" />
+          <path d="M4 10v5c0 1.3 2.7 2.3 6 2.3s6-1 6-2.3v-5" />
+        </symbol>
+        <symbol
+          id="ic-plugin"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.65"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            d="M8.5 4.5a1.8 1.8 0 1 1 3.6 0V6h2.4a1.5 1.5 0 0 1 1.5 1.5v2.6a1.8 1.8 0 1 0 0 3.4V16a1.5 1.5 0 0 1-1.5 1.5H5.5A1.5 1.5 0 0 1 4 16V7.5A1.5 1.5 0 0 1 5.5 6h3V4.5Z"
+          />
+        </symbol>
+        <symbol
+          id="ic-settings"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.65"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <circle cx="10" cy="10" r="2.6" />
+          <path
+            d="M10 3.2v1.6M10 15.2v1.6M3.2 10h1.6M15.2 10h1.6M5.2 5.2l1.1 1.1M13.7 13.7l1.1 1.1M14.8 5.2l-1.1 1.1M6.3 13.7l-1.1 1.1"
+          />
+        </symbol>
+        <symbol
+          id="ic-grid"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.65"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <rect x="3.5" y="3.5" width="5.2" height="5.2" rx="1.2" />
+          <rect x="11.3" y="3.5" width="5.2" height="5.2" rx="1.2" />
+          <rect x="3.5" y="11.3" width="5.2" height="5.2" rx="1.2" />
+          <rect x="11.3" y="11.3" width="5.2" height="5.2" rx="1.2" />
+        </symbol>
+        <symbol
+          id="ic-plus"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.75"
+          stroke-linecap="round"
+        >
+          <path d="M10 4.5v11M4.5 10h11" />
+        </symbol>
+        <symbol
+          id="ic-trace"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.65"
+          stroke-linecap="round"
+        >
+          <path d="M3.5 6h8M3.5 10h13M7.5 14h9" />
+        </symbol>
+        <symbol
+          id="ic-panel-right"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.65"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <rect x="3" y="4" width="14" height="12" rx="2" />
+          <path d="M12.5 4v12" />
+        </symbol>
+        <symbol
+          id="ic-clip"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.65"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            d="m13.8 7.2-5.4 5.4a1.8 1.8 0 0 1-2.6-2.6l6-6a3.2 3.2 0 0 1 4.5 4.5l-6.2 6.2a4.6 4.6 0 0 1-6.5-6.5l5.4-5.4"
+          />
+        </symbol>
+        <symbol
+          id="ic-terminal"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.65"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="m5 7 3.5 3L5 13M10.5 13H15" />
+        </symbol>
+        <symbol
+          id="ic-arrow-up"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.9"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M10 15V5M5.8 9.2 10 5l4.2 4.2" />
+        </symbol>
+        <symbol
+          id="ic-chevron-down"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.7"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="m6 8 4 4 4-4" />
+        </symbol>
+        <symbol
+          id="ic-spark"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.65"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M10 2.8 11.8 8l5.2 1.8-5.2 1.8L10 16.8 8.2 11.6 3 9.8 8.2 8 10 2.8Z" />
+        </symbol>
+        <symbol
+          id="ic-copy"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <rect x="7" y="7" width="9" height="9" rx="1.8" />
+          <path d="M4.5 13V5.8A1.8 1.8 0 0 1 6.3 4H13" />
+        </symbol>
+        <symbol
+          id="ic-refresh"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.65"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M15.8 8.2A6 6 0 1 0 16 12" />
+          <path d="M16 4.6v3.8h-3.8" />
+        </symbol>
+      </defs>
+    </svg>
+
+    <!-- 顶部悬浮画廊快速跳转导航条（向下滚动时自动跟随高亮，不遮挡画板内容） -->
+    <nav class="showcase-dock" aria-label="MVP 设计画板导航">
+      <span class="showcase-dock__brand">MyDSH ✦ MVP 视觉稿</span>
+
+      <div class="showcase-dock__scenes">
+        <button type="button" class="dock-scene-btn is-active" data-scroll-to="artboard-boot">
+          01 加载页
+        </button>
+        <button type="button" class="dock-scene-btn" data-scroll-to="artboard-zero">
+          02 空会话
+        </button>
+        <button type="button" class="dock-scene-btn" data-scroll-to="artboard-chat">
+          03 对话审阅
+        </button>
+        <button type="button" class="dock-scene-btn" data-scroll-to="artboard-trajectory">
+          04 轨迹
+        </button>
+        <button type="button" class="dock-scene-btn" data-scroll-to="artboard-workbench">
+          05 文件编辑
+        </button>
+        <button type="button" class="dock-scene-btn" data-scroll-to="artboard-git">
+          06 Git Diff
+        </button>
+        <button type="button" class="dock-scene-btn" data-scroll-to="artboard-ssh">
+          07 SSH 终端
+        </button>
+        <button type="button" class="dock-scene-btn" data-scroll-to="artboard-db">08 数据库</button>
+        <button type="button" class="dock-scene-btn" data-scroll-to="artboard-plugins">
+          09 插件中心
+        </button>
+        <button type="button" class="dock-scene-btn" data-scroll-to="artboard-spec">
+          10 弹窗与规范
+        </button>
+      </div>
+
+      <span class="showcase-dock__sep"></span>
+
+      <button type="button" class="dock-tool-btn" data-theme-toggle title="一键切换全页深浅主题">
+        <span>◐</span>
+        <span id="dock-theme-label">深海暗色</span>
+      </button>
+      <button
+        type="button"
+        class="dock-tool-btn"
+        data-open-modal="settings-modal"
+        title="弹出光学参数调节器"
+      >
+        <span>⚙ 光学调节</span>
+      </button>
+    </nav>
+
+    <!-- 纵向顺滑滚动全画板画廊舞台 -->
+    <div id="desktop-stage" class="desktop-stage">
+      <!-- ================================================================
+           画板 01：原生无框启动加载页面（760×480 Boot Splash Window）
+           ================================================================ -->
+      <section id="artboard-boot" class="artboard-section artboard-section--centered">
+        <div class="artboard-header">
+          <div class="artboard-title-group">
+            <span class="artboard-index">01 · STARTUP SPLASH</span>
+            <h2 class="artboard-title">启动与离线核心安装画面</h2>
+          </div>
+          <p class="artboard-desc">
+            760×480 原生无框圆角窗 · 底部搭载悬浮液态磨砂 Boot HUD
+            与流光折射进度槽（点击下方按钮可切换 4 个启动阶段）
+          </p>
+        </div>
+
+        <div class="boot-splash-shell">
+          <div class="boot-window">
+            <img
+              class="boot-artwork boot-artwork--dark"
+              src="../assets/startup-dark-soft.png"
+              alt="MyDSH 深色启动插画"
+            />
+            <img
+              class="boot-artwork boot-artwork--light"
+              src="../assets/startup-light-soft.png"
+              alt="MyDSH 浅色启动插画"
+            />
+            <div class="boot-vignette"></div>
+
+            <div class="boot-top-bar">
+              <div class="boot-Traffic" aria-hidden="true">
+                <span class="traffic-light traffic-light--close"></span>
+                <span class="traffic-light traffic-light--min"></span>
+                <span class="traffic-light traffic-light--max"></span>
+              </div>
+              <span class="boot-version-pill">MyDSH v0.4.0 · Cordis Runtime</span>
+            </div>
+
+            <div class="boot-hud-card">
+              <div class="boot-hud-row">
+                <div class="boot-status-main">
+                  <span id="boot-pulse-orb" class="boot-pulse-orb" data-done="false"></span>
+                  <span id="boot-phase-text">正在加载 Cordis 运行时与业务插件…</span>
+                </div>
+                <div class="boot-status-meta">
+                  <span id="boot-phase-meta">64% · 12 个模块已签名核验</span>
+                </div>
+              </div>
+              <div class="boot-progress-track">
+                <div id="boot-progress-fill" class="boot-progress-fill"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="boot-controls-bar">
+            <button type="button" class="boot-phase-btn" data-boot-phase="install">
+              1. 校验离线核心
+            </button>
+            <button type="button" class="boot-phase-btn is-active" data-boot-phase="plugins">
+              2. 加载插件
+            </button>
+            <button type="button" class="boot-phase-btn" data-boot-phase="workspace">
+              3. 准备工作空间
+            </button>
+            <button type="button" class="boot-phase-btn" data-boot-phase="ready">
+              4. 启动成功
+            </button>
+            <button type="button" class="boot-enter-btn" data-scroll-to="artboard-zero">
+              向下浏览工作台 ↓
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           画板 02：空会话零状态（原截图 1:1 业务内容视觉重构对比）
+           ================================================================ -->
+      <section id="artboard-zero" class="artboard-section">
+        <div class="artboard-header">
+          <div class="artboard-title-group">
+            <span class="artboard-index">02 · ZERO STATE REDESIGN</span>
+            <h2 class="artboard-title">空会话零状态（原截图同场景升级对比）</h2>
+          </div>
+          <p class="artboard-desc">
+            完整保留顶栏液态玻璃标签页 · 将同源「沉降凹槽 +
+            折射透镜」延伸至左侧模式轨、右上角工具胶囊、预设选择器与底部光学指令舱
+          </p>
+        </div>
+
+        <div class="mydsh-window">
+          <div class="window-canvas"></div>
+          <div class="traffic-lights" aria-hidden="true">
+            <span class="traffic-light traffic-light--close"></span>
+            <span class="traffic-light traffic-light--min"></span>
+            <span class="traffic-light traffic-light--max"></span>
+          </div>
+
+          <div
+            class="app-shell"
+            data-nav-collapsed="false"
+            data-info-collapsed="true"
+            data-full-main="true"
+          >
+            <aside class="island sidebar-island">
+              <div class="project-focus">
+                <button type="button" class="project-pill" data-open-modal="search-modal">
+                  <span class="project-pill__badge">
+                    <svg width="12" height="12"><use href="#ic-folder" /></svg>
+                  </span>
+                  <span class="project-pill__name">workSpace</span>
+                  <svg class="project-pill__chevron" width="13" height="13">
+                    <use href="#ic-chevron-down" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  class="glass-icon-btn"
+                  data-open-modal="search-modal"
+                  title="搜索会话 (⌘K)"
+                >
+                  <svg width="15" height="15"><use href="#ic-search" /></svg>
+                </button>
+              </div>
+
+              <nav class="mode-rail" aria-label="模式导轨">
+                <div class="mode-rail__track" style="--mode-index: 0">
+                  <div class="mode-rail__lens" aria-hidden="true"></div>
+                  <button type="button" class="mode-btn is-active" data-mode-idx="0" title="会话">
+                    <svg width="17" height="17"><use href="#ic-chat" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="1" title="源代码管理">
+                    <svg width="17" height="17"><use href="#ic-git" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="2" title="文件">
+                    <svg width="17" height="17"><use href="#ic-files" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="3" title="SSH 远程终端">
+                    <svg width="17" height="17"><use href="#ic-ssh" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="4" title="数据库">
+                    <svg width="17" height="17"><use href="#ic-db" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="5" title="插件">
+                    <svg width="17" height="17"><use href="#ic-plugin" /></svg>
+                  </button>
+                </div>
+                <div class="mode-rail__bottom">
+                  <button
+                    type="button"
+                    class="mode-btn"
+                    data-open-modal="settings-modal"
+                    title="设置"
+                  >
+                    <svg width="17" height="17"><use href="#ic-settings" /></svg>
+                  </button>
+                </div>
+              </nav>
+
+              <div class="navigation-pane">
+                <div class="nav-section-head">
+                  <span>会话</span>
+                  <div class="nav-section-actions">
+                    <button type="button" class="mini-action-btn" title="新建会话">
+                      <svg width="13" height="13"><use href="#ic-plus" /></svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="session-list">
+                  <button type="button" class="session-item is-active">
+                    <span class="session-item__dot"></span>
+                    <span class="session-item__title">新会话</span>
+                    <span class="session-item__time">刚刚</span>
+                  </button>
+                  <button type="button" class="session-item">
+                    <span class="session-item__dot"></span>
+                    <span class="session-item__title">未命名会话</span>
+                    <span class="session-item__time">1 天前</span>
+                  </button>
+                  <button type="button" class="session-item">
+                    <span class="session-item__dot"></span>
+                    <span class="session-item__title">我需要将这小说TXT文件转变成epub</span>
+                    <span class="session-item__time">1 天前</span>
+                  </button>
+                  <button type="button" class="session-item">
+                    <span class="session-item__dot"></span>
+                    <span class="session-item__title">这个是什么情况</span>
+                    <span class="session-item__time">5 天前</span>
+                  </button>
+                  <button type="button" class="session-item">
+                    <span class="session-item__dot"></span>
+                    <span class="session-item__title">Last login: Thu Oct 29</span>
+                    <span class="session-item__time">6 天前</span>
+                  </button>
+                  <button type="button" class="session-item">
+                    <span class="session-item__dot"></span>
+                    <span class="session-item__title">苹果 科技织物手机壳按钮晃动</span>
+                    <span class="session-item__time">6 天前</span>
+                  </button>
+                </div>
+              </div>
+            </aside>
+
+            <header class="session-chrome">
+              <div class="session-tabs-track">
+                <div class="session-tab-lens" aria-hidden="true">
+                  <div class="session-tab-lens__backdrop"></div>
+                </div>
+                <div class="session-tab-items" role="tablist">
+                  <button type="button" class="work-tab" role="tab">
+                    <svg width="13" height="13"><use href="#ic-chat" /></svg>
+                    <span class="work-tab__title">未命名会话</span>
+                  </button>
+                  <button type="button" class="work-tab is-selected" role="tab">
+                    <svg width="13" height="13"><use href="#ic-chat" /></svg>
+                    <span class="work-tab__title">新会话</span>
+                  </button>
+                </div>
+              </div>
+              <div class="chrome-pill-actions">
+                <button
+                  type="button"
+                  class="chrome-circle-btn"
+                  data-open-modal="overview-modal"
+                  title="平铺总览"
+                >
+                  <svg width="14" height="14"><use href="#ic-grid" /></svg>
+                </button>
+                <button type="button" class="chrome-circle-btn" title="新建标签">
+                  <svg width="14" height="14"><use href="#ic-plus" /></svg>
+                </button>
+              </div>
+            </header>
+
+            <main class="island main-island">
+              <div class="session-floating-tools">
+                <div class="segmented-glass-vertical">
+                  <button type="button" class="seg-v-btn is-active" title="对话">
+                    <svg width="14" height="14"><use href="#ic-chat" /></svg>
+                  </button>
+                  <button type="button" class="seg-v-btn" title="轨迹">
+                    <svg width="14" height="14"><use href="#ic-trace" /></svg>
+                  </button>
+                </div>
+                <div class="segmented-glass-vertical">
+                  <button type="button" class="seg-v-btn" data-toggle-right title="展开检查栏">
+                    <svg width="14" height="14"><use href="#ic-panel-right" /></svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="view-screen">
+                <div class="zero-stage">
+                  <div class="zero-ambient" aria-hidden="true"></div>
+                  <div class="zero-hero">
+                    <div class="matrix-beacon" title="划过鼠标体验微光点阵涟漪">
+                      <canvas
+                        id="zero-matrix-canvas"
+                        class="matrix-beacon__canvas"
+                        width="74"
+                        height="48"
+                      ></canvas>
+                    </div>
+                    <h1 class="zero-title">今天想在 workSpace 构建什么？</h1>
+                    <p class="zero-subtitle">
+                      离线 Cordis 运行时已就绪 · 选择工作预设或点击起手卡片填入下方指令舱。
+                    </p>
+
+                    <div class="preset-capsule-track">
+                      <button type="button" class="preset-pill is-active">✦ 标准模式</button>
+                      <button type="button" class="preset-pill">GPT 深度编码</button>
+                      <button type="button" class="preset-pill">pi 极速效率</button>
+                      <button type="button" class="preset-pill">架构规划审阅</button>
+                    </div>
+
+                    <div class="starter-grid">
+                      <button
+                        type="button"
+                        class="starter-card"
+                        data-starter-prompt="梳理当前仓库样式架构，输出统一的光学浮岛 Token 重构计划。"
+                      >
+                        <span class="starter-card__icon">
+                          <svg width="15" height="15"><use href="#ic-spark" /></svg>
+                        </span>
+                        <span class="starter-card__title">梳理架构并生成重构计划</span>
+                        <span class="starter-card__desc">
+                          扫描工作区模块依赖，先输出可审阅的分步实施计划再安全改码。
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        class="starter-card"
+                        data-starter-prompt="检查当前 Git 未提交变更中的潜在边界风险，补充失败与清理路径测试。"
+                      >
+                        <span class="starter-card__icon">
+                          <svg width="15" height="15"><use href="#ic-git" /></svg>
+                        </span>
+                        <span class="starter-card__title">审查未提交 Diff 与回归风险</span>
+                        <span class="starter-card__desc">
+                          核对 IPC 白名单、进程清理与类型约束，定位潜在缺陷。
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        class="starter-card"
+                        data-starter-prompt="将长篇小说 TXT 按章节自动切分并排版打包为标准 EPUB 3 电子书。"
+                      >
+                        <span class="starter-card__icon">
+                          <svg width="15" height="15"><use href="#ic-files" /></svg>
+                        </span>
+                        <span class="starter-card__title">批处理文件与脚本自动化</span>
+                        <span class="starter-card__desc">
+                          在工作区内执行受控文件处理任务，实时投影每一步工具输出。
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="composer-dock">
+                  <div class="composer-vessel">
+                    <textarea
+                      id="zero-composer-input"
+                      class="composer-textarea"
+                      rows="2"
+                      placeholder="给 MyDSH 发送消息，Shift + Enter 换行…"
+                    ></textarea>
+                    <div class="composer-bar">
+                      <div class="composer-bar__left">
+                        <button
+                          type="button"
+                          class="composer-pill composer-pill--icon"
+                          title="附件"
+                        >
+                          <svg width="14" height="14"><use href="#ic-clip" /></svg>
+                        </button>
+                        <button type="button" class="composer-pill composer-pill--shield">
+                          <span class="status-dot"></span>
+                          <span>工作区内修改</span>
+                          <svg width="12" height="12"><use href="#ic-chevron-down" /></svg>
+                        </button>
+                        <button type="button" class="composer-pill">
+                          <span>普通</span>
+                          <svg width="12" height="12"><use href="#ic-chevron-down" /></svg>
+                        </button>
+                        <button
+                          type="button"
+                          class="composer-pill composer-pill--icon"
+                          title="终端"
+                        >
+                          <svg width="14" height="14"><use href="#ic-terminal" /></svg>
+                        </button>
+                      </div>
+                      <div class="composer-bar__right">
+                        <button type="button" class="composer-pill composer-pill--model">
+                          <strong>DeepSeek V4.1 Flash</strong>
+                          <em>Max</em>
+                          <svg width="12" height="12"><use href="#ic-chevron-down" /></svg>
+                        </button>
+                        <button type="button" class="composer-send-btn" title="发送">
+                          <svg width="15" height="15"><use href="#ic-arrow-up" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </main>
+
+            <aside class="island info-island">
+              <div class="inspector-header">
+                <strong style="font-size: 12.5px">工作区概览</strong>
+                <button type="button" class="glass-icon-btn" data-toggle-right>✕</button>
+              </div>
+              <div class="info-glass-card">
+                <span style="font-size: 12px; color: var(--muted)"
+                  >当前分支干净 · 无未暂存修改</span
+                >
+              </div>
+            </aside>
+
+            <button
+              type="button"
+              class="divider-capsule divider-capsule--left"
+              data-toggle-left
+              title="折叠侧栏"
+            >
+              ⋮
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           画板 03：活跃对话流、真实工具调用卡片、计划审阅与克制流式微动效
+           ================================================================ -->
+      <section id="artboard-chat" class="artboard-section">
+        <div class="artboard-header">
+          <div class="artboard-title-group">
+            <span class="artboard-index">03 · ACTIVE CONVERSATION &amp; STREAMING FLOW</span>
+            <h2 class="artboard-title">活跃对话流、思考/工具调用卡片与流式生成动效</h2>
+          </div>
+          <div class="artboard-header__right">
+            <p class="artboard-desc">
+              无框清透助手流 · 真实文件读写/Diff 工具卡片 + 克制的 3×3 微像素状态点与像素游标
+            </p>
+            <button type="button" class="artboard-replay-btn" data-replay-stream>
+              <span>↻ 演示流式生成动画</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="mydsh-window mydsh-window--tall">
+          <div class="window-canvas"></div>
+          <div class="traffic-lights" aria-hidden="true">
+            <span class="traffic-light traffic-light--close"></span>
+            <span class="traffic-light traffic-light--min"></span>
+            <span class="traffic-light traffic-light--max"></span>
+          </div>
+
+          <div
+            class="app-shell"
+            data-nav-collapsed="false"
+            data-info-collapsed="false"
+            data-full-main="false"
+          >
+            <aside class="island sidebar-island">
+              <div class="project-focus">
+                <button type="button" class="project-pill">
+                  <span class="project-pill__badge">
+                    <svg width="12" height="12"><use href="#ic-folder" /></svg>
+                  </span>
+                  <span class="project-pill__name">MyDeepSeekHarness</span>
+                  <svg class="project-pill__chevron" width="13" height="13">
+                    <use href="#ic-chevron-down" />
+                  </svg>
+                </button>
+                <button type="button" class="glass-icon-btn" data-open-modal="search-modal">
+                  <svg width="15" height="15"><use href="#ic-search" /></svg>
+                </button>
+              </div>
+
+              <nav class="mode-rail">
+                <div class="mode-rail__track" style="--mode-index: 0">
+                  <div class="mode-rail__lens" aria-hidden="true"></div>
+                  <button type="button" class="mode-btn is-active" data-mode-idx="0">
+                    <svg width="17" height="17"><use href="#ic-chat" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="1">
+                    <svg width="17" height="17"><use href="#ic-git" /></svg>
+                    <span class="mode-btn__badge">3</span>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="2">
+                    <svg width="17" height="17"><use href="#ic-files" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="3">
+                    <svg width="17" height="17"><use href="#ic-ssh" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="4">
+                    <svg width="17" height="17"><use href="#ic-db" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="5">
+                    <svg width="17" height="17"><use href="#ic-plugin" /></svg>
+                  </button>
+                </div>
+                <div class="mode-rail__bottom">
+                  <button type="button" class="mode-btn" data-open-modal="settings-modal">
+                    <svg width="17" height="17"><use href="#ic-settings" /></svg>
+                  </button>
+                </div>
+              </nav>
+
+              <div class="navigation-pane">
+                <div class="nav-section-head"><span>进行中 · 1</span></div>
+                <div class="session-list">
+                  <button type="button" class="session-item is-active">
+                    <span class="session-item__dot session-item__dot--running"></span>
+                    <span class="session-item__title">统一光学浮岛 UI 视觉重构</span>
+                    <span class="session-item__time">刚刚</span>
+                  </button>
+                </div>
+                <div class="nav-section-head"><span>最近会话</span></div>
+                <div class="session-list">
+                  <button type="button" class="session-item">
+                    <span class="session-item__dot"></span>
+                    <span class="session-item__title">收紧主进程 IPC 方法白名单校验</span>
+                    <span class="session-item__time">2 小时前</span>
+                  </button>
+                  <button type="button" class="session-item">
+                    <span class="session-item__dot"></span>
+                    <span class="session-item__title">修复离线核心暂存区回滚锁</span>
+                    <span class="session-item__time">昨天</span>
+                  </button>
+                </div>
+              </div>
+            </aside>
+
+            <header class="session-chrome">
+              <div class="session-tabs-track">
+                <div class="session-tab-lens" aria-hidden="true">
+                  <div class="session-tab-lens__backdrop"></div>
+                </div>
+                <div class="session-tab-items" role="tablist">
+                  <button type="button" class="work-tab is-selected" role="tab">
+                    <span class="work-tab__unread"></span>
+                    <span class="work-tab__title">统一光学浮岛 UI 视觉重构</span>
+                  </button>
+                  <button type="button" class="work-tab" role="tab">
+                    <svg width="13" height="13"><use href="#ic-chat" /></svg>
+                    <span class="work-tab__title">收紧 IPC 方法白名单</span>
+                  </button>
+                  <button type="button" class="work-tab" role="tab">
+                    <svg width="13" height="13"><use href="#ic-files" /></svg>
+                    <span class="work-tab__title">tokens.css</span>
+                  </button>
+                </div>
+              </div>
+              <div class="chrome-pill-actions">
+                <button type="button" class="chrome-circle-btn" data-open-modal="overview-modal">
+                  <svg width="14" height="14"><use href="#ic-grid" /></svg>
+                </button>
+                <button type="button" class="chrome-circle-btn">
+                  <svg width="14" height="14"><use href="#ic-plus" /></svg>
+                </button>
+              </div>
+            </header>
+
+            <main class="island main-island">
+              <div class="session-floating-tools">
+                <div class="segmented-glass-vertical">
+                  <button type="button" class="seg-v-btn is-active" title="对话">
+                    <svg width="14" height="14"><use href="#ic-chat" /></svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="seg-v-btn"
+                    data-scroll-to="artboard-trajectory"
+                    title="跳转轨迹视图"
+                  >
+                    <svg width="14" height="14"><use href="#ic-trace" /></svg>
+                  </button>
+                </div>
+                <div class="segmented-glass-vertical">
+                  <button
+                    type="button"
+                    class="seg-v-btn is-active"
+                    data-toggle-right
+                    title="折叠/展开右侧检查栏"
+                  >
+                    <svg width="14" height="14"><use href="#ic-panel-right" /></svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="view-screen">
+                <div class="turn-navigator" aria-label="轮次导航">
+                  <button
+                    type="button"
+                    class="turn-tick"
+                    data-preview="第 1 轮 · 排查现有样式拼凑来源"
+                  ></button>
+                  <button
+                    type="button"
+                    class="turn-tick is-active"
+                    data-preview="第 2 轮 · 读取样式并输出实施计划"
+                  ></button>
+                </div>
+
+                <div class="chat-scroll-viewport">
+                  <div class="chat-stream">
+                    <!-- 第 1 轮：紧凑深海用户气泡 + 无框清爽助手回复 -->
+                    <div class="msg-user-row">
+                      <div class="msg-user-bubble">
+                        帮我快速看一眼当前工作区样式为什么看起来有点拼凑？
+                      </div>
+                      <div class="msg-meta"><span>15:16 · MyDeepSeekHarness</span></div>
+                    </div>
+
+                    <div class="msg-assistant">
+                      <div class="assistant-prose">
+                        <p style="margin: 0">
+                          核心原因是顶栏
+                          <button
+                            type="button"
+                            class="file-ref-pill"
+                            data-scroll-to="artboard-workbench"
+                          >
+                            session-tabs.css
+                          </button>
+                          使用了双层折射透镜，而左侧模式导轨、空状态与输入框仍停留在单层实线灰框，圆角半径也混杂了
+                          4 种梯度。
+                        </p>
+                      </div>
+                      <div class="msg-action-bar">
+                        <button type="button" class="msg-action-btn" title="复制回复">
+                          <svg width="12" height="12"><use href="#ic-copy" /></svg>
+                          <span>复制</span>
+                        </button>
+                        <button type="button" class="msg-action-btn" title="重新生成">
+                          <svg width="12" height="12"><use href="#ic-refresh" /></svg>
+                          <span>重试</span>
+                        </button>
+                        <span class="msg-action-sep">·</span>
+                        <span class="msg-latency-readout">15:16 · 1.4s</span>
+                      </div>
+                    </div>
+
+                    <!-- 第 2 轮：真实思考折叠条 + 真实文件读写工具卡片 + 流式正文与计划审阅 -->
+                    <div class="msg-user-row">
+                      <div class="msg-user-bubble">
+                        我现在对顶部标签页很满意，请按这套质感统一整套光学浮岛视觉语言，并先列一份可审阅的实施计划。
+                      </div>
+                      <div class="msg-meta"><span>15:18 · MyDeepSeekHarness</span></div>
+                    </div>
+
+                    <div class="msg-assistant">
+                      <div class="assistant-head">
+                        <span class="assistant-avatar">
+                          <img src="../assets/app-icon.png" alt="MyDSH" />
+                        </span>
+                        <span>MyDSH</span>
+                        <span class="assistant-model-tag">DeepSeek V4.1 Flash · Max</span>
+                      </div>
+
+                      <div class="agent-step-chain">
+                        <!-- 1. 真实思考过程折叠条 -->
+                        <div id="step-think-card" class="process-card">
+                          <button
+                            type="button"
+                            class="process-summary-btn"
+                            data-disclosure-toggle="proc-think-a"
+                          >
+                            <span
+                              class="pixel-dot-3x3 pixel-dot-3x3--think"
+                              data-kind="think"
+                            ></span>
+                            <span class="process-kind-badge process-kind-badge--think">思考</span>
+                            <span>分析顶栏透镜材质如何延伸至侧栏与输入框（点击展开）</span>
+                            <span class="mini-pixel-wave" aria-hidden="true"></span>
+                            <span class="process-time">1.8s</span>
+                          </button>
+                          <div id="proc-think-a" class="process-detail" hidden>
+                            顶栏之所以通透立体，核心在于「L2 沉降内阴影凹槽 + L3
+                            顶部镜面受光悬浮透镜 +
+                            弹簧阻尼滑动」；将其提炼为全局共享变量即可统一全站质感。
+                          </div>
+                        </div>
+
+                        <!-- 2. 真实工具调用组件：读取文件 -->
+                        <div id="step-read-card" class="tool-call-card">
+                          <div class="tool-call-head">
+                            <span class="pixel-dot-3x3" data-kind="tool"></span>
+                            <span class="process-kind-badge process-kind-badge--tool"
+                              >读取文件</span
+                            >
+                            <div class="tool-call-files">
+                              <button
+                                type="button"
+                                class="file-ref-pill"
+                                data-scroll-to="artboard-workbench"
+                              >
+                                useSessionTabGlass.ts
+                              </button>
+                              <button
+                                type="button"
+                                class="file-ref-pill"
+                                data-scroll-to="artboard-git"
+                              >
+                                tokens.css
+                              </button>
+                              <button type="button" class="file-ref-pill">startup-screen.ts</button>
+                            </div>
+                            <span class="mini-pixel-wave" aria-hidden="true"></span>
+                            <span class="tool-call-stat">3 个文件 · 120ms</span>
+                          </div>
+                        </div>
+
+                        <!-- 3. 真实工具调用组件：修改草案 Diff 预览 -->
+                        <div id="step-edit-card" class="tool-call-card">
+                          <button
+                            type="button"
+                            class="tool-call-head"
+                            data-disclosure-toggle="proc-edit-diff"
+                          >
+                            <span class="pixel-dot-3x3" data-kind="tool"></span>
+                            <span class="process-kind-badge process-kind-badge--tool"
+                              >样式草案</span
+                            >
+                            <span class="tool-call-verb">src/renderer/src/styles/tokens.css</span>
+                            <span class="mini-pixel-wave" aria-hidden="true"></span>
+                            <span class="tool-call-stat">
+                              <span class="diff-stat"
+                                ><span class="add">+2</span> <span class="del">-1</span></span
+                              >
+                            </span>
+                          </button>
+                          <div id="proc-edit-diff" class="tool-diff-preview">
+                            <div class="tool-diff-line tool-diff-line--del">
+                              <span class="tool-diff-ln">14</span><span>-</span
+                              ><span> --panel-radius: 9px;</span>
+                            </div>
+                            <div class="tool-diff-line tool-diff-line--add">
+                              <span class="tool-diff-ln">14</span><span>+</span
+                              ><span>
+                                --radius-island: calc(var(--window-outer-radius) - 6px);</span
+                              >
+                            </div>
+                            <div class="tool-diff-line tool-diff-line--add">
+                              <span class="tool-diff-ln">15</span><span>+</span
+                              ><span>
+                                --lens-shadow: 0 3px 10px rgb(0 0 0 / 0.28), inset 0 1px 0.5px
+                                rgb(255 255 255 / 0.34);</span
+                              >
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- 助手无框流式正文（生成时词块微光显影 + 像素方块游标） -->
+                      <div id="live-stream-prose" class="live-stream-prose"></div>
+
+                      <div
+                        id="stream-plan-card"
+                        class="plan-review-card"
+                        data-stream-reveal="ready"
+                      >
+                        <div class="plan-review-card__head">
+                          <div style="display: flex; align-items: center; gap: 8px">
+                            <span class="plan-badge">计划待审</span>
+                            <strong style="font-size: 13px">全站光学浮岛视觉升级实施计划</strong>
+                          </div>
+                          <span style="font-size: 11px; color: var(--muted)"
+                            >涉及 6 个样式模块</span
+                          >
+                        </div>
+                        <ol class="plan-steps">
+                          <li>为三座浮岛补充顶部 `1px` 镜面受光细边与同心圆角推导；</li>
+                          <li>统一左侧 `50px` 模式导轨、预设条与右侧分段器的液态透镜材质；</li>
+                          <li>升级底部悬浮光学指令舱与紧凑单行上下文读数条。</li>
+                        </ol>
+                        <div class="plan-actions">
+                          <button type="button" class="btn-glass" data-scroll-to="artboard-spec">
+                            查看视觉规范表
+                          </button>
+                          <button type="button" class="btn-glass">要求修改</button>
+                          <button type="button" class="btn-glass btn-glass--primary">
+                            同意执行
+                          </button>
+                        </div>
+                      </div>
+
+                      <div class="msg-action-bar">
+                        <button type="button" class="msg-action-btn">
+                          <svg width="12" height="12"><use href="#ic-copy" /></svg>
+                          <span>复制</span>
+                        </button>
+                        <button type="button" class="msg-action-btn" data-replay-stream>
+                          <svg width="12" height="12"><use href="#ic-refresh" /></svg>
+                          <span>重播流式动效</span>
+                        </button>
+                        <span class="msg-action-sep">·</span>
+                        <span class="msg-latency-readout">15:18 · 1.84s · 76 tok/s</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="composer-dock">
+                  <div class="todo-drawer">
+                    <button type="button" id="todo-drawer-toggle" class="todo-drawer__head">
+                      <span class="todo-drawer__pill">2 / 4</span>
+                      <span class="todo-drawer__summary"
+                        >正在执行：统一侧栏导轨、对话流微像素动效与底部光学指令舱…</span
+                      >
+                      <span style="font-size: 11px; color: var(--faint)">点击展开待办 ▾</span>
+                    </button>
+                    <ul id="todo-drawer-list" class="todo-drawer__list" hidden>
+                      <li class="todo-row" data-state="done">
+                        ✓ 审阅现有顶栏液态玻璃透镜与全局 Token 差异
+                      </li>
+                      <li class="todo-row" data-state="done">
+                        ✓ 设计 760×480 原生无框加载页光学进度舱
+                      </li>
+                      <li class="todo-row" data-state="doing">
+                        ● 统一侧栏导轨、对话流微像素动效与底部光学指令舱
+                      </li>
+                      <li class="todo-row" data-state="todo">
+                        ○ 验证深浅双主题与无障碍对比度连续性
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div class="composer-vessel">
+                    <div class="composer-chips">
+                      <span class="attachment-chip">
+                        <span class="file-ext-badge file-ext-badge--css">CSS</span>
+                        <span>session-tabs.css</span>
+                        <small>L1-L96</small>
+                      </span>
+                      <span class="attachment-chip">
+                        <span class="file-ext-badge file-ext-badge--ts">TS</span>
+                        <span>startup-screen.ts</span>
+                        <small>760×480</small>
+                      </span>
+                    </div>
+                    <textarea
+                      class="composer-textarea"
+                      rows="1"
+                      placeholder="继续追问或批准上方计划，/ 调用指令，@ 引用文件…"
+                    ></textarea>
+                    <div class="composer-bar">
+                      <div class="composer-bar__left">
+                        <button type="button" class="composer-pill composer-pill--icon">
+                          <svg width="14" height="14"><use href="#ic-clip" /></svg>
+                        </button>
+                        <button type="button" class="composer-pill composer-pill--shield">
+                          <span class="status-dot"></span>
+                          <span>工作区内修改</span>
+                        </button>
+                        <button
+                          type="button"
+                          class="composer-pill composer-pill--plan"
+                          data-active="true"
+                        >
+                          <span>✦ 规划审阅中</span>
+                        </button>
+                      </div>
+                      <div class="composer-bar__right">
+                        <button type="button" class="composer-pill composer-pill--model">
+                          <strong>DeepSeek V4.1 Flash</strong>
+                          <em>Max</em>
+                        </button>
+                        <!-- 发送按钮左侧 8 像素点阵流式脉冲环 -->
+                        <svg
+                          id="composer-stream-ring"
+                          class="composer-stream-ring"
+                          viewBox="0 0 16 16"
+                          data-streaming="false"
+                          aria-hidden="true"
+                        >
+                          <rect x="7" y="1" width="2" height="2" fill="currentColor" />
+                          <rect
+                            x="11.2"
+                            y="2.8"
+                            width="2"
+                            height="2"
+                            fill="currentColor"
+                            opacity="0.85"
+                          />
+                          <rect
+                            x="13"
+                            y="7"
+                            width="2"
+                            height="2"
+                            fill="currentColor"
+                            opacity="0.7"
+                          />
+                          <rect
+                            x="11.2"
+                            y="11.2"
+                            width="2"
+                            height="2"
+                            fill="currentColor"
+                            opacity="0.55"
+                          />
+                          <rect
+                            x="7"
+                            y="13"
+                            width="2"
+                            height="2"
+                            fill="currentColor"
+                            opacity="0.4"
+                          />
+                          <rect
+                            x="2.8"
+                            y="11.2"
+                            width="2"
+                            height="2"
+                            fill="currentColor"
+                            opacity="0.28"
+                          />
+                          <rect
+                            x="1"
+                            y="7"
+                            width="2"
+                            height="2"
+                            fill="currentColor"
+                            opacity="0.18"
+                          />
+                        </svg>
+                        <button type="button" class="composer-send-btn">
+                          <svg width="15" height="15"><use href="#ic-arrow-up" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="composer-hud">
+                    <span class="hud-pill">↻ <b>2</b> 轮 <b>5</b> 步</span>
+                    <span class="hud-sep">·</span>
+                    <span class="hud-pill">⛁ <b>38.4k</b> tok</span>
+                    <span class="hud-sep">·</span>
+                    <span class="hud-pill">缓存命中 <b>78.4%</b></span>
+                    <span class="hud-sep">·</span>
+                    <button
+                      type="button"
+                      id="hud-context-btn"
+                      class="hud-pill"
+                      aria-expanded="false"
+                    >
+                      <svg class="hud-ring" viewBox="0 0 16 16">
+                        <circle
+                          cx="8"
+                          cy="8"
+                          r="6"
+                          fill="none"
+                          stroke="rgba(255,255,255,0.14)"
+                          stroke-width="2.2"
+                        />
+                        <circle
+                          cx="8"
+                          cy="8"
+                          r="6"
+                          fill="none"
+                          stroke="var(--accent)"
+                          stroke-width="2.2"
+                          stroke-dasharray="37.7"
+                          stroke-dashoffset="24.5"
+                        />
+                      </svg>
+                      <span>上下文 <b>35%</b> · 明细 ▴</span>
+                    </button>
+
+                    <div id="hud-context-popover" class="hud-popover" hidden>
+                      <div class="hud-popover__head">
+                        <strong>上下文窗口构成</strong>
+                        <span style="font-family: var(--font-mono); color: var(--muted)"
+                          >35.0%</span
+                        >
+                      </div>
+                      <div class="hud-stacked-bar">
+                        <i style="width: 24%; background: #60a5fa"></i>
+                        <i style="width: 38%; background: #a78bfa"></i>
+                        <i style="width: 28%; background: #34d399"></i>
+                        <i style="width: 10%; background: #fbbf24"></i>
+                      </div>
+                      <div class="hud-breakdown-rows">
+                        <div class="hud-breakdown-row">
+                          <span
+                            ><i class="hud-swatch" style="background: #60a5fa"></i
+                            >系统与规则指令</span
+                          >
+                          <code>10.6k</code>
+                        </div>
+                        <div class="hud-breakdown-row">
+                          <span
+                            ><i class="hud-swatch" style="background: #a78bfa"></i
+                            >历史对话与推理</span
+                          >
+                          <code>17.2k</code>
+                        </div>
+                        <div class="hud-breakdown-row">
+                          <span
+                            ><i class="hud-swatch" style="background: #34d399"></i
+                            >工具输出与文件片段</span
+                          >
+                          <code>12.5k</code>
+                        </div>
+                        <div class="hud-breakdown-row">
+                          <span
+                            ><i class="hud-swatch" style="background: #fbbf24"></i
+                            >安全预留缓冲区</span
+                          >
+                          <code>4.5k</code>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </main>
+
+            <aside class="island info-island">
+              <div class="inspector-header">
+                <div class="inspector-tabs">
+                  <button type="button" class="inspector-tab is-active">Git 变更</button>
+                  <button type="button" class="inspector-tab">脚本</button>
+                  <button type="button" class="inspector-tab">计划</button>
+                </div>
+                <button type="button" class="glass-icon-btn" data-toggle-right>✕</button>
+              </div>
+              <div class="inspector-scroll">
+                <div class="info-glass-card">
+                  <div class="info-card-title">
+                    <span>当前分支</span>
+                    <span style="color: var(--positive)">↑1 · 干净远端</span>
+                  </div>
+                  <div>
+                    <span class="git-branch-chip">
+                      <svg width="12" height="12"><use href="#ic-git" /></svg>
+                      <span>feat/abyssal-glass-mvp</span>
+                    </span>
+                  </div>
+                </div>
+
+                <div class="info-glass-card">
+                  <div class="info-card-title">
+                    <span>本轮修改文件 (3)</span>
+                    <span class="diff-stat"
+                      ><span class="add">+124</span><span class="del">-18</span></span
+                    >
+                  </div>
+                  <div class="changed-file-list">
+                    <div class="changed-file-row">
+                      <span class="git-status-tag git-status-tag--m">M</span>
+                      <span class="changed-file-row__path">styles/tokens.css</span>
+                      <span class="diff-stat"
+                        ><span class="add">+42</span><span class="del">-8</span></span
+                      >
+                    </div>
+                    <div class="changed-file-row">
+                      <span class="git-status-tag git-status-tag--m">M</span>
+                      <span class="changed-file-row__path">topbar/useSessionTabGlass.ts</span>
+                      <span class="diff-stat"
+                        ><span class="add">+18</span><span class="del">-4</span></span
+                      >
+                    </div>
+                    <div class="changed-file-row">
+                      <span class="git-status-tag git-status-tag--a">A</span>
+                      <span class="changed-file-row__path">features/composer/hud.css</span>
+                      <span class="diff-stat"><span class="add">+64</span></span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="info-glass-card">
+                  <div class="info-card-title"><span>工作区验证脚本</span></div>
+                  <div style="display: grid; gap: 6px">
+                    <button type="button" class="btn-glass" style="justify-content: space-between">
+                      <span>pnpm run typecheck</span>
+                      <span style="font-family: var(--font-mono); color: var(--faint)">⌘R</span>
+                    </button>
+                    <button type="button" class="btn-glass" style="justify-content: space-between">
+                      <span>pnpm run verify</span>
+                      <span style="font-family: var(--font-mono); color: var(--faint)"
+                        >Electron</span
+                      >
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </aside>
+
+            <button type="button" class="divider-capsule divider-capsule--left" data-toggle-left>
+              ⋮
+            </button>
+            <button type="button" class="divider-capsule divider-capsule--right" data-toggle-right>
+              ⋮
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           画板 04：执行轨迹时间轴与事件账本（Trajectory & Span Inspector）
+           ================================================================ -->
+      <section id="artboard-trajectory" class="artboard-section">
+        <div class="artboard-header">
+          <div class="artboard-title-group">
+            <span class="artboard-index">04 · TRAJECTORY &amp; TIMELINE</span>
+            <h2 class="artboard-title">执行轨迹泳道时间轴与高精度事件账本</h2>
+          </div>
+          <p class="artboard-desc">
+            从同一份 Session 日志投影 · 64px 多泳道彩色时间轴配液态玻璃框选镜片、tabular-nums
+            等宽数字账本与右侧 Span 载荷检查器
+          </p>
+        </div>
+
+        <div class="mydsh-window mydsh-window--compact">
+          <div class="window-canvas"></div>
+          <div class="traffic-lights" aria-hidden="true">
+            <span class="traffic-light traffic-light--close"></span>
+            <span class="traffic-light traffic-light--min"></span>
+            <span class="traffic-light traffic-light--max"></span>
+          </div>
+
+          <div
+            class="app-shell"
+            data-nav-collapsed="true"
+            data-info-collapsed="false"
+            data-full-main="false"
+          >
+            <aside class="island sidebar-island">
+              <nav class="mode-rail">
+                <div class="mode-rail__track" style="--mode-index: 0">
+                  <div class="mode-rail__lens" aria-hidden="true"></div>
+                  <button type="button" class="mode-btn is-active" data-mode-idx="0">
+                    <svg width="17" height="17"><use href="#ic-chat" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="1">
+                    <svg width="17" height="17"><use href="#ic-git" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="2">
+                    <svg width="17" height="17"><use href="#ic-files" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="3">
+                    <svg width="17" height="17"><use href="#ic-ssh" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="4">
+                    <svg width="17" height="17"><use href="#ic-db" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="5">
+                    <svg width="17" height="17"><use href="#ic-plugin" /></svg>
+                  </button>
+                </div>
+              </nav>
+            </aside>
+
+            <header class="session-chrome">
+              <div class="session-tabs-track">
+                <div class="session-tab-lens" aria-hidden="true">
+                  <div class="session-tab-lens__backdrop"></div>
+                </div>
+                <div class="session-tab-items" role="tablist">
+                  <button type="button" class="work-tab is-selected" role="tab">
+                    <svg width="13" height="13"><use href="#ic-trace" /></svg>
+                    <span class="work-tab__title">统一光学浮岛 UI 重构 · 执行轨迹</span>
+                  </button>
+                  <button type="button" class="work-tab" role="tab">
+                    <svg width="13" height="13"><use href="#ic-chat" /></svg>
+                    <span class="work-tab__title">新会话</span>
+                  </button>
+                </div>
+              </div>
+            </header>
+
+            <main class="island main-island">
+              <div class="session-floating-tools">
+                <div class="segmented-glass-vertical">
+                  <button type="button" class="seg-v-btn" title="对话">
+                    <svg width="14" height="14"><use href="#ic-chat" /></svg>
+                  </button>
+                  <button type="button" class="seg-v-btn is-active" title="执行轨迹">
+                    <svg width="14" height="14"><use href="#ic-trace" /></svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="view-screen">
+                <div class="traj-container">
+                  <div class="traj-toolbar">
+                    <div class="traj-search-box">
+                      <svg width="14" height="14"><use href="#ic-search" /></svg>
+                      <input type="text" placeholder="筛选工具调用、模型阶段或 Span ID…" />
+                    </div>
+                    <div class="traj-filter-pills">
+                      <button type="button" class="traj-chip is-active">全部 (18)</button>
+                      <button type="button" class="traj-chip">Model (5)</button>
+                      <button type="button" class="traj-chip">Tool (11)</button>
+                      <button type="button" class="traj-chip">Context (2)</button>
+                    </div>
+                  </div>
+
+                  <div class="traj-timeline-card">
+                    <div class="traj-brush-window" title="液态玻璃选区窗：0.8s — 4.9s"></div>
+                    <div class="traj-lanes">
+                      <div class="traj-lane">
+                        <span class="traj-seg traj-seg--input" style="left: 2%; width: 7%"></span>
+                        <span class="traj-seg traj-seg--input" style="left: 56%; width: 5%"></span>
+                      </div>
+                      <div class="traj-lane">
+                        <span class="traj-seg traj-seg--model" style="left: 9%; width: 22%"></span>
+                        <span class="traj-seg traj-seg--model" style="left: 42%; width: 14%"></span>
+                        <span class="traj-seg traj-seg--model" style="left: 62%; width: 28%"></span>
+                      </div>
+                      <div class="traj-lane">
+                        <span class="traj-seg traj-seg--tool" style="left: 31%; width: 11%"></span>
+                        <span class="traj-seg traj-seg--tool" style="left: 51%; width: 9%"></span>
+                      </div>
+                    </div>
+                    <div class="traj-ruler">
+                      <span>0.0s</span>
+                      <span>1.5s</span>
+                      <span>3.0s</span>
+                      <span>4.5s</span>
+                      <span>6.0s</span>
+                      <span>7.2s</span>
+                    </div>
+                  </div>
+
+                  <div class="traj-ledger">
+                    <div class="traj-row traj-row--head">
+                      <span>相对时间</span>
+                      <span>类型</span>
+                      <span>事件与调用摘要</span>
+                      <span>Tokens</span>
+                      <span>耗时</span>
+                    </div>
+                    <div class="traj-row">
+                      <span class="traj-mono">+0.00s</span>
+                      <span class="process-kind-badge">user.input</span>
+                      <span>统一光学浮岛视觉风格并输出实施计划</span>
+                      <span class="traj-mono">312 in</span>
+                      <span class="traj-mono">4ms</span>
+                    </div>
+                    <div class="traj-row is-selected">
+                      <span class="traj-mono">+0.14s</span>
+                      <span class="process-kind-badge process-kind-badge--think">llm.stream</span>
+                      <span>DeepSeek V4.1 Flash · 深度推理与工具规划</span>
+                      <span class="traj-mono">8,420 / 610</span>
+                      <span class="traj-mono">3,820ms</span>
+                    </div>
+                    <div class="traj-row">
+                      <span class="traj-mono">+3.96s</span>
+                      <span class="process-kind-badge process-kind-badge--tool">read_file</span>
+                      <span>src/renderer/src/pages/workspace/topbar/session-tabs.css</span>
+                      <span class="traj-mono">+1,180 ctx</span>
+                      <span class="traj-mono">18ms</span>
+                    </div>
+                    <div class="traj-row">
+                      <span class="traj-mono">+4.02s</span>
+                      <span class="process-kind-badge process-kind-badge--tool">read_file</span>
+                      <span>src/main/startup/startup-screen.ts</span>
+                      <span class="traj-mono">+940 ctx</span>
+                      <span class="traj-mono">14ms</span>
+                    </div>
+                    <div class="traj-row">
+                      <span class="traj-mono">+4.19s</span>
+                      <span class="process-kind-badge process-kind-badge--think">plan.emit</span>
+                      <span>生成结构化审阅计划《全站光学浮岛视觉升级》</span>
+                      <span class="traj-mono">10,540 / 482</span>
+                      <span class="traj-mono">1,940ms</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </main>
+
+            <aside class="island info-island">
+              <div class="inspector-header">
+                <div class="inspector-tabs">
+                  <button type="button" class="inspector-tab is-active">概览</button>
+                  <button type="button" class="inspector-tab">参数</button>
+                  <button type="button" class="inspector-tab">时序</button>
+                </div>
+                <button type="button" class="glass-icon-btn" data-toggle-right>✕</button>
+              </div>
+              <div class="inspector-scroll">
+                <div class="info-glass-card">
+                  <div class="info-card-title"><span>Span · llm.stream</span></div>
+                  <div style="font: 11.5px/1.7 var(--font-mono); color: var(--muted)">
+                    <div>
+                      model: <strong style="color: var(--text)">deepseek-v4.1-flash</strong>
+                    </div>
+                    <div>ttft: <strong style="color: var(--positive)">210 ms</strong></div>
+                    <div>duration: <strong style="color: var(--text)">3,820 ms</strong></div>
+                    <div>cache_hit: <strong style="color: var(--accent-bright)">78.4%</strong></div>
+                  </div>
+                </div>
+                <div class="glass-code-card">
+                  <div class="glass-code-card__head"><span>调用载荷摘要</span></div>
+                  <pre><code>{
+  <span class="tok-ty">"temperature"</span>: <span class="tok-num">0.2</span>,
+  <span class="tok-ty">"thinking_budget"</span>: <span class="tok-num">4096</span>,
+  <span class="tok-ty">"tools"</span>: [<span class="tok-str">"read_file"</span>, <span class="tok-str">"edit_file"</span>]
+}</code></pre>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           画板 05：分屏工作台与光学代码编辑器（Split Workbench & File Tree）
+           ================================================================ -->
+      <section id="artboard-workbench" class="artboard-section">
+        <div class="artboard-header">
+          <div class="artboard-title-group">
+            <span class="artboard-index">05 · SPLIT WORKBENCH &amp; CODE EDITOR</span>
+            <h2 class="artboard-title">项目文件树、分屏连体标签与代码编辑器</h2>
+          </div>
+          <p class="artboard-desc">
+            顶栏支持分屏连体标签环 · 左侧语义文件树 + 中央主浮岛分屏并排展示代码语法高亮与伴随对话流
+          </p>
+        </div>
+
+        <div class="mydsh-window mydsh-window--compact">
+          <div class="window-canvas"></div>
+          <div class="traffic-lights" aria-hidden="true">
+            <span class="traffic-light traffic-light--close"></span>
+            <span class="traffic-light traffic-light--min"></span>
+            <span class="traffic-light traffic-light--max"></span>
+          </div>
+
+          <div
+            class="app-shell"
+            data-nav-collapsed="false"
+            data-info-collapsed="true"
+            data-full-main="true"
+          >
+            <aside class="island sidebar-island">
+              <div class="project-focus">
+                <button type="button" class="project-pill">
+                  <span class="project-pill__badge">
+                    <svg width="12" height="12"><use href="#ic-folder" /></svg>
+                  </span>
+                  <span class="project-pill__name">MyDeepSeekHarness</span>
+                </button>
+              </div>
+
+              <nav class="mode-rail">
+                <div class="mode-rail__track" style="--mode-index: 2">
+                  <div class="mode-rail__lens" aria-hidden="true"></div>
+                  <button type="button" class="mode-btn" data-mode-idx="0">
+                    <svg width="17" height="17"><use href="#ic-chat" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="1">
+                    <svg width="17" height="17"><use href="#ic-git" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn is-active" data-mode-idx="2">
+                    <svg width="17" height="17"><use href="#ic-files" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="3">
+                    <svg width="17" height="17"><use href="#ic-ssh" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="4">
+                    <svg width="17" height="17"><use href="#ic-db" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="5">
+                    <svg width="17" height="17"><use href="#ic-plugin" /></svg>
+                  </button>
+                </div>
+              </nav>
+
+              <div class="navigation-pane">
+                <div class="nav-section-head"><span>项目文件</span></div>
+                <div class="file-tree">
+                  <div class="tree-row" style="--depth: 0">▾ src/renderer/src</div>
+                  <div class="tree-row" style="--depth: 1">▾ pages/workspace/topbar</div>
+                  <div class="tree-row is-active" style="--depth: 2">
+                    <span class="file-ext-badge file-ext-badge--ts">TS</span>
+                    <span>useSessionTabGlass.ts</span>
+                  </div>
+                  <div class="tree-row" style="--depth: 2">
+                    <span class="file-ext-badge file-ext-badge--css">CSS</span>
+                    <span>session-tabs.css</span>
+                  </div>
+                  <div class="tree-row" style="--depth: 1">▾ styles</div>
+                  <div class="tree-row" style="--depth: 2">
+                    <span class="file-ext-badge file-ext-badge--css">CSS</span>
+                    <span>tokens.css</span>
+                  </div>
+                  <div class="tree-row" style="--depth: 0">
+                    <span class="file-ext-badge file-ext-badge--json">{ }</span>
+                    <span>package.json</span>
+                  </div>
+                </div>
+              </div>
+            </aside>
+
+            <header class="session-chrome">
+              <div class="session-tabs-track">
+                <div class="session-tab-lens" aria-hidden="true">
+                  <div class="session-tab-lens__backdrop"></div>
+                </div>
+                <div class="session-tab-items" role="tablist">
+                  <div class="work-tab-split-group">
+                    <button type="button" class="work-tab is-selected" role="tab">
+                      <span class="work-tab__dirty"></span>
+                      <span class="work-tab__title">useSessionTabGlass.ts</span>
+                    </button>
+                    <button type="button" class="work-tab" role="tab">
+                      <svg width="13" height="13"><use href="#ic-chat" /></svg>
+                      <span class="work-tab__title">伴随重构会话</span>
+                    </button>
+                  </div>
+                  <button type="button" class="work-tab" role="tab">
+                    <span class="work-tab__title">session-tabs.css</span>
+                  </button>
+                </div>
+              </div>
+            </header>
+
+            <main class="island main-island">
+              <div class="split-workbench">
+                <div class="editor-pane">
+                  <div class="editor-breadcrumb">
+                    <span
+                      >src / renderer / src / pages / workspace / topbar /
+                      useSessionTabGlass.ts</span
+                    >
+                    <span style="color: var(--warning)">● 已修改</span>
+                  </div>
+                  <div class="editor-code-body">
+                    <div class="code-line">
+                      <span class="code-ln">36</span
+                      ><span
+                        ><span class="tok-cm"
+                          >/** 驱动顶栏液态玻璃透镜阻尼弹簧与速度拉伸 */</span
+                        ></span
+                      >
+                    </div>
+                    <div class="code-line">
+                      <span class="code-ln">37</span
+                      ><span
+                        ><span class="tok-kw">export function</span>
+                        <span class="tok-fn">stepLensSpring</span>(state:
+                        <span class="tok-ty">LensPhysics</span>, dt:
+                        <span class="tok-ty">number</span>) {</span
+                      >
+                    </div>
+                    <div class="code-line">
+                      <span class="code-ln">38</span
+                      ><span>
+                        <span class="tok-kw">const</span> stiffness =
+                        <span class="tok-num">340</span>;</span
+                      >
+                    </div>
+                    <div class="code-line">
+                      <span class="code-ln">39</span
+                      ><span>
+                        <span class="tok-kw">const</span> damping =
+                        <span class="tok-num">28</span>;</span
+                      >
+                    </div>
+                    <div class="code-line code-line--active">
+                      <span class="code-ln">40</span
+                      ><span>
+                        <span class="tok-kw">const</span> accel = stiffness * (state.targetX -
+                        state.x) - damping * state.vx;</span
+                      >
+                    </div>
+                    <div class="code-line">
+                      <span class="code-ln">41</span><span> state.vx += accel * dt;</span>
+                    </div>
+                    <div class="code-line">
+                      <span class="code-ln">42</span><span> state.x += state.vx * dt;</span>
+                    </div>
+                    <div class="code-line">
+                      <span class="code-ln">43</span
+                      ><span>
+                        <span class="tok-kw">const</span> stretch = Math.<span class="tok-fn"
+                          >min</span
+                        >(<span class="tok-num">0.045</span>, Math.<span class="tok-fn">abs</span
+                        >(state.vx) / <span class="tok-num">1400</span>);</span
+                      >
+                    </div>
+                    <div class="code-line">
+                      <span class="code-ln">44</span
+                      ><span>
+                        <span class="tok-kw">return</span> { x: state.x, scaleX:
+                        <span class="tok-num">1</span> + stretch, scaleY:
+                        <span class="tok-num">1</span> - stretch *
+                        <span class="tok-num">0.8</span> };</span
+                      >
+                    </div>
+                    <div class="code-line"><span class="code-ln">45</span><span>}</span></div>
+                  </div>
+                  <div class="editor-statusbar">
+                    <span>TypeScript React · UTF-8 · LF</span>
+                    <span>Ln 40, Col 52 · 2 Spaces</span>
+                  </div>
+                </div>
+
+                <div class="split-seam"></div>
+
+                <div
+                  style="
+                    display: flex;
+                    flex-direction: column;
+                    min-width: 0;
+                    min-height: 0;
+                    padding: 16px;
+                  "
+                >
+                  <div style="font-size: 12px; color: var(--muted); margin-bottom: 10px">
+                    ✦ 分屏伴随会话 · 实时感知左侧第 40 行选区
+                  </div>
+                  <div class="info-glass-card">
+                    <div style="font-size: 12.5px; color: var(--text)">
+                      已将第 <strong>40-44 行</strong> 的阻尼比调优为临界微过冲（<code
+                        >ζ ≈ 0.76</code
+                      >），在快速跨标签切换时既有玻璃液滴弹性，又不会来回震荡。
+                    </div>
+                  </div>
+                  <div style="margin-top: auto">
+                    <div class="composer-vessel">
+                      <textarea
+                        class="composer-textarea"
+                        rows="1"
+                        placeholder="针对左侧打开文件继续提问…"
+                      ></textarea>
+                      <div class="composer-bar">
+                        <span style="font-size: 11.5px; color: var(--muted)"
+                          >已关联 useSessionTabGlass.ts</span
+                        >
+                        <button type="button" class="composer-send-btn">
+                          <svg width="14" height="14"><use href="#ic-arrow-up" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </main>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           画板 06：Git 源代码管理、双栏并排 Diff 与提交拓扑图谱
+           ================================================================ -->
+      <section id="artboard-git" class="artboard-section">
+        <div class="artboard-header">
+          <div class="artboard-title-group">
+            <span class="artboard-index">06 · SOURCE CONTROL &amp; SIDE-BY-SIDE DIFF</span>
+            <h2 class="artboard-title">Git 源代码管理、双栏词级 Diff 与提交历史图谱</h2>
+          </div>
+          <p class="artboard-desc">
+            左侧 AI 提交拟稿舱与暂存分组 + 中央双栏词级高亮并排差异对比 + 右侧分支提交历史轨道
+          </p>
+        </div>
+
+        <div class="mydsh-window mydsh-window--compact">
+          <div class="window-canvas"></div>
+          <div class="traffic-lights" aria-hidden="true">
+            <span class="traffic-light traffic-light--close"></span>
+            <span class="traffic-light traffic-light--min"></span>
+            <span class="traffic-light traffic-light--max"></span>
+          </div>
+
+          <div
+            class="app-shell"
+            data-nav-collapsed="false"
+            data-info-collapsed="false"
+            data-full-main="false"
+          >
+            <aside class="island sidebar-island">
+              <div class="project-focus">
+                <button type="button" class="project-pill">
+                  <span class="project-pill__badge">
+                    <svg width="12" height="12"><use href="#ic-folder" /></svg>
+                  </span>
+                  <span class="project-pill__name">MyDeepSeekHarness</span>
+                </button>
+              </div>
+
+              <nav class="mode-rail">
+                <div class="mode-rail__track" style="--mode-index: 1">
+                  <div class="mode-rail__lens" aria-hidden="true"></div>
+                  <button type="button" class="mode-btn" data-mode-idx="0">
+                    <svg width="17" height="17"><use href="#ic-chat" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn is-active" data-mode-idx="1">
+                    <svg width="17" height="17"><use href="#ic-git" /></svg>
+                    <span class="mode-btn__badge">4</span>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="2">
+                    <svg width="17" height="17"><use href="#ic-files" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="3">
+                    <svg width="17" height="17"><use href="#ic-ssh" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="4">
+                    <svg width="17" height="17"><use href="#ic-db" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="5">
+                    <svg width="17" height="17"><use href="#ic-plugin" /></svg>
+                  </button>
+                </div>
+              </nav>
+
+              <div class="navigation-pane">
+                <div class="scm-commit-box">
+                  <textarea class="scm-commit-input">
+feat(ui): 统一光学浮岛材质与液态玻璃控件规范</textarea>
+                  <div class="scm-commit-actions">
+                    <button type="button" class="btn-glass">
+                      <svg width="12" height="12"><use href="#ic-spark" /></svg>
+                      <span>AI 拟稿</span>
+                    </button>
+                    <button type="button" class="btn-glass btn-glass--primary">提交 (4)</button>
+                  </div>
+                </div>
+                <div class="nav-section-head"><span>暂存的更改 · 2</span></div>
+                <div class="changed-file-list">
+                  <div class="changed-file-row">
+                    <span class="git-status-tag git-status-tag--m">M</span>
+                    <span class="changed-file-row__path">styles/tokens.css</span>
+                    <span class="diff-stat"
+                      ><span class="add">+42</span><span class="del">-8</span></span
+                    >
+                  </div>
+                  <div class="changed-file-row">
+                    <span class="git-status-tag git-status-tag--m">M</span>
+                    <span class="changed-file-row__path">topbar/session-tabs.css</span>
+                    <span class="diff-stat"
+                      ><span class="add">+18</span><span class="del">-4</span></span
+                    >
+                  </div>
+                </div>
+              </div>
+            </aside>
+
+            <header class="session-chrome">
+              <div class="session-tabs-track">
+                <div class="session-tab-lens" aria-hidden="true">
+                  <div class="session-tab-lens__backdrop"></div>
+                </div>
+                <div class="session-tab-items" role="tablist">
+                  <button type="button" class="work-tab is-selected" role="tab">
+                    <svg width="13" height="13"><use href="#ic-git" /></svg>
+                    <span class="work-tab__title">tokens.css (工作区 Diff)</span>
+                  </button>
+                  <button type="button" class="work-tab" role="tab">
+                    <span class="work-tab__title">session-tabs.css (Diff)</span>
+                  </button>
+                </div>
+              </div>
+            </header>
+
+            <main class="island main-island">
+              <div class="diff-header-bar">
+                <div style="display: flex; align-items: center; gap: 8px">
+                  <span class="git-status-tag git-status-tag--m">M</span>
+                  <strong style="font-family: var(--font-mono)"
+                    >src/renderer/src/styles/tokens.css</strong
+                  >
+                  <span class="diff-stat"
+                    ><span class="add">+42</span><span class="del">-8</span></span
+                  >
+                </div>
+                <div style="display: flex; gap: 6px">
+                  <button type="button" class="btn-glass">并排视图</button>
+                  <button type="button" class="btn-glass btn-glass--primary">暂存此文件</button>
+                </div>
+              </div>
+
+              <div class="diff-split-grid">
+                <div>
+                  <div class="diff-line">
+                    <span class="code-ln">14</span><span> </span><span>:root {</span>
+                  </div>
+                  <div class="diff-line diff-line--del">
+                    <span class="code-ln">15</span><span>-</span
+                    ><span> --surface: <span class="diff-word-del">#191a1e</span>;</span>
+                  </div>
+                  <div class="diff-line diff-line--del">
+                    <span class="code-ln">16</span><span>-</span
+                    ><span> --line: <span class="diff-word-del">#353740</span>;</span>
+                  </div>
+                  <div class="diff-line">
+                    <span class="code-ln">17</span><span> </span><span> --window-edge: 8px;</span>
+                  </div>
+                  <div class="diff-line">
+                    <span class="code-ln">18</span><span> </span><span>}</span>
+                  </div>
+                </div>
+                <div class="diff-col-sep"></div>
+                <div>
+                  <div class="diff-line">
+                    <span class="code-ln">14</span><span> </span><span>:root {</span>
+                  </div>
+                  <div class="diff-line diff-line--add">
+                    <span class="code-ln">15</span><span>+</span
+                    ><span> --surface: <span class="diff-word-add">#14171f</span>;</span>
+                  </div>
+                  <div class="diff-line diff-line--add">
+                    <span class="code-ln">16</span><span>+</span
+                    ><span>
+                      --island-rim-top:
+                      <span class="diff-word-add">rgb(255 255 255 / 0.16)</span>;</span
+                    >
+                  </div>
+                  <div class="diff-line diff-line--add">
+                    <span class="code-ln">17</span><span>+</span
+                    ><span>
+                      --line: <span class="diff-word-add">rgb(255 255 255 / 0.075)</span>;</span
+                    >
+                  </div>
+                  <div class="diff-line">
+                    <span class="code-ln">18</span><span> </span><span> --window-edge: 8px;</span>
+                  </div>
+                  <div class="diff-line">
+                    <span class="code-ln">19</span><span> </span><span>}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="editor-statusbar">
+                <span>HEAD (main) ↔ 工作区变更 · 2 处块差异</span>
+                <span>无冲突 · 行尾 LF</span>
+              </div>
+            </main>
+
+            <aside class="island info-island">
+              <div class="inspector-header">
+                <strong style="font-size: 12.5px">提交历史图谱</strong>
+                <button type="button" class="glass-icon-btn" data-toggle-right>✕</button>
+              </div>
+              <div class="inspector-scroll">
+                <div class="git-graph-row">
+                  <div class="git-node-rail">
+                    <span class="git-node-dot"></span>
+                    <span class="git-node-line"></span>
+                  </div>
+                  <div>
+                    <div style="font-size: 12px; font-weight: 500">
+                      feat(topbar): 液态玻璃标签透镜物理回弹
+                    </div>
+                    <div style="font: 11px var(--font-mono); color: var(--faint)">
+                      8f31c9a · Luna · 昨天
+                    </div>
+                  </div>
+                </div>
+                <div class="git-graph-row">
+                  <div class="git-node-rail">
+                    <span class="git-node-dot" style="background: #34d399"></span>
+                    <span class="git-node-line"></span>
+                  </div>
+                  <div>
+                    <div style="font-size: 12px; font-weight: 500">
+                      security(ipc): 复核主进程方法白名单与 frame
+                    </div>
+                    <div style="font: 11px var(--font-mono); color: var(--faint)">
+                      4b09e2d · Luna · 3 天前
+                    </div>
+                  </div>
+                </div>
+                <div class="git-graph-row">
+                  <div class="git-node-rail">
+                    <span class="git-node-dot" style="background: #a78bfa"></span>
+                  </div>
+                  <div>
+                    <div style="font-size: 12px; font-weight: 500">
+                      chore(runtime): 离线核心暂存区摘要原子校验
+                    </div>
+                    <div style="font: 11px var(--font-mono); color: var(--faint)">
+                      19d7a04 · Luna · 5 天前
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           画板 07：SSH 远程终端（独立一级菜单 · 侧栏仅管理主机 · 主屏沉浸终端）
+           ================================================================ -->
+      <section id="artboard-ssh" class="artboard-section">
+        <div class="artboard-header">
+          <div class="artboard-title-group">
+            <span class="artboard-index">07 · SSH REMOTE TERMINAL</span>
+            <h2 class="artboard-title">SSH 远程主机与沉浸式终端（独立菜单）</h2>
+          </div>
+          <p class="artboard-desc">
+            左侧模式轨定位第 4 项 SSH 菜单 · 侧边栏纯粹管理主机分组与新建连接，主浮岛 100%
+            呈现沉浸式深海终端
+          </p>
+        </div>
+
+        <div class="mydsh-window mydsh-window--compact">
+          <div class="window-canvas"></div>
+          <div class="traffic-lights" aria-hidden="true">
+            <span class="traffic-light traffic-light--close"></span>
+            <span class="traffic-light traffic-light--min"></span>
+            <span class="traffic-light traffic-light--max"></span>
+          </div>
+
+          <div
+            class="app-shell"
+            data-nav-collapsed="false"
+            data-info-collapsed="true"
+            data-full-main="true"
+          >
+            <aside class="island sidebar-island">
+              <div class="project-focus">
+                <button type="button" class="project-pill">
+                  <span class="project-pill__badge">
+                    <svg width="12" height="12"><use href="#ic-ssh" /></svg>
+                  </span>
+                  <span class="project-pill__name">SSH 主机资产</span>
+                  <svg class="project-pill__chevron" width="13" height="13">
+                    <use href="#ic-chevron-down" />
+                  </svg>
+                </button>
+                <button type="button" class="glass-icon-btn" title="搜索主机">
+                  <svg width="15" height="15"><use href="#ic-search" /></svg>
+                </button>
+              </div>
+
+              <nav class="mode-rail">
+                <div class="mode-rail__track" style="--mode-index: 3">
+                  <div class="mode-rail__lens" aria-hidden="true"></div>
+                  <button type="button" class="mode-btn" data-mode-idx="0">
+                    <svg width="17" height="17"><use href="#ic-chat" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="1">
+                    <svg width="17" height="17"><use href="#ic-git" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="2">
+                    <svg width="17" height="17"><use href="#ic-files" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn is-active" data-mode-idx="3">
+                    <svg width="17" height="17"><use href="#ic-ssh" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="4">
+                    <svg width="17" height="17"><use href="#ic-db" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="5">
+                    <svg width="17" height="17"><use href="#ic-plugin" /></svg>
+                  </button>
+                </div>
+                <div class="mode-rail__bottom">
+                  <button type="button" class="mode-btn" data-open-modal="settings-modal">
+                    <svg width="17" height="17"><use href="#ic-settings" /></svg>
+                  </button>
+                </div>
+              </nav>
+
+              <div class="navigation-pane">
+                <div class="nav-section-head">
+                  <span>生产网关集群</span>
+                  <div class="nav-section-actions">
+                    <button type="button" class="mini-action-btn" title="添加 SSH 主机">
+                      <svg width="13" height="13"><use href="#ic-plus" /></svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="session-list">
+                  <button
+                    type="button"
+                    class="host-nav-item is-active"
+                    data-ssh-host="prod-gateway-hk01"
+                    data-ssh-user="deploy@prod-gateway-hk01"
+                    data-ssh-rtt="18ms"
+                  >
+                    <span class="host-nav-item__top">
+                      <span class="session-item__dot session-item__dot--running"></span>
+                      <span class="session-item__title">prod-gateway-hk01</span>
+                      <span class="session-item__time">18ms</span>
+                    </span>
+                    <span class="host-nav-item__addr">deploy@47.242.88.19:22</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    class="host-nav-item"
+                    data-ssh-host="prod-gateway-sg02"
+                    data-ssh-user="deploy@prod-gateway-sg02"
+                    data-ssh-rtt="41ms"
+                  >
+                    <span class="host-nav-item__top">
+                      <span class="session-item__dot session-item__dot--running"></span>
+                      <span class="session-item__title">prod-gateway-sg02</span>
+                      <span class="session-item__time">41ms</span>
+                    </span>
+                    <span class="host-nav-item__addr">deploy@8.219.104.52:22</span>
+                  </button>
+                </div>
+
+                <div class="nav-section-head"><span>算力与测试节点</span></div>
+                <div class="session-list">
+                  <button
+                    type="button"
+                    class="host-nav-item"
+                    data-ssh-host="gpu-worker-a100"
+                    data-ssh-user="ubuntu@gpu-worker-a100"
+                    data-ssh-rtt="32ms"
+                  >
+                    <span class="host-nav-item__top">
+                      <span class="session-item__dot session-item__dot--running"></span>
+                      <span class="session-item__title">gpu-worker-a100</span>
+                      <span class="session-item__time">32ms</span>
+                    </span>
+                    <span class="host-nav-item__addr">ubuntu@10.24.0.12 · 跳板隧道</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    class="host-nav-item"
+                    data-ssh-host="staging-cordis-node"
+                    data-ssh-user="root@staging-cordis-node"
+                    data-ssh-rtt="24ms"
+                  >
+                    <span class="host-nav-item__top">
+                      <span class="session-item__dot"></span>
+                      <span class="session-item__title">staging-cordis-node</span>
+                      <span class="session-item__time">待命</span>
+                    </span>
+                    <span class="host-nav-item__addr">root@192.168.31.80:22</span>
+                  </button>
+                </div>
+              </div>
+            </aside>
+
+            <header class="session-chrome">
+              <div class="session-tabs-track">
+                <div class="session-tab-lens" aria-hidden="true">
+                  <div class="session-tab-lens__backdrop"></div>
+                </div>
+                <div class="session-tab-items" role="tablist">
+                  <button type="button" class="work-tab is-selected" role="tab">
+                    <svg width="13" height="13"><use href="#ic-ssh" /></svg>
+                    <span id="ssh-tab-label" class="work-tab__title">prod-gateway-hk01 (zsh)</span>
+                  </button>
+                  <button type="button" class="work-tab" role="tab">
+                    <svg width="13" height="13"><use href="#ic-terminal" /></svg>
+                    <span class="work-tab__title">gpu-worker-a100 (tmux)</span>
+                  </button>
+                </div>
+              </div>
+              <div class="chrome-pill-actions">
+                <button type="button" class="chrome-circle-btn" title="新建终端标签">
+                  <svg width="14" height="14"><use href="#ic-plus" /></svg>
+                </button>
+              </div>
+            </header>
+
+            <main class="island main-island">
+              <div class="ssh-workspace">
+                <div class="ssh-terminal-chrome">
+                  <div class="ssh-chrome-left">
+                    <span class="session-item__dot session-item__dot--running"></span>
+                    <span id="ssh-active-target" class="ssh-target-title"
+                      >deploy@prod-gateway-hk01</span
+                    >
+                    <span class="ssh-verify-pill">✓ SHA256 指纹已核验</span>
+                  </div>
+                  <div class="ssh-chrome-actions">
+                    <button type="button" class="ssh-action-pill">⫿ 分屏终端</button>
+                    <button type="button" class="ssh-action-pill">清屏</button>
+                    <button type="button" class="ssh-action-pill">重连</button>
+                  </div>
+                </div>
+
+                <div class="ssh-terminal-viewport">
+                  <div style="color: #67e8f9">
+                    Last login: Thu Nov 5 14:42:10 2026 from 113.88.12.4 · OpenSSH_9.6p1
+                  </div>
+                  <div style="margin-top: 6px">
+                    <span class="ssh-prompt-user" style="color: #34d399"
+                      >deploy@prod-gateway-hk01</span
+                    >:<span style="color: #60a5fa">~/services/cordis-edge</span>$ systemctl status
+                    edge-gateway --no-pager
+                  </div>
+                  <div style="color: #94a3b8">● edge-gateway.service - MyDSH Edge Relay Daemon</div>
+                  <div style="color: #94a3b8">
+                    Active:
+                    <span style="color: #4ade80; font-weight: 600">active (running)</span> since Mon
+                    2026-09-18 09:12:04 CST; 48 days ago
+                  </div>
+
+                  <div class="term-metric-box">
+                    <div>
+                      <div
+                        style="
+                          display: flex;
+                          justify-content: space-between;
+                          font-size: 11px;
+                          color: #94a3b8;
+                        "
+                      >
+                        <span>CPU Load</span><strong style="color: #e2e8f0">14.2%</strong>
+                      </div>
+                      <div class="term-bar"><i style="width: 18%; background: #34d399"></i></div>
+                    </div>
+                    <div>
+                      <div
+                        style="
+                          display: flex;
+                          justify-content: space-between;
+                          font-size: 11px;
+                          color: #94a3b8;
+                        "
+                      >
+                        <span>Memory</span><strong style="color: #e2e8f0">6.4G / 16G</strong>
+                      </div>
+                      <div class="term-bar"><i style="width: 40%; background: #60a5fa"></i></div>
+                    </div>
+                    <div>
+                      <div
+                        style="
+                          display: flex;
+                          justify-content: space-between;
+                          font-size: 11px;
+                          color: #94a3b8;
+                        "
+                      >
+                        <span>NVMe /dev/vda1</span
+                        ><strong style="color: #e2e8f0">38G / 120G</strong>
+                      </div>
+                      <div class="term-bar"><i style="width: 32%; background: #a78bfa"></i></div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span class="ssh-prompt-user" style="color: #34d399"
+                      >deploy@prod-gateway-hk01</span
+                    >:<span style="color: #60a5fa">~/services/cordis-edge</span>$ tail -n 3
+                    /var/log/edge/access.log
+                  </div>
+                  <div style="color: #94a3b8">
+                    2026-11-05T15:52:01Z INFO ipc.tunnel heartbeat ok latency=18ms
+                  </div>
+                  <div style="color: #94a3b8">
+                    2026-11-05T15:52:16Z INFO tls.verify peer certificate fingerprint matched
+                  </div>
+                  <div style="color: #94a3b8">
+                    2026-11-05T15:52:31Z INFO pty.daemon session keepalive active
+                  </div>
+                  <div style="margin-top: 6px">
+                    <span class="ssh-prompt-user" style="color: #34d399"
+                      >deploy@prod-gateway-hk01</span
+                    >:<span style="color: #60a5fa">~/services/cordis-edge</span>$
+                    <span style="color: #ffffff">▋</span>
+                  </div>
+                </div>
+
+                <div class="ssh-terminal-footer">
+                  <span
+                    >Ed25519 引用自 ~/.mydsh/config/credentials.yaml (0600) ·
+                    终端显隐与销毁独立</span
+                  >
+                  <span
+                    >RTT <b id="ssh-active-rtt" style="color: #4ade80">18ms</b> · UTF-8 ·
+                    136×38</span
+                  >
+                </div>
+              </div>
+            </main>
+
+            <button type="button" class="divider-capsule divider-capsule--left" data-toggle-left>
+              ⋮
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           画板 08：数据库只读工作台（独立一级菜单 · 侧栏库表对象树 + SQL 数据网格）
+           ================================================================ -->
+      <section id="artboard-db" class="artboard-section">
+        <div class="artboard-header">
+          <div class="artboard-title-group">
+            <span class="artboard-index">08 · READ-ONLY DATABASE WORKBENCH</span>
+            <h2 class="artboard-title">数据库只读查询工作台（独立菜单）</h2>
+          </div>
+          <p class="artboard-desc">
+            左侧模式轨定位第 5 项数据库菜单 · 侧边栏专注展示库表 Schema
+            对象树，主浮岛呈现只读安全横幅、SQL 查询器与高精度数据表格
+          </p>
+        </div>
+
+        <div class="mydsh-window mydsh-window--compact">
+          <div class="window-canvas"></div>
+          <div class="traffic-lights" aria-hidden="true">
+            <span class="traffic-light traffic-light--close"></span>
+            <span class="traffic-light traffic-light--min"></span>
+            <span class="traffic-light traffic-light--max"></span>
+          </div>
+
+          <div
+            class="app-shell"
+            data-nav-collapsed="false"
+            data-info-collapsed="true"
+            data-full-main="true"
+          >
+            <aside class="island sidebar-island">
+              <div class="project-focus">
+                <button type="button" class="project-pill">
+                  <span class="project-pill__badge">
+                    <svg width="12" height="12"><use href="#ic-db" /></svg>
+                  </span>
+                  <span class="project-pill__name">mydsh_analytics_ro</span>
+                  <svg class="project-pill__chevron" width="13" height="13">
+                    <use href="#ic-chevron-down" />
+                  </svg>
+                </button>
+                <button type="button" class="glass-icon-btn" title="新建只读连接">
+                  <svg width="15" height="15"><use href="#ic-plus" /></svg>
+                </button>
+              </div>
+
+              <nav class="mode-rail">
+                <div class="mode-rail__track" style="--mode-index: 4">
+                  <div class="mode-rail__lens" aria-hidden="true"></div>
+                  <button type="button" class="mode-btn" data-mode-idx="0">
+                    <svg width="17" height="17"><use href="#ic-chat" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="1">
+                    <svg width="17" height="17"><use href="#ic-git" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="2">
+                    <svg width="17" height="17"><use href="#ic-files" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="3">
+                    <svg width="17" height="17"><use href="#ic-ssh" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn is-active" data-mode-idx="4">
+                    <svg width="17" height="17"><use href="#ic-db" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="5">
+                    <svg width="17" height="17"><use href="#ic-plugin" /></svg>
+                  </button>
+                </div>
+                <div class="mode-rail__bottom">
+                  <button type="button" class="mode-btn" data-open-modal="settings-modal">
+                    <svg width="17" height="17"><use href="#ic-settings" /></svg>
+                  </button>
+                </div>
+              </nav>
+
+              <div class="navigation-pane">
+                <div class="nav-section-head"><span>MySQL 8.0 · TLS 隧道</span></div>
+                <div class="file-tree">
+                  <div class="tree-row" style="--depth: 0">▾ mydsh_analytics_ro</div>
+                  <div class="tree-row" style="--depth: 1">▾ 数据表 (Tables · 4)</div>
+                  <button
+                    type="button"
+                    class="tree-row is-active"
+                    style="--depth: 2"
+                    data-db-table="session_events"
+                  >
+                    <span class="file-ext-badge file-ext-badge--ts">TBL</span>
+                    <span>session_events</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="tree-row"
+                    style="--depth: 2"
+                    data-db-table="model_usage_daily"
+                  >
+                    <span class="file-ext-badge file-ext-badge--ts">TBL</span>
+                    <span>model_usage_daily</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="tree-row"
+                    style="--depth: 2"
+                    data-db-table="runtime_releases"
+                  >
+                    <span class="file-ext-badge file-ext-badge--ts">TBL</span>
+                    <span>runtime_releases</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="tree-row"
+                    style="--depth: 2"
+                    data-db-table="plugin_audit_logs"
+                  >
+                    <span class="file-ext-badge file-ext-badge--ts">TBL</span>
+                    <span>plugin_audit_logs</span>
+                  </button>
+                  <div class="tree-row" style="--depth: 1">▸ 只读视图 (Views · 2)</div>
+                </div>
+              </div>
+            </aside>
+
+            <header class="session-chrome">
+              <div class="session-tabs-track">
+                <div class="session-tab-lens" aria-hidden="true">
+                  <div class="session-tab-lens__backdrop"></div>
+                </div>
+                <div class="session-tab-items" role="tablist">
+                  <button type="button" class="work-tab is-selected" role="tab">
+                    <svg width="13" height="13"><use href="#ic-db" /></svg>
+                    <span id="db-tab-label" class="work-tab__title">session_events.sql</span>
+                  </button>
+                  <button type="button" class="work-tab" role="tab">
+                    <svg width="13" height="13"><use href="#ic-db" /></svg>
+                    <span class="work-tab__title">结构 · Schema</span>
+                  </button>
+                </div>
+              </div>
+              <div class="chrome-pill-actions">
+                <button type="button" class="chrome-circle-btn" title="新建 SQL 查询">
+                  <svg width="14" height="14"><use href="#ic-plus" /></svg>
+                </button>
+              </div>
+            </header>
+
+            <main class="island main-island">
+              <div class="conn-view-wrap">
+                <div class="readonly-banner">
+                  <span
+                    >🔒 只读数据库模式（仅允许 SELECT / SHOW /
+                    EXPLAIN，写语句已在驱动层强制拦截）</span
+                  >
+                  <span>TLS 1.3 · SSH 跳板隧道已加密</span>
+                </div>
+
+                <div class="glass-code-card">
+                  <div class="glass-code-card__head">
+                    <span
+                      >SQL 查询 · mydsh_analytics_ro.<b id="db-active-table"
+                        >session_events</b
+                      ></span
+                    >
+                    <div style="display: flex; gap: 6px">
+                      <button type="button" class="btn-glass" style="height: 22px; font-size: 11px">
+                        EXPLAIN
+                      </button>
+                      <button
+                        type="button"
+                        class="btn-glass btn-glass--primary"
+                        style="height: 22px; font-size: 11px"
+                      >
+                        执行查询 (⌘↵)
+                      </button>
+                    </div>
+                  </div>
+                  <pre><code><span class="tok-kw">SELECT</span> session_id, model_name, input_tokens, output_tokens, latency_ms, error_code
+<span class="tok-kw">FROM</span> <span id="db-sql-table" class="tok-ty">session_events</span>
+<span class="tok-kw">WHERE</span> created_at &gt;= <span class="tok-str">'2026-11-01'</span> <span class="tok-kw">ORDER BY</span> created_at <span class="tok-kw">DESC LIMIT</span> <span class="tok-num">50</span>;</code></pre>
+                </div>
+
+                <div class="db-table-wrap">
+                  <table class="db-grid-table">
+                    <thead>
+                      <tr>
+                        <th>session_id (PK)</th>
+                        <th>model_name</th>
+                        <th>input_tokens</th>
+                        <th>output_tokens</th>
+                        <th>latency_ms</th>
+                        <th>created_at</th>
+                        <th>error_code</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>sess_01jc8x9q2k</td>
+                        <td>deepseek-v4.1-flash</td>
+                        <td>12,480</td>
+                        <td>942</td>
+                        <td>1,420</td>
+                        <td>2026-11-05 15:24:10</td>
+                        <td><span class="null-pill">NULL</span></td>
+                      </tr>
+                      <tr>
+                        <td>sess_01jc8w3m8p</td>
+                        <td>gpt-5.4-codex</td>
+                        <td>28,910</td>
+                        <td>1,680</td>
+                        <td>2,890</td>
+                        <td>2026-11-05 14:51:03</td>
+                        <td><span class="null-pill">NULL</span></td>
+                      </tr>
+                      <tr>
+                        <td>sess_01jc8t1v5z</td>
+                        <td>claude-4.6-sonnet</td>
+                        <td>9,120</td>
+                        <td>512</td>
+                        <td>1,105</td>
+                        <td>2026-11-05 13:18:44</td>
+                        <td><span class="null-pill">NULL</span></td>
+                      </tr>
+                      <tr>
+                        <td>sess_01jc8p4r9m</td>
+                        <td>deepseek-v4.1-flash</td>
+                        <td>6,340</td>
+                        <td>418</td>
+                        <td>890</td>
+                        <td>2026-11-05 11:06:19</td>
+                        <td><span class="null-pill">NULL</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div class="db-statusbar">
+                  <span>返回 4 行（上限 500 行保护） · 凭据引用自 credentials.yaml</span>
+                  <span>查询耗时 <b style="color: var(--positive)">19 ms</b> · UTF-8</span>
+                </div>
+              </div>
+            </main>
+
+            <button type="button" class="divider-capsule divider-capsule--left" data-toggle-left>
+              ⋮
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           画板 09：插件扩展中心（独立一级菜单 · 居中通透光学图标矩阵）
+           ================================================================ -->
+      <section id="artboard-plugins" class="artboard-section">
+        <div class="artboard-header">
+          <div class="artboard-title-group">
+            <span class="artboard-index">09 · PLUGIN MANAGER</span>
+            <h2 class="artboard-title">插件与能力扩展中心（独立菜单）</h2>
+          </div>
+          <p class="artboard-desc">
+            左侧模式轨定位第 6 项插件菜单并自动收起二级导航列 · 46px
+            液态折射图标底座区分内置核心模块与受信任本地用户扩展
+          </p>
+        </div>
+
+        <div class="mydsh-window mydsh-window--compact">
+          <div class="window-canvas"></div>
+          <div class="traffic-lights" aria-hidden="true">
+            <span class="traffic-light traffic-light--close"></span>
+            <span class="traffic-light traffic-light--min"></span>
+            <span class="traffic-light traffic-light--max"></span>
+          </div>
+
+          <div
+            class="app-shell"
+            data-nav-collapsed="true"
+            data-info-collapsed="true"
+            data-full-main="true"
+          >
+            <aside class="island sidebar-island">
+              <nav class="mode-rail">
+                <div class="mode-rail__track" style="--mode-index: 5">
+                  <div class="mode-rail__lens" aria-hidden="true"></div>
+                  <button type="button" class="mode-btn" data-mode-idx="0">
+                    <svg width="17" height="17"><use href="#ic-chat" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="1">
+                    <svg width="17" height="17"><use href="#ic-git" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="2">
+                    <svg width="17" height="17"><use href="#ic-files" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="3">
+                    <svg width="17" height="17"><use href="#ic-ssh" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn" data-mode-idx="4">
+                    <svg width="17" height="17"><use href="#ic-db" /></svg>
+                  </button>
+                  <button type="button" class="mode-btn is-active" data-mode-idx="5">
+                    <svg width="17" height="17"><use href="#ic-plugin" /></svg>
+                  </button>
+                </div>
+                <div class="mode-rail__bottom">
+                  <button type="button" class="mode-btn" data-open-modal="settings-modal">
+                    <svg width="17" height="17"><use href="#ic-settings" /></svg>
+                  </button>
+                </div>
+              </nav>
+            </aside>
+
+            <header class="session-chrome">
+              <div class="session-tabs-track">
+                <div class="session-tab-lens" aria-hidden="true">
+                  <div class="session-tab-lens__backdrop"></div>
+                </div>
+                <div class="session-tab-items" role="tablist">
+                  <button type="button" class="work-tab is-selected" role="tab">
+                    <svg width="13" height="13"><use href="#ic-plugin" /></svg>
+                    <span class="work-tab__title">插件与扩展管理</span>
+                  </button>
+                  <button type="button" class="work-tab" role="tab">
+                    <svg width="13" height="13"><use href="#ic-chat" /></svg>
+                    <span class="work-tab__title">统一光学浮岛 UI 重构</span>
+                  </button>
+                </div>
+              </div>
+            </header>
+
+            <main class="island main-island">
+              <div class="plugins-page">
+                <div class="plugins-container">
+                  <div class="plugins-hero">
+                    <div>
+                      <h2 style="margin: 0 0 4px; font-size: 18px">插件与能力扩展</h2>
+                      <p style="margin: 0; font-size: 12.5px; color: var(--muted)">
+                        宿主提供共享 Cordis、React 与 MyDSH SDK 实例 · 用户扩展存于
+                        <code>~/.mydsh/plugins</code>（明确受信任原生代码，随所属生命周期释放）
+                      </p>
+                    </div>
+                    <div style="display: flex; gap: 8px">
+                      <button type="button" class="btn-glass">AI 转换官方 DSH 插件</button>
+                      <button type="button" class="btn-glass btn-glass--primary">
+                        从本地目录安装
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="plugins-toolbar">
+                    <div class="traj-search-box">
+                      <svg width="14" height="14"><use href="#ic-search" /></svg>
+                      <input type="text" placeholder="搜索已安装的内置模块或本地扩展…" />
+                    </div>
+                    <div class="traj-filter-pills">
+                      <button type="button" class="traj-chip is-active">全部 (6)</button>
+                      <button type="button" class="traj-chip">内置核心 (4)</button>
+                      <button type="button" class="traj-chip">用户扩展 (2)</button>
+                    </div>
+                  </div>
+
+                  <div class="plugin-cards-grid">
+                    <div class="plugin-glass-card">
+                      <div class="plugin-icon-orb">
+                        <svg width="22" height="22"><use href="#ic-spark" /></svg>
+                      </div>
+                      <div class="plugin-card-body">
+                        <div class="plugin-card-head">
+                          <strong>Agent 核心循环与工具编排</strong>
+                          <span class="assistant-model-tag">内置核心</span>
+                        </div>
+                        <p style="margin: 0; font-size: 12px; color: var(--muted)">
+                          运行在独立 utilityProcess 中，提供文件读写、计划审阅与轨迹投影。
+                        </p>
+                      </div>
+                    </div>
+
+                    <div class="plugin-glass-card">
+                      <div class="plugin-icon-orb">
+                        <svg width="22" height="22"><use href="#ic-terminal" /></svg>
+                      </div>
+                      <div class="plugin-card-body">
+                        <div class="plugin-card-head">
+                          <strong>本地与远程终端守护</strong>
+                          <span class="assistant-model-tag">内置核心</span>
+                        </div>
+                        <p style="margin: 0; font-size: 12px; color: var(--muted)">
+                          管理 PTY 进程与 SSH 会话，支持终端显隐保活与退出时全量回收。
+                        </p>
+                      </div>
+                    </div>
+
+                    <div class="plugin-glass-card">
+                      <div class="plugin-icon-orb">
+                        <svg width="22" height="22"><use href="#ic-git" /></svg>
+                      </div>
+                      <div class="plugin-card-body">
+                        <div class="plugin-card-head">
+                          <strong>子智能体并行委托（Subagents）</strong>
+                          <span class="assistant-model-tag">内置核心</span>
+                        </div>
+                        <p style="margin: 0; font-size: 12px; color: var(--muted)">
+                          支持只读调研子代理与独立上下文协作，汇总结构化结论回主会话。
+                        </p>
+                      </div>
+                    </div>
+
+                    <div class="plugin-glass-card">
+                      <div class="plugin-icon-orb">
+                        <svg width="22" height="22"><use href="#ic-db" /></svg>
+                      </div>
+                      <div class="plugin-card-body">
+                        <div class="plugin-card-head">
+                          <strong>MySQL 只读安全查询驱动</strong>
+                          <span class="assistant-model-tag">内置核心</span>
+                        </div>
+                        <p style="margin: 0; font-size: 12px; color: var(--muted)">
+                          支持 SSH 跳板与 TLS 加密，在驱动层拦截写操作并保护凭据不入渲染层。
+                        </p>
+                      </div>
+                    </div>
+
+                    <div class="plugin-glass-card">
+                      <div class="plugin-icon-orb">
+                        <svg width="22" height="22"><use href="#ic-files" /></svg>
+                      </div>
+                      <div class="plugin-card-body">
+                        <div class="plugin-card-head">
+                          <strong>EPUB 电子书排版工作流</strong>
+                          <button
+                            type="button"
+                            class="liquid-switch"
+                            role="switch"
+                            aria-checked="true"
+                          >
+                            <span class="liquid-switch__thumb"></span>
+                          </button>
+                        </div>
+                        <p style="margin: 0; font-size: 12px; color: var(--muted)">
+                          用户扩展 · 自动识别长篇 TXT 章节目录并生成带样式表的标准 EPUB 3 包。
+                        </p>
+                      </div>
+                    </div>
+
+                    <div class="plugin-glass-card">
+                      <div class="plugin-icon-orb">
+                        <svg width="22" height="22"><use href="#ic-search" /></svg>
+                      </div>
+                      <div class="plugin-card-body">
+                        <div class="plugin-card-head">
+                          <strong>离线知识库索引增强</strong>
+                          <button
+                            type="button"
+                            class="liquid-switch"
+                            role="switch"
+                            aria-checked="false"
+                          >
+                            <span class="liquid-switch__thumb"></span>
+                          </button>
+                        </div>
+                        <p style="margin: 0; font-size: 12px; color: var(--muted)">
+                          用户扩展 · 由转换器在隔离工作区迁移至 MyDSH 插槽契约，不触碰核心运行时。
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </main>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           画板 10：平铺弹窗交互与深海光学设计规范总板（Modals & Spec Sheet）
+           ================================================================ -->
+      <section id="artboard-spec" class="artboard-section">
+        <div class="artboard-header">
+          <div class="artboard-title-group">
+            <span class="artboard-index">10 · MODALS &amp; ABYSSAL GLASS SPEC</span>
+            <h2 class="artboard-title">悬浮弹窗体系、双胶囊液态玻璃滑块与五层光学设计规范</h2>
+          </div>
+          <p class="artboard-desc">
+            可直接拖拽下方设置面板中的白色胶囊滑块体验 Apple
+            液态折射镜片态，实时调节全页所有窗口的通透度与浮岛间距
+          </p>
+        </div>
+
+        <!-- 平铺展示设置对话框 + 搜索框，滑到这里即可直接交互 -->
+        <div class="modals-gallery-grid">
+          <div class="settings-dialog" style="width: 100%; height: auto">
+            <div class="settings-nav">
+              <div class="settings-nav-title">MyDSH 设置</div>
+              <button type="button" class="settings-nav-btn is-active">✦ 外观与光学材质</button>
+              <button type="button" class="settings-nav-btn">🔑 模型与本地凭据</button>
+              <button type="button" class="settings-nav-btn">🛡 Agent 权限边界</button>
+              <button type="button" class="settings-nav-btn">⌨ 键盘快捷键</button>
+            </div>
+
+            <div class="settings-content">
+              <div class="settings-head">
+                <div>
+                  <strong style="font-size: 15px">外观与光学合成（实时联动全页画板）</strong>
+                  <div style="font-size: 12px; color: var(--muted)">
+                    22px 同心圆角对话框 · 按住下方胶囊滑块体验边缘折射放大镜效果
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-group">
+                <div class="settings-row">
+                  <div>
+                    <div style="font-weight: 500; font-size: 13px">色彩主题</div>
+                    <div style="font-size: 11.5px; color: var(--muted)">
+                      深海暗色与浅色晨海双套光学阴影
+                    </div>
+                  </div>
+                  <div class="inspector-tabs">
+                    <button type="button" class="inspector-tab is-active" data-set-scheme="dark">
+                      深海暗色
+                    </button>
+                    <button type="button" class="inspector-tab" data-set-scheme="light">
+                      浅色晨海
+                    </button>
+                  </div>
+                </div>
+
+                <div class="settings-row">
+                  <div>
+                    <div style="font-weight: 500; font-size: 13px">星辉强调色（Accent）</div>
+                    <div style="font-size: 11.5px; color: var(--muted)">
+                      点击切换全页透镜星芒与发送宝石色
+                    </div>
+                  </div>
+                  <div class="accent-swatches">
+                    <button
+                      type="button"
+                      class="accent-dot-btn is-active"
+                      style="--swatch: #5e7cff"
+                      data-accent-color="#5e7cff"
+                      data-accent-bright="#859fff"
+                      title="星辉蓝"
+                    ></button>
+                    <button
+                      type="button"
+                      class="accent-dot-btn"
+                      style="--swatch: #2d8dbd"
+                      data-accent-color="#2d8dbd"
+                      data-accent-bright="#56b6e6"
+                      title="深海青"
+                    ></button>
+                    <button
+                      type="button"
+                      class="accent-dot-btn"
+                      style="--swatch: #2f9d77"
+                      data-accent-color="#2f9d77"
+                      data-accent-bright="#4cc39a"
+                      title="翡翠绿"
+                    ></button>
+                    <button
+                      type="button"
+                      class="accent-dot-btn"
+                      style="--swatch: #d97745"
+                      data-accent-color="#d97745"
+                      data-accent-bright="#f09a6e"
+                      title="暖珀橙"
+                    ></button>
+                    <button
+                      type="button"
+                      class="accent-dot-btn"
+                      style="--swatch: #c45a84"
+                      data-accent-color="#c45a84"
+                      data-accent-bright="#e282a8"
+                      title="珊瑚粉"
+                    ></button>
+                    <button
+                      type="button"
+                      class="accent-dot-btn"
+                      style="--swatch: #8069d4"
+                      data-accent-color="#8069d4"
+                      data-accent-bright="#a48ff0"
+                      title="星云紫"
+                    ></button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-group">
+                <div class="settings-row">
+                  <div>
+                    <div style="font-weight: 500; font-size: 13px">
+                      L0 画布通透度 · <code data-alpha-output>92%</code>
+                    </div>
+                    <div style="font-size: 11.5px; color: var(--muted)">
+                      按住拖拽白色双胶囊滑块实时预览
+                    </div>
+                  </div>
+                  <div class="liquid-slider" style="--slider-pct: 75%" data-liquid-slider="alpha">
+                    <div class="liquid-slider__track"><div class="liquid-slider__fill"></div></div>
+                    <div class="liquid-slider__thumb"></div>
+                  </div>
+                </div>
+
+                <div class="settings-row">
+                  <div>
+                    <div style="font-weight: 500; font-size: 13px">
+                      光学浮岛间距 · <code data-gap-output>8px</code>
+                    </div>
+                    <div style="font-size: 11.5px; color: var(--muted)">
+                      动态重算三岛呼吸缝隙与标签透镜宽度
+                    </div>
+                  </div>
+                  <div class="liquid-slider" style="--slider-pct: 40%" data-liquid-slider="gap">
+                    <div class="liquid-slider__track"><div class="liquid-slider__fill"></div></div>
+                    <div class="liquid-slider__thumb"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="modals-gallery-stack">
+            <div class="search-dialog" style="width: 100%">
+              <div class="search-dialog__bar">
+                <svg width="16" height="16" style="color: var(--accent)">
+                  <use href="#ic-search" />
+                </svg>
+                <input
+                  type="text"
+                  class="search-dialog__input"
+                  value="光学浮岛"
+                  aria-label="全局搜索示例"
+                />
+                <span class="kbd-pill">⌘K</span>
+              </div>
+              <div class="search-results">
+                <div class="search-result-item is-active">
+                  <span>✦ 统一光学浮岛 UI 视觉重构</span>
+                  <span class="kbd-pill">活跃会话</span>
+                </div>
+                <div class="search-result-item">
+                  <span>useSessionTabGlass.ts — 顶栏弹簧透镜</span>
+                  <span class="kbd-pill">文件跳转</span>
+                </div>
+                <div class="search-result-item">
+                  <span>我需要将这小说TXT文件转变成epub</span>
+                  <span class="kbd-pill">workSpace</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="spec-card">
+              <strong>同心曲率公式与等宽读数规范</strong>
+              <p style="margin: 0; font-size: 12px; color: var(--muted)">
+                收敛原本混杂的 4px/9px/16px/24px 圆角：外窗 <code>18px</code> → 浮岛
+                <code>12px</code> → 轨道槽 <code>16px</code> → 透镜/卡片 <code>12px</code> →
+                内部按钮 <code>8px</code> → 模态窗 <code>22px</code>。所有数字读数统一启用
+                <code>tabular-nums</code>。
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 五层光学解剖与新旧升级总表 -->
+        <div class="island" style="padding: 22px 26px; margin-top: 8px">
+          <div style="display: grid; gap: 16px">
+            <div class="spec-layer-stack">
+              <div class="spec-layer-box" style="background: var(--canvas-bg)">
+                <strong>L0 · 深海画布</strong>
+                <span style="color: var(--muted)">--canvas-bg + 漫射星云</span>
+                <code>blur(28px)</code>
+              </div>
+              <div class="spec-layer-box" style="background: var(--surface)">
+                <strong>L1 · 光学浮岛</strong>
+                <span style="color: var(--muted)">顶部 1px 镜面受光细边</span>
+                <code>radius: 12px</code>
+              </div>
+              <div
+                class="spec-layer-box"
+                style="background: var(--track-bg); box-shadow: var(--track-shadow)"
+              >
+                <strong>L2 · 沉降微槽</strong>
+                <span style="color: var(--muted)">标签栏/导轨/胶囊底座</span>
+                <code>inset shadow</code>
+              </div>
+              <div
+                class="spec-layer-box"
+                style="
+                  background: var(--lens-bg);
+                  border-color: var(--lens-border);
+                  box-shadow: var(--lens-shadow);
+                "
+              >
+                <strong>L3 · 液态透镜</strong>
+                <span style="color: var(--muted)">SDF 折射 + 弹簧滑动</span>
+                <code>specular rim</code>
+              </div>
+              <div class="spec-layer-box" style="background: var(--surface-raised)">
+                <strong>L4 · 悬浮指令舱</strong>
+                <span style="color: var(--muted)">聚焦外环辉光 + HUD</span>
+                <code>radius: 18px</code>
+              </div>
+            </div>
+
+            <table class="spec-compare-table">
+              <thead>
+                <tr>
+                  <th>界面区域</th>
+                  <th>旧版现象（东拼西凑感来源）</th>
+                  <th>MVP 统一方案（Abyssal Glass · 深海折光浮岛）</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>左侧 50px 模式栏</td>
+                  <td>左侧贴一根 2px 蓝竖线 + 平涂灰底，与顶栏透镜割裂</td>
+                  <td>复用顶栏同款「沉降微槽 + 上下弹簧滑动液态方透镜 + 发光星芒」</td>
+                </tr>
+                <tr>
+                  <td>空会话中央区域</td>
+                  <td>大片纯黑底色上孤零零两行字“这个对话还没有消息”</td>
+                  <td>圆角暗色玻璃 15×9 点阵小徽章 + 胶囊预设条 + 3 张半透明起手建议卡</td>
+                </tr>
+                <tr>
+                  <td>对话流与流式动画</td>
+                  <td>静态纯文本块与普通折叠条，缺少思考/工具调用与生成过程节奏</td>
+                  <td>
+                    无框清透助手流 + 真实文件读写/Diff 工具卡片 + 克制的 3×3
+                    微像素状态点与流式像素游标
+                  </td>
+                </tr>
+                <tr>
+                  <td>底部消息输入框</td>
+                  <td>普通 1px 灰线圆角框，工具挤在底边缺乏呼吸与层次</td>
+                  <td>悬浮光学指令舱（镜面流光 + 8 点阵流式脉冲环 + 单行紧凑遥测 HUD）</td>
+                </tr>
+                <tr>
+                  <td>右上角与分隔线</td>
+                  <td>右上角裸露简陋方框按钮；侧栏通栏 1px 死板实线</td>
+                  <td>垂直液态分段胶囊工具舱；跨栏缝隙悬浮液态膨胀胶囊把手</td>
+                </tr>
+                <tr>
+                  <td>启动加载页面</td>
+                  <td>插画底部仅简单状态文字，缺少品牌级精致加载反馈</td>
+                  <td>760×480 原生无框插画窗 + 底部悬浮磨砂 Boot HUD 与流光折射进度槽</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 全局可呼出模态窗（按 ⌘K 或点击顶部「⚙ 光学调节」在任意滚动位置弹出） -->
+    <div id="search-modal" class="modal-backdrop modal-backdrop--top" hidden>
+      <div class="search-dialog" role="dialog" aria-label="全局搜索会话">
+        <div class="search-dialog__bar">
+          <svg width="16" height="16" style="color: var(--accent)"><use href="#ic-search" /></svg>
+          <input
+            type="text"
+            class="search-dialog__input"
+            placeholder="搜索会话标题、消息内容或跳转画板…"
+          />
+          <span class="kbd-pill">ESC</span>
+        </div>
+        <div class="search-results">
+          <button
+            type="button"
+            class="search-result-item is-active"
+            data-scroll-to="artboard-chat"
+            data-close-modal
+          >
+            <span>✦ 03 · 活跃对话流与计划审阅画板</span>
+            <span class="kbd-pill">平滑跳转</span>
+          </button>
+          <button
+            type="button"
+            class="search-result-item"
+            data-scroll-to="artboard-zero"
+            data-close-modal
+          >
+            <span>02 · 空会话零状态重构对比</span>
+            <span class="kbd-pill">平滑跳转</span>
+          </button>
+          <button
+            type="button"
+            class="search-result-item"
+            data-scroll-to="artboard-boot"
+            data-close-modal
+          >
+            <span>01 · 启动加载画面（760×480 Splash HUD）</span>
+            <span class="kbd-pill">平滑跳转</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="overview-modal" class="modal-backdrop" hidden>
+      <div class="overview-dialog" role="dialog" aria-label="已打开标签总览">
+        <div style="display: flex; justify-content: space-between; align-items: center">
+          <strong style="font-size: 15px">工作标签平铺总览</strong>
+          <button type="button" class="btn-glass" data-close-modal>完成</button>
+        </div>
+        <div class="overview-grid">
+          <button
+            type="button"
+            class="overview-card"
+            data-scroll-to="artboard-zero"
+            data-close-modal
+          >
+            <strong style="font-size: 12.5px">💬 新会话（零状态重设计）</strong>
+            <div class="overview-card__preview">
+              双环玻璃徽章 + Harness 预设胶囊 + 3 张半透明起手建议卡
+            </div>
+          </button>
+          <button
+            type="button"
+            class="overview-card"
+            data-scroll-to="artboard-chat"
+            data-close-modal
+          >
+            <strong style="font-size: 12.5px">✦ 统一光学浮岛 UI 重构</strong>
+            <div class="overview-card__preview">
+              正在审阅实施计划 · 已读取 4 个文件 · 上下文占用 35%
+            </div>
+          </button>
+          <button
+            type="button"
+            class="overview-card"
+            data-scroll-to="artboard-workbench"
+            data-close-modal
+          >
+            <strong style="font-size: 12.5px">◫ useSessionTabGlass.ts · 分屏</strong>
+            <div class="overview-card__preview">左侧代码编辑器语法高亮 + 右侧伴随 Agent 对话流</div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="settings-modal" class="modal-backdrop" hidden>
+      <div class="settings-dialog" role="dialog" aria-label="光学调节">
+        <div class="settings-nav">
+          <div class="settings-nav-title">光学实时预览</div>
+          <button type="button" class="settings-nav-btn is-active">✦ 外观与液态滑块</button>
+        </div>
+        <div class="settings-content">
+          <div class="settings-head">
+            <strong style="font-size: 15px">全局主题与液态滑块调节</strong>
+            <button type="button" class="btn-glass" data-close-modal>关闭</button>
+          </div>
+          <div class="settings-group">
+            <div class="settings-row">
+              <span>色彩主题</span>
+              <div class="inspector-tabs">
+                <button type="button" class="inspector-tab is-active" data-set-scheme="dark">
+                  深海暗色
+                </button>
+                <button type="button" class="inspector-tab" data-set-scheme="light">
+                  浅色晨海
+                </button>
+              </div>
+            </div>
+            <div class="settings-row">
+              <span>星辉强调色</span>
+              <div class="accent-swatches">
+                <button
+                  type="button"
+                  class="accent-dot-btn is-active"
+                  style="--swatch: #5e7cff"
+                  data-accent-color="#5e7cff"
+                  data-accent-bright="#859fff"
+                ></button>
+                <button
+                  type="button"
+                  class="accent-dot-btn"
+                  style="--swatch: #2d8dbd"
+                  data-accent-color="#2d8dbd"
+                  data-accent-bright="#56b6e6"
+                ></button>
+                <button
+                  type="button"
+                  class="accent-dot-btn"
+                  style="--swatch: #2f9d77"
+                  data-accent-color="#2f9d77"
+                  data-accent-bright="#4cc39a"
+                ></button>
+                <button
+                  type="button"
+                  class="accent-dot-btn"
+                  style="--swatch: #d97745"
+                  data-accent-color="#d97745"
+                  data-accent-bright="#f09a6e"
+                ></button>
+                <button
+                  type="button"
+                  class="accent-dot-btn"
+                  style="--swatch: #c45a84"
+                  data-accent-color="#c45a84"
+                  data-accent-bright="#e282a8"
+                ></button>
+                <button
+                  type="button"
+                  class="accent-dot-btn"
+                  style="--swatch: #8069d4"
+                  data-accent-color="#8069d4"
+                  data-accent-bright="#a48ff0"
+                ></button>
+              </div>
+            </div>
+          </div>
+          <div class="settings-group">
+            <div class="settings-row">
+              <span>L0 画布通透度 · <code data-alpha-output>92%</code></span>
+              <div class="liquid-slider" style="--slider-pct: 75%" data-liquid-slider="alpha">
+                <div class="liquid-slider__track"><div class="liquid-slider__fill"></div></div>
+                <div class="liquid-slider__thumb"></div>
+              </div>
+            </div>
+            <div class="settings-row">
+              <span>光学浮岛间距 · <code data-gap-output>8px</code></span>
+              <div class="liquid-slider" style="--slider-pct: 40%" data-liquid-slider="gap">
+                <div class="liquid-slider__track"><div class="liquid-slider__fill"></div></div>
+                <div class="liquid-slider__thumb"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

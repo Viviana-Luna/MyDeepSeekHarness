@@ -1,0 +1,439 @@
+[
+  {
+    "id": "timer",
+    "name": "@deepseek-ai/cordis-plugin-timer"
+  },
+  {
+    "id": "llm",
+    "name": "@deepseek-ai/dsh-llm"
+  },
+  {
+    "id": "deepseek-llm-api-extensions",
+    "name": "@deepseek-ai/dsh-deepseek-llm-api-extensions"
+  },
+  {
+    "id": "session",
+    "name": "@deepseek-ai/dsh-session"
+  },
+  {
+    "id": "session-log-deepseek",
+    "name": "@deepseek-ai/dsh-session-log-deepseek"
+  },
+  {
+    "id": "typert",
+    "name": "@deepseek-ai/dsh-typert-registry"
+  },
+  {
+    "id": "typert-loader",
+    "name": "@deepseek-ai/dsh-typert-loader"
+  },
+  {
+    "id": "typert-gateway",
+    "name": "@deepseek-ai/dsh-api-gateway"
+  },
+  {
+    "id": "session-title",
+    "name": "@deepseek-ai/dsh-session-title",
+    "config": {
+      "fallbackMaxWords": 5,
+      "fallbackMaxBytes": 40,
+      "maxTitleBytes": 80
+    }
+  },
+  {
+    "id": "session-title-llm",
+    "name": "@deepseek-ai/dsh-session-title-first-prompt-llm",
+    "config": {
+      "targetWords": 5,
+      "targetCjkCharacters": 10,
+      "maxInputBytes": 4096,
+      "maxOutputTokens": 64,
+      "timeoutMs": 60000
+    }
+  },
+  {
+    "id": "user-questions",
+    "name": "@deepseek-ai/dsh-user-questions"
+  },
+  {
+    "id": "agent",
+    "name": "@deepseek-ai/dsh-agent"
+  },
+  {
+    "id": "agent-default-model",
+    "name": "@deepseek-ai/dsh-agent-default-model",
+    "config": {
+      "provider": "deepseek-official",
+      "model": "deepseek-flash"
+    }
+  },
+  {
+    "id": "jobs",
+    "name": "@deepseek-ai/dsh-jobs-local"
+  },
+  {
+    "id": "llm-retry",
+    "name": "@deepseek-ai/dsh-llm-retry"
+  },
+  {
+    "id": "settings",
+    "name": "@deepseek-ai/dsh-settings-file"
+  },
+  {
+    "id": "credentials",
+    "name": "@deepseek-ai/dsh-credentials-local"
+  },
+  { "id": "mydsh-ssh", "name": "@mydsh/ssh" },
+  { "id": "mydsh-database", "name": "@mydsh/database" },
+  { "id": "mydsh-connection-access", "name": "@mydsh/connection-access" },
+  {
+    "id": "llm-pi-ai",
+    "name": "@deepseek-ai/dsh-llm-pi-ai"
+  },
+  {
+    "id": "authorization",
+    "name": "@deepseek-ai/dsh-authorization"
+  },
+  {
+    "id": "llm-chatgpt",
+    "name": "@mydsh/llm-chatgpt"
+  },
+  {
+    "id": "session-persistence-jsonl",
+    "name": "@deepseek-ai/dsh-session-persistence-jsonl",
+    "config": {
+      "root": {
+        "__jsExpr": "dshHomePath('sessions')"
+      }
+    }
+  },
+  {
+    "id": "attachment-local",
+    "name": "@deepseek-ai/dsh-attachment-local"
+  },
+  {
+    "id": "session-query-sqlite",
+    "name": "@deepseek-ai/dsh-session-query-sqlite",
+    "config": {
+      "path": ":memory:",
+      "openAt": "never"
+    }
+  },
+  {
+    "id": "session-projection",
+    "name": "@deepseek-ai/dsh-session-projection"
+  },
+  {
+    "id": "storage",
+    "name": "@deepseek-ai/dsh-storage"
+  },
+  {
+    "id": "storage-json",
+    "name": "@deepseek-ai/dsh-storage-json",
+    "config": {
+      "root": {
+        "__jsExpr": "dshHomePath('storages')"
+      }
+    }
+  },
+  {
+    "id": "storage-domain",
+    "name": "@deepseek-ai/dsh-storage-domain",
+    "config": {
+      "backend": "json"
+    }
+  },
+  {
+    "id": "session-projection-cache",
+    "name": "@deepseek-ai/dsh-session-projection-cache",
+    "config": {
+      "writeEveryEvents": 200,
+      "writeIntervalMs": 5000
+    }
+  },
+  {
+    "id": "subprocess",
+    "name": "@deepseek-ai/dsh-subprocess-local"
+  },
+  {
+    "id": "sandbox",
+    "name": "@deepseek-ai/dsh-sandbox-local"
+  },
+  {
+    "id": "sandbox-policy",
+    "name": "@deepseek-ai/dsh-sandbox-policy",
+    "config": {
+      "mode": {
+        "__jsExpr": "process.env.DSH_PERMISSION_MODE ?? 'workspace-write'"
+      },
+      "workspaceRoot": {
+        "__jsExpr": "process.cwd()"
+      }
+    }
+  },
+  {
+    "id": "bash-sandbox",
+    "name": "@deepseek-ai/dsh-bash-sandbox",
+    "disabled": {
+      "__jsExpr": "process.platform === 'win32'"
+    },
+    "config": {
+      "timeoutMs": 120000
+    }
+  },
+  {
+    "id": "pwsh-sandbox",
+    "name": "@deepseek-ai/dsh-pwsh-sandbox",
+    "disabled": {
+      "__jsExpr": "process.platform !== 'win32'"
+    }
+  },
+  {
+    "id": "approval",
+    "name": "@deepseek-ai/dsh-user-approval",
+    "config": {
+      "policy": {
+        "__jsExpr": "(process.env.DSH_PERMISSION_MODE ?? 'workspace-write') === 'danger-full-access' ? 'never' : 'ask'"
+      }
+    }
+  },
+  {
+    "id": "permission",
+    "name": "@deepseek-ai/dsh-permission-presets",
+    "config": {
+      "presets": {
+        "read-only": {
+          "sandbox": "read-only",
+          "approval": "ask"
+        },
+        "workspace-write": {
+          "sandbox": "workspace-write",
+          "approval": "ask"
+        },
+        "danger-full-access": {
+          "sandbox": "danger-full-access",
+          "approval": "never"
+        },
+        "auto-review": {
+          "sandbox": "workspace-write",
+          "approval": "ask",
+          "description": "保留工作区沙箱；低风险提权自动放行一次，其余转人工审批。"
+        }
+      }
+    }
+  },
+  {
+    "id": "auto-review",
+    "name": "@mydsh/auto-review"
+  },
+  {
+    "id": "shell-env",
+    "name": "@deepseek-ai/dsh-shell-env"
+  },
+  {
+    "id": "fs-observation-policy",
+    "name": "@deepseek-ai/dsh-fs-observation-policy"
+  },
+  {
+    "id": "skill",
+    "name": "@deepseek-ai/dsh-skill"
+  },
+  {
+    "id": "skill-badge",
+    "name": "@deepseek-ai/dsh-skill-badge",
+    "disabled": true
+  },
+  {
+    "id": "commands",
+    "name": "@deepseek-ai/dsh-commands"
+  },
+  {
+    "id": "command-feedback",
+    "name": "@deepseek-ai/dsh-command-feedback"
+  },
+  {
+    "id": "goal",
+    "name": "@deepseek-ai/dsh-goal"
+  },
+  {
+    "id": "goal-round-driver",
+    "name": "@deepseek-ai/dsh-goal-round-driver"
+  },
+  {
+    "id": "token-meter",
+    "name": "@deepseek-ai/dsh-token-meter"
+  },
+  {
+    "id": "subagent",
+    "name": "@deepseek-ai/dsh-subagent"
+  },
+  {
+    "id": "subagent-spawn-in-process",
+    "name": "@deepseek-ai/dsh-subagent-spawn-in-process",
+    "config": {
+      "providerName": "spawn"
+    }
+  },
+  {
+    "id": "subagent-fork-in-process",
+    "name": "@deepseek-ai/dsh-subagent-fork-in-process",
+    "config": {
+      "providerName": "fork"
+    }
+  },
+  {
+    "id": "timeout-policy",
+    "name": "@deepseek-ai/dsh-tool-call-timeout-policy"
+  },
+  {
+    "id": "spill-local",
+    "name": "@deepseek-ai/dsh-spill-local"
+  },
+  {
+    "id": "spill-policy",
+    "name": "@deepseek-ai/dsh-spill-policy",
+    "config": {
+      "maxInlineBytes": 50000
+    }
+  },
+  {
+    "id": "session-checkpoint-policy",
+    "name": "@deepseek-ai/dsh-session-checkpoint-policy"
+  },
+  {
+    "id": "image-offload",
+    "name": "@deepseek-ai/dsh-compaction-image-offload"
+  },
+  {
+    "id": "repeat-tool-reminder",
+    "name": "@deepseek-ai/dsh-repeat-tool-reminder",
+    "config": {
+      "thresholds": [
+        3,
+        5,
+        8
+      ],
+      "argumentsPreviewChars": 500
+    }
+  },
+  {
+    "id": "mcp-resources",
+    "name": "@deepseek-ai/dsh-mcp-resources"
+  },
+  {
+    "id": "tools",
+    "name": "@deepseek-ai/dsh-tools"
+  },
+  {
+    "id": "system-prompt",
+    "name": "@deepseek-ai/dsh-system-prompt",
+    "config": {
+      "personaPrefix": ""
+    }
+  },
+  {
+    "id": "agent-loop",
+    "name": "@deepseek-ai/dsh-agent-loop",
+    "config": {
+      "agents": []
+    }
+  },
+  {
+    "id": "fs-sandbox",
+    "name": "@deepseek-ai/dsh-fs-sandbox"
+  },
+  {
+    "id": "llm-deepseek",
+    "name": "@deepseek-ai/dsh-llm-deepseek"
+  },
+  {
+    "id": "workspace",
+    "name": "@deepseek-ai/dsh-workspace"
+  },
+  {
+    "id": "session-reference",
+    "name": "@deepseek-ai/dsh-session-reference"
+  },
+  {
+    "id": "file-reference-local",
+    "name": "@deepseek-ai/dsh-file-reference-local"
+  },
+  {
+    "id": "session-stats",
+    "name": "@deepseek-ai/dsh-session-stats"
+  },
+  {
+    "id": "session-turn-outline",
+    "name": "@deepseek-ai/dsh-session-turn-outline"
+  },
+  {
+    "id": "message-feedback",
+    "name": "@deepseek-ai/dsh-message-feedback",
+    "config": {
+      "maxNoteBytes": 8192
+    }
+  },
+  {
+    "id": "api-session-controller",
+    "name": "@deepseek-ai/dsh-api-session-controller"
+  },
+  {
+    "id": "api-workspace-controller",
+    "name": "@deepseek-ai/dsh-api-workspace-controller"
+  },
+  {
+    "id": "api-workspace-files",
+    "name": "@deepseek-ai/dsh-api-workspace-files"
+  },
+  {
+    "id": "api-settings-controller",
+    "name": "@deepseek-ai/dsh-api-settings-controller"
+  },
+  {
+    "id": "api-remotes",
+    "name": "@deepseek-ai/dsh-api-remotes"
+  },
+  {
+    "id": "client-connection",
+    "name": "@deepseek-ai/dsh-client-connection"
+  },
+  {
+    "id": "client-file-upload",
+    "name": "@deepseek-ai/dsh-client-file-upload"
+  },
+  {
+    "id": "agent-presets",
+    "name": "@deepseek-ai/dsh-agent-presets"
+  },
+  {
+    "id": "mydsh-cli-bridge",
+    "name": "@mydsh/cli-bridge"
+  },
+  {
+    "id": "subagent-model-selection",
+    "name": "@deepseek-ai/dsh-tool-subagent/model-selection-settings"
+  },
+  {
+    "id": "ptc-runtime",
+    "name": "@deepseek-ai/dsh-ptc-runtime-node"
+  },
+  {
+    "id": "web",
+    "name": "@deepseek-ai/dsh-web",
+    "config": {
+      "searchProvider": "deepseek-official",
+      "fetchProvider": "http"
+    }
+  },
+  {
+    "id": "web-search-deepseek",
+    "name": "@deepseek-ai/dsh-web-search-deepseek",
+    "config": {
+      "apiKeyEnv": "DEEPSEEK_API_KEY"
+    }
+  },
+  {
+    "id": "web-fetch-http",
+    "name": "@deepseek-ai/dsh-web-fetch-http"
+  }
+]

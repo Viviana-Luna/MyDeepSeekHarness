@@ -1,0 +1,46 @@
+{
+  "name": "@mydsh/desktop-services",
+  "version": "1.0.0",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "description": "MyDSH 自有项目工作区与终端的 Runtime 服务及生成的 Remote 契约",
+  "main": "lib/packages/desktop-services/src/index.js",
+  "types": "lib/packages/desktop-services/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/packages/desktop-services/src/index.d.ts",
+      "default": "./lib/packages/desktop-services/src/index.js"
+    },
+    "./typert": {
+      "types": "./lib/typert.host.d.ts",
+      "default": "./lib/typert.host.js"
+    },
+    "./remote": {
+      "types": "./lib/typert.remote-client.d.ts",
+      "default": "./lib/typert.remote-client.js"
+    },
+    "./package.json": "./package.json",
+    "./types": {
+      "types": "./lib/packages/desktop-services/src/types.d.ts",
+      "default": "./lib/packages/desktop-services/src/types.js"
+    }
+  },
+  "files": [
+    "lib",
+    "lib/typert.host.js",
+    "lib/typert.host.d.ts",
+    "lib/typert.remote-client.js",
+    "lib/typert.remote-client.d.ts",
+    "README.md"
+  ],
+  "dependencies": {
+    "@deepseek-ai/cordis": "workspace:*",
+    "@deepseek-ai/dsh-session": "workspace:*",
+    "@deepseek-ai/dsh-api-session-controller": "workspace:*",
+    "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-workspace": "workspace:*",
+    "@deepseek-ai/dsh-typert-protocol": "workspace:*",
+    "node-pty": "1.1.0"
+  }
+}

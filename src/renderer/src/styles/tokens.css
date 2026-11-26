@@ -1,0 +1,241 @@
+:root {
+  color-scheme: dark light;
+  --scrollbar-size: 9px;
+  --menu-enter: 190ms;
+  --menu-exit: 130ms;
+  --menu-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --font-ui:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei UI', sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+  --text-caption: 11px;
+  --text-meta: 12px;
+  --text-control: 12px;
+  --text-body: 12px;
+  --text-title: 13px;
+  --text-brand: 14px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --height-icon: 28px;
+  --height-tab: 32px;
+  --height-input: 34px;
+  --height-primary: 36px;
+  --height-project-card: 52px;
+  --height-session-row: 48px;
+  --height-send: 30px;
+  --radius-control: 8px;
+  --radius-card: 10px;
+  --radius-dialog: 20px;
+  --accent: #5e7cff;
+  --accent-contrast: #000;
+  --canvas-alpha: 0.68;
+  --scrim-alpha: 0.84;
+  --canvas-bg: #0e1015;
+  --surface: #171a21;
+  --surface-raised: #212530;
+  --surface-hover: rgb(255 255 255 / 0.06);
+  --surface-active: rgb(255 255 255 / 0.1);
+  --surface-selected: #2a3142;
+  --text: #eff1f6;
+  --muted: #98a0b2;
+  --faint: #6c7386;
+  --line: rgb(255 255 255 / 0.075);
+  --line-strong: rgb(255 255 255 / 0.135);
+  --island-rim: rgb(255 255 255 / 0.11);
+  --island-shadow: 0 10px 28px rgb(0 0 0 / 0.3);
+  --mode-track: rgb(7 9 14 / 0.48);
+  --mode-track-border: rgb(255 255 255 / 0.07);
+  --mode-track-shadow: inset 0 1px 3px rgb(0 0 0 / 0.42), 0 1px 0 rgb(255 255 255 / 0.04);
+  --mode-lens: linear-gradient(180deg, rgb(255 255 255 / 0.13), rgb(255 255 255 / 0.045));
+  --mode-lens-border: rgb(255 255 255 / 0.14);
+  --mode-lens-shadow:
+    0 3px 8px rgb(0 0 0 / 0.24), inset 0 1px 0 rgb(255 255 255 / 0.2),
+    inset 0 -1px 0 rgb(0 0 0 / 0.18);
+  /* 浮动操作胶囊与右侧会话工具列共用的光学轻玻璃表面令牌，保持材质与高光同源。 */
+  --floating-glass-bg: linear-gradient(180deg, rgb(36 40 52 / 0.72), rgb(23 26 34 / 0.82));
+  --floating-glass-border: rgb(255 255 255 / 0.12);
+  --floating-glass-shadow:
+    0 8px 22px rgb(0 0 0 / 0.32), 0 1px 3px rgb(0 0 0 / 0.2), inset 0 1px 0 rgb(255 255 255 / 0.14),
+    inset 0 -1px 0 rgb(0 0 0 / 0.22);
+  --floating-glass-sheen: rgb(255 255 255 / 0.24);
+  --positive: #37c66a;
+  --negative: #ff5d68;
+  --warning: #e5a64f;
+  --file-icon-source: #7dc4e4;
+  --file-icon-test: #9fcb7b;
+  --file-icon-docs: #87b6ea;
+  --file-icon-config: #c7a0e8;
+  --file-icon-assets: #e6b36d;
+  --file-icon-build: #a3a8b4;
+  --file-icon-archive: #d19a73;
+  --file-icon-sensitive: #f08a84;
+  --file-icon-data: #77c4b5;
+  --file-icon-language: #85b9f2;
+  --editor-font-family:
+    ui-monospace, 'SFMono-Regular', 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  --editor-font-size: 13px;
+  --editor-line-height: 1.55;
+  --editor-font-ligatures: none;
+  /* 与 DSH 代码显示一致，使用内置排版，不提供独立的用户设置。 */
+  --code-editor-font-size: 14px;
+  --code-editor-line-height: 22px;
+  --code-editor-font-ligatures: normal;
+  --editor-background: #15171b;
+  --editor-gutter-background: #15171b;
+  --editor-gutter-border: #2b2e35;
+  --editor-text: #d7dae0;
+  --editor-comment: #8b93a1;
+  --editor-keyword: #d18bb7;
+  --editor-string: #a8c77b;
+  --editor-literal: #d6a067;
+  --editor-type: #78b7d5;
+  --editor-function: #91b7e3;
+  --editor-constant: #c9a7e8;
+  --editor-tag: #e28b7d;
+  --editor-operator: #c0c5ce;
+  --editor-invalid: #ff6b74;
+  --editor-line-number: #737b88;
+  --editor-active-line-number: #eef0f4;
+  --editor-active-line: rgb(255 255 255 / 0.04);
+  --editor-selection: rgb(49 93 140 / 0.6);
+  --editor-cursor: #f4f6fa;
+  --editor-accent: #7ea2ff;
+  --editor-bracket-background: rgb(120 183 213 / 0.2);
+  --editor-bracket-border: #78b7d5;
+  --window-edge: 8px;
+  --session-chrome-height: 32px;
+  --window-gap: var(--window-edge);
+  --mode-rail-width: 50px;
+  --island-radius: max(0px, calc(var(--window-outer-radius, 18px) - var(--window-edge)));
+  --navigation-expanded-width: 260px;
+  --information-expanded-width: 260px;
+  --composer-height: 112px;
+  --composer-inset: 16px;
+  --canvas-image: none;
+  --sidebar-image: none;
+  --content-image: none;
+  font-family: var(--font-ui);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-color-scheme='dark']) {
+    --canvas-bg: #dde3ee;
+    --surface: #fafbfe;
+    --surface-raised: #eceef2;
+    --surface-hover: rgb(15 23 42 / 0.05);
+    --surface-active: rgb(15 23 42 / 0.085);
+    --surface-selected: #e2e8f8;
+    --text: #151922;
+    --muted: #525969;
+    --faint: #788094;
+    --line: rgb(15 23 42 / 0.08);
+    --line-strong: rgb(15 23 42 / 0.145);
+    --island-rim: rgb(255 255 255 / 0.94);
+    --island-shadow: 0 8px 24px rgb(15 23 42 / 0.08);
+    --mode-track: rgb(21 32 58 / 0.055);
+    --mode-track-border: rgb(21 32 58 / 0.075);
+    --mode-track-shadow: inset 0 1px 2px rgb(15 23 42 / 0.08), 0 1px 0 rgb(255 255 255 / 0.85);
+    --mode-lens: linear-gradient(180deg, rgb(255 255 255 / 0.96), rgb(245 248 255 / 0.88));
+    --mode-lens-border: rgb(15 23 42 / 0.09);
+    --mode-lens-shadow: 0 2px 8px rgb(15 23 42 / 0.08), inset 0 1px 0 #fff;
+    --floating-glass-bg: linear-gradient(180deg, rgb(255 255 255 / 0.8), rgb(244 247 253 / 0.72));
+    --floating-glass-border: rgb(15 23 42 / 0.1);
+    --floating-glass-shadow:
+      0 6px 18px rgb(15 23 42 / 0.09), 0 1px 3px rgb(15 23 42 / 0.06),
+      inset 0 1px 0 rgb(255 255 255 / 0.92), inset 0 -1px 0 rgb(15 23 42 / 0.04);
+    --floating-glass-sheen: rgb(255 255 255 / 0.9);
+    --file-icon-source: #19789b;
+    --file-icon-test: #4d7e2b;
+    --file-icon-docs: #316ea9;
+    --file-icon-config: #7c4ca0;
+    --file-icon-assets: #9a5c13;
+    --file-icon-build: #606673;
+    --file-icon-archive: #8a4d22;
+    --file-icon-sensitive: #b43f3f;
+    --file-icon-data: #187a68;
+    --file-icon-language: #2867a8;
+    --editor-background: #fbfbfc;
+    --editor-gutter-background: #fbfbfc;
+    --editor-gutter-border: #d9dce3;
+    --editor-text: #24262b;
+    --editor-comment: #667085;
+    --editor-keyword: #8a3f75;
+    --editor-string: #456b2f;
+    --editor-literal: #8e5915;
+    --editor-type: #176484;
+    --editor-function: #315e96;
+    --editor-constant: #6c4a98;
+    --editor-tag: #a14336;
+    --editor-operator: #4e5664;
+    --editor-invalid: #b42318;
+    --editor-line-number: #737b88;
+    --editor-active-line-number: #24262b;
+    --editor-active-line: rgb(32 48 74 / 0.04);
+    --editor-selection: rgb(184 214 242 / 0.6);
+    --editor-cursor: #181a1f;
+    --editor-accent: #315e96;
+    --editor-bracket-background: rgb(23 100 132 / 0.14);
+    --editor-bracket-border: #176484;
+  }
+}
+
+:root[data-color-scheme='light'] {
+  --canvas-bg: #dde3ee;
+  --surface: #fafbfe;
+  --surface-raised: #eceef2;
+  --surface-hover: rgb(15 23 42 / 0.05);
+  --surface-active: rgb(15 23 42 / 0.085);
+  --surface-selected: #e2e8f8;
+  --text: #151922;
+  --muted: #525969;
+  --faint: #788094;
+  --line: rgb(15 23 42 / 0.08);
+  --line-strong: rgb(15 23 42 / 0.145);
+  --island-rim: rgb(255 255 255 / 0.94);
+  --island-shadow: 0 8px 24px rgb(15 23 42 / 0.08);
+  --mode-track: rgb(21 32 58 / 0.055);
+  --mode-track-border: rgb(21 32 58 / 0.075);
+  --mode-track-shadow: inset 0 1px 2px rgb(15 23 42 / 0.08), 0 1px 0 rgb(255 255 255 / 0.85);
+  --mode-lens: linear-gradient(180deg, rgb(255 255 255 / 0.96), rgb(245 248 255 / 0.88));
+  --mode-lens-border: rgb(15 23 42 / 0.09);
+  --mode-lens-shadow: 0 2px 8px rgb(15 23 42 / 0.08), inset 0 1px 0 #fff;
+  --floating-glass-bg: linear-gradient(180deg, rgb(255 255 255 / 0.8), rgb(244 247 253 / 0.72));
+  --floating-glass-border: rgb(15 23 42 / 0.1);
+  --floating-glass-shadow:
+    0 6px 18px rgb(15 23 42 / 0.09), 0 1px 3px rgb(15 23 42 / 0.06),
+    inset 0 1px 0 rgb(255 255 255 / 0.92), inset 0 -1px 0 rgb(15 23 42 / 0.04);
+  --floating-glass-sheen: rgb(255 255 255 / 0.9);
+  --file-icon-source: #19789b;
+  --file-icon-test: #4d7e2b;
+  --file-icon-docs: #316ea9;
+  --file-icon-config: #7c4ca0;
+  --file-icon-assets: #9a5c13;
+  --file-icon-build: #606673;
+  --file-icon-archive: #8a4d22;
+  --file-icon-sensitive: #b43f3f;
+  --file-icon-data: #187a68;
+  --file-icon-language: #2867a8;
+  --editor-background: #fbfbfc;
+  --editor-gutter-background: #fbfbfc;
+  --editor-gutter-border: #d9dce3;
+  --editor-text: #24262b;
+  --editor-comment: #667085;
+  --editor-keyword: #8a3f75;
+  --editor-string: #456b2f;
+  --editor-literal: #8e5915;
+  --editor-type: #176484;
+  --editor-function: #315e96;
+  --editor-constant: #6c4a98;
+  --editor-tag: #a14336;
+  --editor-operator: #4e5664;
+  --editor-invalid: #b42318;
+  --editor-line-number: #737b88;
+  --editor-active-line-number: #24262b;
+  --editor-active-line: rgb(32 48 74 / 0.04);
+  --editor-selection: rgb(184 214 242 / 0.6);
+  --editor-cursor: #181a1f;
+  --editor-accent: #315e96;
+  --editor-bracket-background: rgb(23 100 132 / 0.14);
+  --editor-bracket-border: #176484;
+}

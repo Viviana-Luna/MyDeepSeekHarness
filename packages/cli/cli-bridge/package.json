@@ -1,0 +1,59 @@
+{
+  "name": "@mydsh/cli-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MyDSH 二级受控 CLI 桥：将外围业务工具隔离在独立作用域，经本地 IPC 供 Shell 按需调用",
+  "main": "lib/index.js",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./lib/index.js"
+    },
+    "./cli": {
+      "types": "./src/cli.ts",
+      "default": "./lib/cli.js"
+    },
+    "./catalog": {
+      "types": "./src/catalog.ts",
+      "default": "./lib/catalog.js"
+    },
+    "./argv-parser": {
+      "types": "./src/argv-parser.ts",
+      "default": "./lib/argv-parser.js"
+    },
+    "./preset-skills": {
+      "types": "./src/preset-skills.ts",
+      "default": "./lib/preset-skills.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "license": "GPL-3.0-or-later",
+  "files": [
+    "lib",
+    "src",
+    "skills",
+    "README.md"
+  ],
+  "dependencies": {
+    "@deepseek-ai/cordis": "workspace:*",
+    "@deepseek-ai/dsh-agent": "workspace:*",
+    "@deepseek-ai/dsh-attachment": "workspace:*",
+    "@deepseek-ai/dsh-lazy-require": "workspace:*",
+    "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-shell": "workspace:*",
+    "@deepseek-ai/dsh-shell-env": "workspace:*",
+    "@deepseek-ai/dsh-skill-filesystem": "workspace:*",
+    "@deepseek-ai/dsh-tool-cordis": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-user-approval": "workspace:*",
+    "@deepseek-ai/dsh-win32-process": "workspace:*",
+    "@mydsh/browser-automation": "workspace:*",
+    "@mydsh/computer-use": "workspace:*",
+    "@mydsh/connection-access": "workspace:*",
+    "@mydsh/database": "workspace:*",
+    "@mydsh/ssh": "workspace:*",
+    "koffi": "^3.1.0"
+  }
+}

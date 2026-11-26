@@ -1,0 +1,43 @@
+# Prettier 只排版 MyDSH 自有代码；规则见 docs/code-style.md。
+
+# 构建产物、依赖与 Umi 生成文件
+lib/
+out/
+node_modules/
+.pnpm-store/
+coverage/
+src/renderer/src/.umi*/
+
+# 文档、数据与配置保持手写格式
+*.md
+*.json
+*.yaml
+*.yml
+*.patch
+*.txt
+/docs/
+/assets/
+/build/
+/native/
+/patches/
+/.github/
+/.vscode/
+
+# 固定上游源码保持原样，便于跟进 DSH 升级；下方逐个放行 MyDSH 自有模块。
+/vendor/
+/packages/*/*/
+!/packages/desktop-services/src/
+!/packages/connections/ssh/
+!/packages/connections/database/
+!/packages/connections/access/
+!/packages/llm/llm-chatgpt/
+!/packages/interaction/auto-review/
+!/packages/compaction/compaction-chatgpt/
+!/packages/automation/browser/
+!/packages/automation/computer-use/
+!/packages/cli/cli-bridge/
+# agent-presets 是上游模块，其中只有这两个文件由 MyDSH 新增。
+!/packages/preset/agent-presets/
+/packages/preset/agent-presets/*
+!/packages/preset/agent-presets/coding-tools.js
+!/packages/preset/agent-presets/patch-format.js

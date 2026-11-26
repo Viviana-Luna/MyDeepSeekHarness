@@ -1,0 +1,335 @@
+/**
+ * 全平台统一按钮样式体系：与输入区发送/停止按钮共享同一套立体嵌压光向与表面材质令牌。
+ * 同时作用于可复用组件 `.mydsh-btn` 与全站 Ant Design `.ant-btn`，明暗主题与无障碍降级自洽。
+ */
+
+:root {
+  /* 与浮岛外壳同源的浮雕光向，提升至 :root 确保 Portal 弹层与设置弹窗同样继承。 */
+  --relief-light: light-dark(rgb(255 255 255 / 0.68), rgb(226 234 248 / 0.065));
+  --relief-dark: light-dark(rgb(15 23 42 / 0.12), rgb(0 0 0 / 0.34));
+  --relief-raised: inset 0 1px 0 var(--relief-light), 0 2px 6px var(--relief-dark);
+  --relief-recessed: inset 0 1px 2px var(--relief-dark), inset 0 -1px 0 var(--relief-light);
+
+  /* 全平台按钮共享圆角与嵌压阴影（与输入区发送/停止按钮同源）。 */
+  --mydsh-btn-radius: 10px;
+  --mydsh-btn-radius-sm: 8px;
+  --mydsh-btn-radius-lg: 11px;
+  --mydsh-btn-shadow: var(--relief-recessed);
+  --mydsh-btn-shadow-active:
+    inset 1px 2px 5px var(--relief-dark),
+    inset -1px -1px 0 color-mix(in srgb, var(--relief-light) 72%, transparent);
+
+  /* 默认/次级按钮：深浅嵌压微柔面，暗色避免死黑底，浅色温润微灰。 */
+  --mydsh-btn-face: light-dark(
+    color-mix(in srgb, var(--surface-raised) 82%, var(--surface)),
+    color-mix(in srgb, var(--surface-raised) 74%, var(--canvas-bg))
+  );
+  --mydsh-btn-face-hover: light-dark(
+    color-mix(in srgb, var(--surface-hover) 88%, var(--surface)),
+    color-mix(in srgb, var(--surface-hover) 84%, var(--surface-raised))
+  );
+  --mydsh-btn-face-active: light-dark(
+    color-mix(in srgb, var(--surface-selected) 52%, var(--surface-raised)),
+    color-mix(in srgb, var(--surface) 78%, var(--canvas-bg))
+  );
+  --mydsh-btn-border: light-dark(
+    color-mix(in srgb, var(--line-strong) 56%, var(--line)),
+    color-mix(in srgb, var(--line-strong) 60%, transparent)
+  );
+  --mydsh-btn-border-hover: var(--line-strong);
+  --mydsh-btn-border-active: var(--line-strong);
+  --mydsh-btn-text: var(--text);
+
+  /* 主按钮（Primary）：与 .send-button 同源。 */
+  --mydsh-btn-primary-face: var(--accent);
+  --mydsh-btn-primary-face-hover: color-mix(in srgb, var(--accent) 88%, white);
+  --mydsh-btn-primary-face-active: color-mix(in srgb, var(--accent) 86%, black);
+  --mydsh-btn-primary-border: color-mix(in srgb, var(--accent) 70%, var(--mode-track-border));
+  --mydsh-btn-primary-border-hover: color-mix(in srgb, var(--accent) 82%, white);
+  --mydsh-btn-primary-text: var(--accent-contrast);
+
+  /* 危险按钮（默认描边态，如「永久删除」）：柔和低饱和红透底 + 克制红描边 + 嵌压触感。 */
+  --mydsh-btn-danger-face: light-dark(
+    color-mix(in srgb, var(--negative) 10%, var(--surface)),
+    color-mix(in srgb, var(--negative) 14%, var(--surface-raised))
+  );
+  --mydsh-btn-danger-face-hover: light-dark(
+    color-mix(in srgb, var(--negative) 17%, var(--surface)),
+    color-mix(in srgb, var(--negative) 22%, var(--surface-raised))
+  );
+  --mydsh-btn-danger-face-active: light-dark(
+    color-mix(in srgb, var(--negative) 23%, var(--surface)),
+    color-mix(in srgb, var(--negative) 28%, var(--surface))
+  );
+  --mydsh-btn-danger-border: light-dark(
+    color-mix(in srgb, var(--negative) 34%, var(--line)),
+    color-mix(in srgb, var(--negative) 42%, var(--line))
+  );
+  --mydsh-btn-danger-border-hover: color-mix(in srgb, var(--negative) 58%, var(--line));
+  --mydsh-btn-danger-text: light-dark(
+    color-mix(in srgb, var(--negative) 88%, #7a1018),
+    color-mix(in srgb, var(--negative) 92%, white)
+  );
+
+  /* 危险主按钮（实心确认态）：柔和实红底 + 同源嵌压触感。 */
+  --mydsh-btn-danger-solid-face: light-dark(
+    color-mix(in srgb, var(--negative) 88%, #c92a36),
+    color-mix(in srgb, var(--negative) 82%, #b91c28)
+  );
+  --mydsh-btn-danger-solid-face-hover: light-dark(
+    color-mix(in srgb, var(--negative) 94%, #d63542),
+    color-mix(in srgb, var(--negative) 92%, #d93846)
+  );
+  --mydsh-btn-danger-solid-face-active: color-mix(in srgb, var(--negative) 76%, black);
+  --mydsh-btn-danger-solid-border: color-mix(in srgb, var(--negative) 72%, rgb(0 0 0 / 0.2));
+  --mydsh-btn-danger-solid-text: #ffffff;
+
+  /* 禁用态：柔和降阶，去刺眼双边。 */
+  --mydsh-btn-disabled-face: light-dark(
+    color-mix(in srgb, var(--surface-raised) 56%, transparent),
+    color-mix(in srgb, var(--surface-raised) 44%, transparent)
+  );
+  --mydsh-btn-disabled-border: color-mix(in srgb, var(--line) 74%, transparent);
+  --mydsh-btn-disabled-text: var(--faint);
+}
+
+body .ant-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-weight: var(--weight-medium);
+  line-height: 1.25;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease,
+    opacity 140ms ease;
+}
+
+body .ant-btn > .ant-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+body .ant-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 82%, white);
+  outline-offset: 2px;
+}
+
+/* 使用 body 前缀略高于 Ant Design 运行时注入的 :where(...) 变体规则权重，无需滥用 !important。 */
+body .ant-btn.ant-btn-color-default.ant-btn-variant-outlined:not(.ant-btn-background-ghost),
+body .mydsh-btn.mydsh-btn--default {
+  --ant-btn-bg-color: var(--mydsh-btn-face);
+  --ant-btn-bg-color-container: var(--mydsh-btn-face);
+  --ant-btn-bg-color-hover: var(--mydsh-btn-face-hover);
+  --ant-btn-bg-color-active: var(--mydsh-btn-face-active);
+  --ant-btn-bg-color-disabled: var(--mydsh-btn-disabled-face);
+  --ant-btn-border-color: var(--mydsh-btn-border);
+  --ant-btn-border-color-hover: var(--mydsh-btn-border-hover);
+  --ant-btn-border-color-active: var(--mydsh-btn-border-active);
+  --ant-btn-text-color: var(--mydsh-btn-text);
+  --ant-btn-text-color-hover: var(--mydsh-btn-text);
+  --ant-btn-text-color-active: var(--mydsh-btn-text);
+  --ant-btn-shadow: var(--mydsh-btn-shadow);
+  box-shadow: var(--mydsh-btn-shadow);
+}
+
+body .ant-btn.ant-btn-color-default.ant-btn-variant-dashed:not(.ant-btn-background-ghost) {
+  --ant-btn-bg-color: color-mix(in srgb, var(--mydsh-btn-face) 68%, transparent);
+  --ant-btn-bg-color-container: color-mix(in srgb, var(--mydsh-btn-face) 68%, transparent);
+  --ant-btn-bg-color-hover: var(--mydsh-btn-face-hover);
+  --ant-btn-bg-color-active: var(--mydsh-btn-face-active);
+  --ant-btn-border-color: var(--mydsh-btn-border);
+  --ant-btn-border-color-hover: var(--mydsh-btn-border-hover);
+  --ant-btn-border-color-active: var(--mydsh-btn-border-active);
+  --ant-btn-text-color: var(--mydsh-btn-text);
+  --ant-btn-text-color-hover: var(--mydsh-btn-text);
+  --ant-btn-text-color-active: var(--mydsh-btn-text);
+  --ant-btn-shadow: var(--mydsh-btn-shadow);
+  box-shadow: var(--mydsh-btn-shadow);
+}
+
+body .ant-btn.ant-btn-color-primary.ant-btn-variant-solid:not(.ant-btn-background-ghost),
+body .mydsh-btn.mydsh-btn--primary {
+  --ant-btn-bg-color: var(--mydsh-btn-primary-face);
+  --ant-btn-solid-bg-color: var(--mydsh-btn-primary-face);
+  --ant-btn-bg-color-hover: var(--mydsh-btn-primary-face-hover);
+  --ant-btn-solid-bg-color-hover: var(--mydsh-btn-primary-face-hover);
+  --ant-btn-bg-color-active: var(--mydsh-btn-primary-face-active);
+  --ant-btn-solid-bg-color-active: var(--mydsh-btn-primary-face-active);
+  --ant-btn-border-color: var(--mydsh-btn-primary-border);
+  --ant-btn-border-color-hover: var(--mydsh-btn-primary-border-hover);
+  --ant-btn-border-color-active: var(--mydsh-btn-primary-border);
+  --ant-btn-text-color: var(--mydsh-btn-primary-text);
+  --ant-btn-text-color-hover: var(--mydsh-btn-primary-text);
+  --ant-btn-text-color-active: var(--mydsh-btn-primary-text);
+  --ant-btn-shadow: var(--mydsh-btn-shadow);
+  box-shadow: var(--mydsh-btn-shadow);
+}
+
+body .ant-btn.ant-btn-color-dangerous.ant-btn-variant-outlined:not(.ant-btn-background-ghost),
+body .mydsh-btn.mydsh-btn--danger {
+  --ant-btn-bg-color: var(--mydsh-btn-danger-face);
+  --ant-btn-bg-color-container: var(--mydsh-btn-danger-face);
+  --ant-btn-bg-color-hover: var(--mydsh-btn-danger-face-hover);
+  --ant-btn-bg-color-active: var(--mydsh-btn-danger-face-active);
+  --ant-btn-border-color: var(--mydsh-btn-danger-border);
+  --ant-btn-border-color-hover: var(--mydsh-btn-danger-border-hover);
+  --ant-btn-border-color-active: var(--mydsh-btn-danger-border-hover);
+  --ant-btn-text-color: var(--mydsh-btn-danger-text);
+  --ant-btn-text-color-hover: var(--mydsh-btn-danger-text);
+  --ant-btn-text-color-active: var(--mydsh-btn-danger-text);
+  --ant-btn-shadow: var(--mydsh-btn-shadow);
+  box-shadow: var(--mydsh-btn-shadow);
+}
+
+body .ant-btn.ant-btn-color-dangerous.ant-btn-variant-solid:not(.ant-btn-background-ghost),
+body .mydsh-btn.mydsh-btn--danger-solid {
+  --ant-btn-bg-color: var(--mydsh-btn-danger-solid-face);
+  --ant-btn-solid-bg-color: var(--mydsh-btn-danger-solid-face);
+  --ant-btn-bg-color-hover: var(--mydsh-btn-danger-solid-face-hover);
+  --ant-btn-solid-bg-color-hover: var(--mydsh-btn-danger-solid-face-hover);
+  --ant-btn-bg-color-active: var(--mydsh-btn-danger-solid-face-active);
+  --ant-btn-solid-bg-color-active: var(--mydsh-btn-danger-solid-face-active);
+  --ant-btn-border-color: var(--mydsh-btn-danger-solid-border);
+  --ant-btn-border-color-hover: var(--mydsh-btn-danger-solid-border);
+  --ant-btn-border-color-active: var(--mydsh-btn-danger-solid-border);
+  --ant-btn-text-color: var(--mydsh-btn-danger-solid-text);
+  --ant-btn-text-color-hover: var(--mydsh-btn-danger-solid-text);
+  --ant-btn-text-color-active: var(--mydsh-btn-danger-solid-text);
+  --ant-btn-shadow: var(--mydsh-btn-shadow);
+  box-shadow: var(--mydsh-btn-shadow);
+}
+
+body
+  .ant-btn:not(.ant-btn-variant-text):not(.ant-btn-variant-link):not(.ant-btn-background-ghost):not(
+    :disabled
+  ):not(.ant-btn-disabled):active {
+  box-shadow: var(--mydsh-btn-shadow-active);
+}
+
+body .ant-btn.ant-btn-background-ghost,
+body .ant-btn.ant-btn-color-default.ant-btn-background-ghost.ant-btn-variant-outlined,
+body .ant-btn.ant-btn-color-default.ant-btn-background-ghost.ant-btn-variant-dashed,
+body .ant-btn.ant-btn-background-ghost.ant-btn-variant-outlined,
+body .ant-btn.ant-btn-background-ghost.ant-btn-variant-dashed,
+body .ant-btn.mydsh-btn.mydsh-btn--ghost.ant-btn-background-ghost,
+body .mydsh-btn.mydsh-btn--ghost {
+  --ant-btn-bg-color: transparent;
+  --ant-btn-bg-color-container: transparent;
+  --ant-btn-bg-color-hover: color-mix(in srgb, var(--surface-hover) 68%, transparent);
+  --ant-btn-bg-color-active: color-mix(in srgb, var(--surface-selected) 68%, transparent);
+  --ant-btn-border-color: var(--mydsh-btn-border);
+  --ant-btn-border-color-hover: var(--mydsh-btn-border-hover);
+  --ant-btn-border-color-active: var(--mydsh-btn-border-hover);
+  --ant-btn-text-color: var(--mydsh-btn-text);
+  --ant-btn-text-color-hover: var(--mydsh-btn-text);
+  --ant-btn-text-color-active: var(--mydsh-btn-text);
+  --ant-btn-shadow: none;
+  box-shadow: none;
+}
+
+body .ant-btn.ant-btn-color-default.ant-btn-variant-text,
+body .mydsh-btn.mydsh-btn--text {
+  --ant-btn-bg-color: transparent;
+  --ant-btn-bg-color-hover: color-mix(in srgb, var(--surface-hover) 72%, transparent);
+  --ant-btn-bg-color-active: color-mix(in srgb, var(--surface-selected) 72%, transparent);
+  --ant-btn-border-color: transparent;
+  --ant-btn-border-color-hover: transparent;
+  --ant-btn-border-color-active: transparent;
+  --ant-btn-text-color: var(--muted);
+  --ant-btn-text-color-hover: var(--text);
+  --ant-btn-text-color-active: var(--text);
+  box-shadow: none;
+}
+
+body .ant-btn.ant-btn-color-dangerous.ant-btn-variant-text {
+  --ant-btn-bg-color: transparent;
+  --ant-btn-bg-color-hover: color-mix(in srgb, var(--negative) 12%, transparent);
+  --ant-btn-bg-color-active: color-mix(in srgb, var(--negative) 18%, transparent);
+  --ant-btn-border-color: transparent;
+  --ant-btn-border-color-hover: transparent;
+  --ant-btn-border-color-active: transparent;
+  --ant-btn-text-color: var(--mydsh-btn-danger-text);
+  --ant-btn-text-color-hover: var(--mydsh-btn-danger-text);
+  --ant-btn-text-color-active: var(--mydsh-btn-danger-text);
+  box-shadow: none;
+}
+
+body .ant-btn.ant-btn-variant-link {
+  --ant-btn-border-color: transparent;
+  --ant-btn-border-color-hover: transparent;
+  --ant-btn-border-color-active: transparent;
+  box-shadow: none;
+}
+
+body .mydsh-btn.mydsh-btn--pill,
+body .ant-btn.ant-btn-round {
+  border-radius: 999px;
+}
+
+body
+  .ant-btn:is(:disabled, .ant-btn-disabled):not(.ant-btn-variant-text):not(.ant-btn-variant-link) {
+  border-color: var(--mydsh-btn-disabled-border);
+  background: var(--mydsh-btn-disabled-face);
+  color: var(--mydsh-btn-disabled-text);
+  box-shadow: none;
+  opacity: 0.62;
+}
+
+body .ant-btn:is(:disabled, .ant-btn-disabled):is(.ant-btn-variant-text, .ant-btn-variant-link) {
+  border-color: transparent;
+  background: transparent;
+  color: var(--faint);
+  box-shadow: none;
+  opacity: 0.48;
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --mydsh-btn-shadow: none;
+    --mydsh-btn-shadow-active: none;
+    --mydsh-btn-border: var(--line-strong);
+    --mydsh-btn-primary-border: var(--text);
+    --mydsh-btn-danger-border: var(--negative);
+    --mydsh-btn-danger-solid-border: var(--text);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body .ant-btn {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  :root {
+    --relief-recessed: none;
+    --mydsh-btn-shadow: none;
+    --mydsh-btn-shadow-active: none;
+  }
+
+  body .ant-btn:not(.ant-btn-variant-text):not(.ant-btn-variant-link) {
+    border-color: ButtonText;
+    background: ButtonFace;
+    color: ButtonText;
+    box-shadow: none;
+  }
+
+  body .ant-btn:is(.ant-btn-color-primary, .ant-btn-color-dangerous).ant-btn-variant-solid {
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+    box-shadow: none;
+  }
+
+  body .ant-btn:is(:disabled, .ant-btn-disabled) {
+    border-color: GrayText;
+    color: GrayText;
+    opacity: 1;
+  }
+}

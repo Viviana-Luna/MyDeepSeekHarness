@@ -1,0 +1,20 @@
+{
+  "name": "@mydsh/ui",
+  "version": "1.0.0",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "description": "MyDSH 前端插件的真实接口类型与编译边界；运行实例由 renderer 提供",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": { "types": "./lib/index.d.ts" },
+    "./tsconfig": "./tsconfig.frontend.json",
+    "./package.json": "./package.json"
+  },
+  "files": ["lib", "tsconfig.frontend.json", "README.md"],
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:*",
+    "@types/react": "^19.2.0",
+    "react": "^19.2.0"
+  }
+}

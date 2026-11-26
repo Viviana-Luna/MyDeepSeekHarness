@@ -1,0 +1,1007 @@
+.session-chrome {
+  position: relative;
+  grid-column: 2 / -1;
+  grid-row: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  height: var(--session-chrome-height);
+  align-self: start;
+  align-items: center;
+  gap: 10px;
+  padding-left: 10px;
+  opacity: var(--session-chrome-reveal);
+  transform: translateX(calc(-18px * (1 - var(--session-chrome-reveal))));
+  clip-path: inset(
+    -12px calc((1 - var(--session-chrome-reveal)) * 100% - 4px * var(--session-chrome-reveal)) -12px
+      0 round 16px
+  );
+  visibility: visible;
+  transition: visibility 0s;
+  -webkit-app-region: drag;
+}
+.app-shell[data-navigation-collapsed='true'] .session-chrome {
+  grid-column: 1 / -1;
+  padding-left: 80px;
+}
+.app-shell[data-navigation-collapsed='true'] .session-chrome .session-search-trigger {
+  width: 32px;
+  height: 32px;
+}
+.session-chrome[aria-hidden='true'] {
+  visibility: hidden;
+  pointer-events: none;
+  transition-delay: var(--panel-motion-duration);
+}
+.session-tabs-frame {
+  display: flex;
+  min-width: 0;
+  height: 32px;
+  flex: 1;
+  align-items: center;
+}
+/* 溢出时外框固定，内容在圆角轨道内部滚动，边缘不再跟着内容被切成直线。 */
+.session-tabs-frame[data-overflow] {
+  gap: 2px;
+  padding-inline: 3px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface-raised);
+}
+.session-tabs-frame[data-overflow] .session-tabs {
+  --tab-fade-left: 0px;
+  --tab-fade-right: 0px;
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black var(--tab-fade-left),
+    black calc(100% - var(--tab-fade-right)),
+    transparent
+  );
+}
+.session-tabs-frame[data-scroll-left] .session-tabs {
+  --tab-fade-left: 12px;
+}
+.session-tabs-frame[data-scroll-right] .session-tabs {
+  --tab-fade-right: 12px;
+}
+.session-tabs-frame[data-overflow] .session-tab-track::before {
+  box-shadow: none;
+}
+.session-tab-scroll {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--text);
+  background: var(--surface);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.session-tab-scroll[hidden] {
+  display: none;
+}
+.session-tab-scroll:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+.session-tab-scroll:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+.session-tab-scroll:focus-visible {
+  outline-offset: -2px;
+}
+.session-tabs {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 52px;
+  margin-block: -10px;
+  padding: 13px 3px;
+  overflow: auto hidden;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: 12px;
+  isolation: isolate;
+  -webkit-app-region: drag;
+}
+.session-tab-glass {
+  position: relative;
+  display: flow-root;
+  width: max-content;
+  min-width: 100%;
+  touch-action: pan-y;
+  user-select: none;
+}
+/* 材质盒包含底轨两侧的 3px 突起，保持滤镜范围与引擎测量范围一致。 */
+.session-tab-material {
+  position: absolute;
+  z-index: 0;
+  inset: -10px -3px;
+  padding: 10px 3px;
+  pointer-events: none;
+  will-change: filter;
+}
+.session-tab-track {
+  position: relative;
+  height: 26px;
+}
+.session-tab-track::before {
+  position: absolute;
+  inset: -3px;
+  border-radius: 18px;
+  content: '';
+  background: var(--surface-raised);
+  box-shadow:
+    inset 0 1px 1px color-mix(in srgb, var(--text) 5%, transparent),
+    0 1px 0 rgb(255 255 255 / 0.08);
+}
+.session-tab-content {
+  position: relative;
+  z-index: 2;
+  padding-block: 10px;
+  margin-block: -10px;
+}
+/* 只有标签交互行排除窗口拖动，材质形变所需的上下留白仍属于标题栏。 */
+.session-tab-items {
+  position: relative;
+  display: flex;
+  height: 26px;
+  isolation: isolate;
+  -webkit-app-region: no-drag;
+}
+.session-tab-shell {
+  position: relative;
+  flex: none;
+  width: var(--session-tab-width, 96px);
+  min-width: 96px;
+  border-radius: 13px;
+  color: var(--muted);
+  transition: background 120ms ease;
+}
+.session-tab-group {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+.session-group-switcher {
+  display: flex;
+  max-width: min(200px, 24vw);
+  height: 28px;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-caption);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.session-group-switcher:hover,
+.session-group-switcher[aria-expanded='true'] {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.session-group-switcher svg {
+  flex: none;
+}
+.session-group-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-group-unread {
+  display: inline-grid;
+  min-width: 16px;
+  height: 16px;
+  flex: none;
+  padding: 0 4px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-contrast, white);
+  font-size: 10px;
+}
+.project-focus-menu.session-group-menu > button {
+  grid-template-columns: 16px minmax(0, 1fr) auto auto;
+}
+.session-group-menu > button > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.session-tab-unread {
+  position: absolute;
+  left: 12px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.session-tab-shell:not([data-selected]):is(:hover, :focus-within) {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text);
+}
+.session-tab-glass[data-reordering] .session-tab-unit {
+  transition: transform 180ms ease;
+}
+.session-tab-shell[data-pressed]:not([data-selected]) {
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+.session-tab-glass[data-reordering] .session-tab-unit[data-dragging] {
+  z-index: 2;
+  transition: none;
+  border-radius: 13px;
+}
+.session-tab-glass[data-reordering] .session-tab-items::after {
+  position: absolute;
+  inset-block: 0;
+  left: var(--tab-drop-left);
+  width: var(--tab-drop-width);
+  border: 1px dashed var(--accent);
+  border-radius: 13px;
+  content: '';
+  pointer-events: none;
+}
+.session-tab-shell::after {
+  position: absolute;
+  top: 7px;
+  right: 0;
+  width: 1px;
+  height: 12px;
+  background: var(--line);
+  content: '';
+}
+.session-tab-shell:last-child::after,
+.session-tab-shell[data-selected]::after,
+.session-tab-shell:has(+ [data-selected])::after {
+  opacity: 0;
+}
+.session-tab {
+  display: flex;
+  width: 100%;
+  height: 26px;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 28px;
+  border-radius: 15px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: var(--text-control);
+  font-weight: var(--weight-medium);
+}
+.session-tab span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.session-tab svg {
+  flex: none;
+}
+.session-tab-shell[data-selected] {
+  color: var(--text);
+}
+.session-tab-shell[data-selected] .session-tab {
+  font-weight: var(--weight-medium);
+}
+.session-tab:hover {
+  color: var(--text);
+}
+.session-tab:focus-visible {
+  outline-offset: -3px;
+}
+.session-tab-close {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0;
+  opacity: 0;
+  color: inherit;
+  background: transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  transition:
+    opacity 100ms ease,
+    background 100ms ease;
+}
+.session-tab-shell:hover .session-tab-close,
+.session-tab-shell:focus-within .session-tab-close {
+  opacity: 1;
+}
+.session-tab-close:hover {
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+.tab-glass-lens {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  height: 26px;
+  border-radius: 13px;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--surface) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  box-shadow:
+    0 2px 5px rgb(0 0 0 / 0.09),
+    inset 0 1px 0 rgb(255 255 255 / 0.16);
+  transform-origin: center;
+  will-change: transform, scale;
+}
+.session-tab-lens[data-pressed] {
+  box-shadow:
+    0 1px 3px rgb(0 0 0 / 0.1),
+    inset 0 1px 0 rgb(255 255 255 / 0.2);
+}
+/* 全局插件页没有选中工作标签，折射区域也不能残留在上一个聊天上。 */
+.session-tab-glass[data-no-selection] .session-tab-material {
+  filter: none !important;
+}
+.session-tab-glass[data-no-selection] .session-tab-lens {
+  display: none;
+}
+.session-tabs:has(.session-tab-lens[data-pressed]),
+.session-tabs:has(.session-tab-lens[data-pressed]) .session-tab,
+.session-tab-glass[data-reordering] .session-tab {
+  cursor: grabbing;
+}
+.new-session-tab {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  padding: 0;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.new-session-tab:hover:not(:disabled) {
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+}
+.new-session-tab:active:not(:disabled) {
+  background: var(--surface);
+}
+.new-tab-menu {
+  position: fixed;
+  z-index: 170;
+  display: grid;
+  min-width: 164px;
+  padding: 5px;
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 16px 44px rgb(0 0 0 / 0.28);
+}
+.new-tab-menu > button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-control);
+  text-align: left;
+  cursor: pointer;
+}
+.new-tab-menu > button:hover:not(:disabled),
+.new-tab-menu > button:focus-visible {
+  background: var(--surface-hover);
+}
+.new-tab-menu > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+.session-tabs-empty {
+  display: grid;
+  width: 100%;
+  place-items: center;
+  color: var(--muted);
+  font-size: var(--text-control);
+}
+.session-glass-filter {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .session-tab-shell,
+  .session-tab-glass[data-reordering] .session-tab-unit {
+    transition: none;
+  }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .session-tab-material {
+    filter: none !important;
+  }
+  .session-tab-lens {
+    display: none;
+  }
+  .session-tab-shell {
+    color: var(--text);
+  }
+  .session-tab-shell[data-selected] {
+    border-radius: 13px;
+    background: var(--surface);
+    outline: 1px solid var(--line-strong);
+    outline-offset: -1px;
+  }
+}
+@media (forced-colors: active) {
+  .session-tabs-frame[data-overflow] {
+    border-color: CanvasText;
+    background: Canvas;
+  }
+  .session-tabs-frame[data-overflow] .session-tabs {
+    mask-image: none;
+  }
+  .session-tab-scroll {
+    border: 1px solid ButtonText;
+    background: ButtonFace;
+    color: ButtonText;
+  }
+  .session-tab-scroll:disabled {
+    opacity: 1;
+    color: GrayText;
+    border-color: GrayText;
+  }
+  .session-tab-material {
+    filter: none !important;
+  }
+  .session-tab-track::before {
+    background: Canvas;
+    outline: 1px solid CanvasText;
+  }
+  .session-tab-lens {
+    display: none;
+  }
+  .session-tab-shell {
+    color: CanvasText;
+  }
+  .session-tab-shell[data-selected] {
+    border-radius: 13px;
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  .session-tab-shell:not([data-selected]):is(:hover, :focus-within) {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+  .session-tab-close {
+    opacity: 1;
+  }
+}
+
+.session-tab-shell[data-preview='true'] .session-tab > span {
+  font-style: italic;
+}
+.session-tab-pin {
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  place-items: center;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  -webkit-app-region: no-drag;
+}
+.session-tab-pin:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.session-tab-shell[data-dirty='true'] .session-tab-close:not(:hover) svg {
+  visibility: hidden;
+}
+.session-tab-shell[data-dirty='true'] .session-tab-close:not(:hover)::after {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warning);
+  content: '';
+}
+
+.session-tab-shell[data-dirty='true'] .session-tab-close {
+  opacity: 1;
+}
+
+.session-group-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border-radius: 7px;
+}
+.session-group-row > button:first-child {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto auto;
+  flex: 1;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 8px;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  border-radius: 7px;
+}
+.session-group-row > button:first-child > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+.session-group-row > button:hover {
+  background: var(--surface-hover);
+}
+.session-group-close {
+  display: grid;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  margin-right: 4px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.tab-split-preview {
+  position: absolute;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--window-gap);
+}
+.tab-split-preview > div {
+  position: relative;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--island-radius);
+  background: color-mix(in srgb, var(--surface) 15%, transparent);
+}
+.tab-split-preview > div[data-target] {
+  border: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.tab-split-preview span {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 6px 12px;
+  border-radius: 18px;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: var(--text-control);
+}
+.tab-drag-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  pointer-events: none;
+  -webkit-app-region: no-drag;
+}
+.tab-drag-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 312px;
+  padding: 11px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface-raised) 96%, transparent);
+  color: var(--text);
+  box-shadow:
+    0 18px 46px rgb(0 0 0 / 0.22),
+    0 2px 8px rgb(0 0 0 / 0.14);
+  transform-origin: top left;
+  will-change: transform;
+}
+.tab-drag-card header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: var(--text-control);
+}
+.tab-drag-card header span {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+.tab-drag-card header strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.tab-drag-card footer {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+.tab-drag-snapshot {
+  position: relative;
+  height: 180px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+}
+.tab-drag-excerpt {
+  padding: 16px;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.tab-drag-excerpt strong {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 15px;
+}
+.tab-drag-excerpt p {
+  white-space: pre-wrap;
+  color: var(--muted);
+}
+.session-tab-unit[data-detached] {
+  opacity: 0.35;
+}
+body[data-workbench-dragging],
+body[data-workbench-dragging] * {
+  cursor: grabbing !important;
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .tab-drag-card {
+    background: var(--surface-raised);
+  }
+  .tab-split-preview > div[data-target] {
+    border-width: 3px;
+    background: transparent;
+  }
+}
+@media (forced-colors: active) {
+  .tab-drag-card,
+  .tab-drag-snapshot {
+    background: Canvas;
+    color: CanvasText;
+    border-color: CanvasText;
+  }
+  .tab-split-preview > div[data-target] {
+    border-color: Highlight;
+    background: transparent;
+  }
+}
+
+.tab-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: 16px;
+  max-height: 65vh;
+  margin-top: 20px;
+  overflow: auto;
+  padding: 2px;
+}
+.tab-overview-card {
+  position: relative;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--surface-raised);
+}
+.tab-overview-card[data-active] {
+  border-color: var(--accent);
+  box-shadow:
+    inset 0 1px var(--island-rim),
+    0 0 14px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.tab-overview-select {
+  display: flex;
+  width: 100%;
+  min-height: 150px;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border-radius: inherit;
+  cursor: pointer;
+}
+.tab-overview-select:hover {
+  background: var(--surface-hover);
+}
+.tab-overview-select strong {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.tab-overview-select > span:not(.tab-overview-type) {
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.tab-overview-type,
+.tab-overview-select small {
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+.tab-overview-select small {
+  margin-top: auto;
+}
+.tab-overview-close {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  right: 4px;
+  top: 4px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.tab-overview-close:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+@media (forced-colors: active) {
+  .tab-split-preview,
+  .tab-overview-card[data-active] {
+    border-color: Highlight;
+  }
+}
+
+/* 分屏组是一个排序单元；两侧标签仍可独立聚焦和关闭。 */
+.session-tab-unit {
+  position: relative;
+  display: flex;
+  flex: none;
+  min-width: 0;
+  border-radius: 13px;
+}
+.session-tab-unit[data-split-group] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+.session-tab-unit[data-split-group] > .session-tab-shell:first-child {
+  border-radius: 13px 0 0 13px;
+}
+.session-tab-unit[data-split-group] > .session-tab-shell:last-child {
+  border-radius: 0 13px 13px 0;
+}
+.session-tab-unit[data-split-group] > .session-tab-shell:first-child::after {
+  opacity: 0.65;
+}
+.tab-drag-card[data-drop-invalid] {
+  border-color: var(--warning);
+}
+.tab-drag-card[data-drop-invalid] footer {
+  color: var(--text);
+}
+@media (forced-colors: active) {
+  .session-tab-unit[data-split-group] {
+    box-shadow: none;
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+  .tab-drag-card[data-drop-invalid] {
+    border-color: CanvasText;
+  }
+}
+
+/* 单标签自动收起顶栏时的轻液态玻璃浮动操作胶囊，与下方会话工具列共用同一光学表面与 27px 右侧按钮轴线。 */
+.floating-tab-actions {
+  position: relative;
+  grid-column: 2;
+  grid-row: var(--workspace-row);
+  justify-self: end;
+  align-self: start;
+  margin: 10px 9px 0 0;
+  z-index: 12;
+  display: inline-flex;
+  height: 36px;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--floating-glass-border);
+  border-radius: 999px;
+  background: var(--floating-glass-bg);
+  box-shadow: var(--floating-glass-shadow);
+  isolation: isolate;
+  overflow: hidden;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  animation: floating-tab-actions-enter 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Windows 窗口按钮（33px 含 1px 底边）落入主浮岛时避让其精确高度，与下方会话工具列玻璃外衣 0px 对齐。 */
+.app-shell:has(.main-island:not([hidden]) > .windows-chrome) .floating-tab-actions {
+  margin-top: calc(var(--window-controls-height, 32px) + 11px);
+}
+
+/* 对话/轨迹单窗格视图下启用浮动胶囊时，转为竖排并与下方会话工具列共用同一块完整玻璃外衣，消除两段拼缝。 */
+.app-shell[data-tab-actions-floating='true']:not([data-workspace-split]):has(
+    .main-island:not([hidden]) > .work-tab-panel:not([hidden]) .conversation-tools,
+    .main-island:not([hidden]):not(.workbench-surface) .conversation-tools
+  )
+  .floating-tab-actions {
+  width: 36px;
+  height: auto;
+  flex-direction: column;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.app-shell[data-tab-actions-floating='true']:not([data-workspace-split]):has(
+    .main-island:not([hidden]) > .work-tab-panel:not([hidden]) .conversation-tools,
+    .main-island:not([hidden]):not(.workbench-surface) .conversation-tools
+  )
+  .floating-tab-actions__glass {
+  display: none;
+}
+
+/* 合并竖胶囊中，分隔顶部「新建 / 平铺面板」与下方「对话 / 轨迹」的居中细线。 */
+.app-shell[data-tab-actions-floating='true']:not([data-workspace-split]):has(
+    .main-island:not([hidden]) > .work-tab-panel:not([hidden]) .conversation-tools,
+    .main-island:not([hidden]):not(.workbench-surface) .conversation-tools
+  )
+  .floating-tab-actions::after {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 1px;
+  border-radius: 999px;
+  background: var(--line-strong);
+  content: '';
+  pointer-events: none;
+}
+
+.floating-tab-actions__glass {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  backdrop-filter: blur(20px) saturate(1.55);
+}
+
+.floating-tab-actions__glass::before {
+  position: absolute;
+  inset: 0 11px auto;
+  height: 1px;
+  border-radius: 999px;
+  content: '';
+  background: linear-gradient(90deg, transparent, var(--floating-glass-sheen) 50%, transparent);
+  pointer-events: none;
+}
+
+.floating-tab-actions__button.new-session-tab {
+  position: relative;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--muted);
+  background: transparent;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.floating-tab-actions__button.new-session-tab:hover:not(:disabled),
+.floating-tab-actions__button.new-session-tab[aria-expanded='true'] {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.floating-tab-actions__button.new-session-tab:active:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-active);
+}
+
+@keyframes floating-tab-actions-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-tab-actions {
+    animation: none;
+  }
+  .floating-tab-actions__button.new-session-tab {
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .floating-tab-actions {
+    border-color: var(--line-strong);
+    background: var(--surface-raised);
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.16);
+  }
+  .app-shell[data-tab-actions-floating='true']:not([data-workspace-split]):has(
+      .main-island:not([hidden]) > .work-tab-panel:not([hidden]) .conversation-tools,
+      .main-island:not([hidden]):not(.workbench-surface) .conversation-tools
+    )
+    .floating-tab-actions {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+  }
+  .floating-tab-actions__glass {
+    display: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .floating-tab-actions {
+    border-color: ButtonText;
+    background: ButtonFace;
+    box-shadow: none;
+  }
+  .app-shell[data-tab-actions-floating='true']:not([data-workspace-split]):has(
+      .main-island:not([hidden]) > .work-tab-panel:not([hidden]) .conversation-tools,
+      .main-island:not([hidden]):not(.workbench-surface) .conversation-tools
+    )
+    .floating-tab-actions {
+    border-color: transparent;
+    background: transparent;
+  }
+  .app-shell[data-tab-actions-floating='true']:not([data-workspace-split]):has(
+      .main-island:not([hidden]) > .work-tab-panel:not([hidden]) .conversation-tools,
+      .main-island:not([hidden]):not(.workbench-surface) .conversation-tools
+    )
+    .floating-tab-actions::after {
+    background: ButtonText;
+  }
+  .floating-tab-actions__glass {
+    display: none;
+  }
+  .floating-tab-actions__button.new-session-tab {
+    background: ButtonFace;
+    color: ButtonText;
+  }
+  .floating-tab-actions__button.new-session-tab:hover:not(:disabled) {
+    background: Highlight;
+    color: HighlightText;
+  }
+}

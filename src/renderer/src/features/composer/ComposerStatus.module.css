@@ -1,0 +1,233 @@
+/* 输入卡片下方的一行会话读数：单行不换行，宽度跟随卡片，面板向上展开。
+   行高必须与 --composer-readings-size 恒等：右下角把手与卡片高度上限都按它计算。 */
+
+.readings {
+  /* 读数行自身是查询容器：宽度跟随 dock，文字降级按这一实际宽度触发。 */
+  container: composer-readings / inline-size;
+  display: flex;
+  height: var(--composer-readings-size, 24px);
+  min-width: 0;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  overflow: hidden;
+  color: var(--faint);
+  font-size: var(--text-caption);
+}
+
+.pill {
+  display: inline-flex;
+  min-width: 0;
+  height: 22px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: default;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.pill > svg {
+  flex: none;
+  stroke-width: 1.5;
+}
+
+button.pill {
+  cursor: pointer;
+}
+
+button.pill:hover,
+button.pill[aria-expanded='true'] {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+button.pill[aria-expanded='true'] {
+  color: var(--text);
+}
+
+button.pill:focus-visible {
+  border-color: var(--line-strong);
+  outline: 2px solid color-mix(in srgb, var(--accent) 62%, transparent);
+  outline-offset: -2px;
+}
+
+.pillLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ring {
+  flex: none;
+}
+
+/* 读数面板：与设置弹窗同一套表面，向上展开时贴住工具行。 */
+.panel {
+  z-index: 120;
+  display: flex;
+  width: min(300px, calc(100vw - 24px));
+  max-height: min(420px, calc(100vh - 32px));
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden auto;
+  padding: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  box-shadow: 0 18px 56px rgb(0 0 0 / 0.34);
+  color: var(--text);
+  font-size: var(--text-control);
+  overscroll-behavior: contain;
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.panelHead > strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+.panelHead > svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.panelHead > span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--muted);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panelRule {
+  height: 1px;
+  background: var(--line);
+}
+
+.panelSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.panelSection + .panelSection {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.panelTitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+
+.panelNote {
+  margin: 0;
+  color: var(--faint);
+  font-size: var(--text-meta);
+  line-height: 1.5;
+}
+
+.panelRows {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.panelRows > dt {
+  color: var(--muted);
+}
+.panelRows > dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.contextBar {
+  display: flex;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-hover);
+}
+
+.contextBar > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+/* 读数行放不下文字时先收起读数文字，只留图标与可点开的面板；
+   再窄时由 ChatComposer 按 dock 宽度整条卸载（阈值见 chat-mainpanel 的 READINGS_DOCK_MIN_WIDTH）。 */
+@container composer-readings (max-width: 280px) {
+  .pillLabel {
+    display: none;
+  }
+  .pill {
+    padding: 0 5px;
+  }
+}
+
+@media (forced-colors: active) {
+  .pill,
+  .panel {
+    border-color: CanvasText;
+  }
+  .contextBar {
+    border: 1px solid CanvasText;
+  }
+}
+
+.contextRow {
+  display: contents;
+}
+.contextRow > dt {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+}
+.contextRow > dd {
+  margin: 0;
+  text-align: right;
+}
+.contextSwatch {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 1px;
+}
+.contextSwatch[data-kind='system'],
+.contextBar > i[data-kind='system'] {
+  background: #a4aab0;
+}
+.contextSwatch[data-kind='tools'],
+.contextBar > i[data-kind='tools'] {
+  background: #a78bfa;
+}
+.contextSwatch[data-kind='messages'],
+.contextBar > i[data-kind='messages'] {
+  background: #4b8df8;
+}
+@container composer-readings (max-width: 460px) {
+  .secondaryReading {
+    display: none;
+  }
+}

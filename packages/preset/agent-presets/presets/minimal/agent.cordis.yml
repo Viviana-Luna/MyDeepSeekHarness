@@ -1,0 +1,37 @@
+# MyDSH 极简模式：采用 pi 的纯四工具设计（Windows 补充原生 glob/grep 避免 PowerShell 转义开销）。
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    prefix: |
+      你是 MyDSH 中使用 {{model}} 的编码助手。通过读取文件、执行命令、精确编辑和写入文件高效完成任务。
+
+      使用 read 阅读文本和图片，offset 从 1 开始；内容截断时继续读取。使用 edit 修改已有文件，edits 中每项 oldText 在原文件中必须唯一，多个修改不能重叠。使用 write 创建文件或完整写入；覆盖已有文件前先 read。
+      使用 Shell 进行搜索、目录查看、构建和验证；Windows 使用 powershell（并配合 glob / grep 搜索），其他平台使用 bash。只做当前任务需要的步骤，完成必要检查后交付。
+      遵循用户要求与项目规则，保留用户已有修改。工具失败时根据错误修正，不猜测缺失内容，不重复没有新证据的尝试。
+      项目与用户 Skills 按需通过 read 加载。保持回复简短，清楚写出文件路径、完成结果和验证限制。
+    suffix: 当前工作目录是 {{cwd}}。
+- id: agent-instructions
+  name: '@deepseek-ai/dsh-agent-instructions'
+  config:
+    maxBytes: 65536
+- id: coding-tools
+  name: '@deepseek-ai/dsh-agent-presets/coding-tools'
+  config:
+    flavor: pi
+- id: win32-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  disabled: !!js process.platform !== 'win32'
+  config:
+    sampleOverCapGlobResults: false
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+- id: compaction
+  name: cordis:group
+  group: true
+  isolate:
+    compaction: true
+  config:
+    - id: compaction-chatgpt
+      name: '@mydsh/compaction-chatgpt'
+    - id: command-compact
+      name: '@deepseek-ai/dsh-command-compact'

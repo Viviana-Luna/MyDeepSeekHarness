@@ -1,0 +1,29 @@
+{
+  "name": "@mydsh/connection-access",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MyDSH 连接能力的临时会话授权与撤销",
+  "main": "lib/index.js",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./lib/index.js"
+    },
+    "./types": "./types.d.ts",
+    "./output": {
+      "types": "./src/output.ts",
+      "default": "./lib/output.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "license": "GPL-3.0-or-later",
+  "dependencies": {
+    "@deepseek-ai/cordis": "workspace:*",
+    "@deepseek-ai/dsh-agent": "workspace:*",
+    "@deepseek-ai/dsh-session": "workspace:*",
+    "@deepseek-ai/dsh-api-session-controller": "workspace:*",
+    "@deepseek-ai/dsh-workspace": "workspace:*"
+  }
+}

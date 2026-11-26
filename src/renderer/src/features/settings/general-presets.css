@@ -1,0 +1,829 @@
+/* 通用设置、Agent 预设与内置插件配置表单的专属视觉样式（厚玻璃卡片、弹窗内容与无障碍降级）。 */
+
+/* ==================== 设置原语：纵向堆叠行 ==================== */
+
+.settings-row[data-layout='vertical'] {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
+  padding: 16px 0;
+}
+
+.settings-row[data-layout='vertical'] .settings-row__control {
+  justify-content: stretch;
+}
+
+/* ==================== 通用设置：外观配色三格选择卡 ==================== */
+
+.gp-color-scheme-options.color-scheme-options {
+  gap: 10px;
+}
+
+.gp-color-scheme-options .gp-scheme-card {
+  display: grid;
+  min-height: 0;
+  justify-items: stretch;
+  align-content: start;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 64%, transparent);
+  color: var(--muted);
+  box-shadow: inset 0 1px color-mix(in srgb, var(--island-rim) 70%, transparent);
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.gp-color-scheme-options .gp-scheme-card:hover {
+  border-color: var(--line-strong);
+  background: color-mix(in srgb, var(--surface-hover) 72%, var(--surface));
+  color: var(--text);
+}
+
+.gp-color-scheme-options .gp-scheme-card.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 72%, var(--line));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--text);
+  box-shadow:
+    inset 0 1px var(--island-rim),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+.gp-scheme-preview {
+  display: grid;
+  grid-template-columns: 24% minmax(0, 1fr);
+  gap: 4px;
+  height: 44px;
+  padding: 5px;
+  border: 1px solid rgb(128 134 150 / 0.24);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.gp-scheme-preview__sidebar,
+.gp-scheme-preview__canvas {
+  border-radius: 4px;
+}
+
+.gp-scheme-preview__canvas {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 5px;
+}
+
+.gp-scheme-preview__bar {
+  width: 48%;
+  height: 4px;
+  border-radius: 999px;
+}
+
+.gp-scheme-preview__line {
+  width: 82%;
+  height: 3px;
+  border-radius: 999px;
+  opacity: 0.55;
+}
+
+.gp-scheme-preview__line--short {
+  width: 56%;
+}
+
+.gp-scheme-preview[data-scheme='light'] {
+  background: #dde3ec;
+}
+.gp-scheme-preview[data-scheme='light'] .gp-scheme-preview__sidebar {
+  background: #f1f3f7;
+  border: 1px solid #d4d9e2;
+}
+.gp-scheme-preview[data-scheme='light'] .gp-scheme-preview__canvas {
+  background: #fbfcfe;
+  border: 1px solid #d4d9e2;
+}
+.gp-scheme-preview[data-scheme='light'] .gp-scheme-preview__bar {
+  background: var(--accent);
+}
+.gp-scheme-preview[data-scheme='light'] .gp-scheme-preview__line {
+  background: #8c94a6;
+}
+
+.gp-scheme-preview[data-scheme='dark'] {
+  background: #12141a;
+}
+.gp-scheme-preview[data-scheme='dark'] .gp-scheme-preview__sidebar {
+  background: #1d2028;
+  border: 1px solid #2d313d;
+}
+.gp-scheme-preview[data-scheme='dark'] .gp-scheme-preview__canvas {
+  background: #171a21;
+  border: 1px solid #2d313d;
+}
+.gp-scheme-preview[data-scheme='dark'] .gp-scheme-preview__bar {
+  background: var(--accent);
+}
+.gp-scheme-preview[data-scheme='dark'] .gp-scheme-preview__line {
+  background: #7b8294;
+}
+
+.gp-scheme-preview[data-scheme='system'] {
+  background: linear-gradient(125deg, #dde3ec 0 50%, #12141a 50% 100%);
+}
+.gp-scheme-preview[data-scheme='system'] .gp-scheme-preview__sidebar {
+  background: #f1f3f7;
+  border: 1px solid #cfd5e0;
+}
+.gp-scheme-preview[data-scheme='system'] .gp-scheme-preview__canvas {
+  background: linear-gradient(125deg, #fbfcfe 0 44%, #181b23 44% 100%);
+  border: 1px solid rgb(128 134 150 / 0.34);
+}
+.gp-scheme-preview[data-scheme='system'] .gp-scheme-preview__bar {
+  background: var(--accent);
+}
+.gp-scheme-preview[data-scheme='system'] .gp-scheme-preview__line {
+  background: #8890a4;
+}
+
+.gp-scheme-card__label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: var(--text-control);
+  font-weight: var(--weight-medium);
+  line-height: 1.2;
+}
+
+.gp-color-scheme-options .gp-scheme-card.is-selected .gp-scheme-card__label > svg {
+  color: var(--accent);
+}
+
+/* ==================== 共享弹窗排版 ==================== */
+
+.gp-modal-danger-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gp-modal-danger-title > svg {
+  flex: none;
+  color: var(--negative);
+}
+
+.gp-danger-modal-body {
+  display: grid;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.gp-danger-modal-body > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-control);
+  line-height: 1.6;
+}
+
+.gp-danger-modal-callout {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--warning) 9%, var(--surface));
+  color: var(--text);
+  font-size: var(--text-meta);
+  line-height: 1.5;
+}
+
+.gp-inline-code {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface-raised) 76%, transparent);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+}
+
+/* ==================== Agent 预设：分组、双列卡片与空状态 ==================== */
+
+.gp-preset-group__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.gp-preset-group__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gp-presets-page .settings-preset-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.gp-presets-page .settings-preset-card {
+  min-height: 164px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-raised) 64%, var(--surface));
+  box-shadow: inset 0 1px var(--island-rim);
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.gp-presets-page .settings-preset-card:hover:not([data-selected='true']):not([data-broken='true']) {
+  border-color: var(--line-strong);
+}
+
+.gp-presets-page .settings-preset-card[data-selected='true'] {
+  border-color: color-mix(in srgb, var(--accent) 56%, var(--line));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 10%, var(--surface-raised)),
+    color-mix(in srgb, var(--surface-raised) 64%, var(--surface))
+  );
+  box-shadow:
+    inset 0 1px var(--island-rim),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.gp-presets-page .settings-preset-select {
+  gap: 10px;
+  padding: 15px 16px 14px;
+  transition: background-color 140ms ease;
+}
+
+.gp-presets-page .settings-preset-select:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--surface-hover) 46%, transparent);
+}
+
+.gp-preset-card__head {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gp-preset-card__title-group {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.gp-preset-card__title-group > strong {
+  overflow: hidden;
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gp-preset-trust-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 74%, transparent);
+  color: var(--muted);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+}
+
+.gp-preset-trust-badge[data-trust='user'] {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface));
+  color: color-mix(in srgb, var(--accent) 78%, var(--text));
+}
+
+.gp-preset-default-pill {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  color: color-mix(in srgb, var(--accent) 84%, var(--text));
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 18%, transparent);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.gp-preset-card__desc {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-meta);
+  line-height: 1.55;
+}
+
+.gp-presets-page .settings-card-actions {
+  min-height: 40px;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px 6px 14px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  background: color-mix(in srgb, var(--surface) 44%, transparent);
+}
+
+.gp-preset-card__id {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gp-preset-card__tools {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.gp-preset-action-btn.ant-btn {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--muted);
+}
+
+.gp-preset-action-btn.ant-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.gp-preset-action-btn--danger.ant-btn {
+  color: var(--muted);
+}
+
+.gp-preset-action-btn--danger.ant-btn:hover:not(:disabled) {
+  color: var(--negative);
+  background: color-mix(in srgb, var(--negative) 12%, transparent);
+}
+
+.gp-preset-empty {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-raised) 52%, var(--surface));
+  box-shadow: inset 0 1px var(--island-rim);
+}
+
+.gp-preset-empty__icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  color: var(--muted);
+}
+
+.gp-preset-empty__copy {
+  display: grid;
+  gap: 3px;
+}
+
+.gp-preset-empty__copy strong {
+  font-size: var(--text-control);
+  font-weight: var(--weight-medium);
+}
+
+.gp-preset-empty__copy small {
+  color: var(--muted);
+  font-size: var(--text-meta);
+  line-height: 1.5;
+}
+
+/* ==================== Agent 预设弹窗：预览与复制 ==================== */
+
+.gp-viewer-modal-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-inline-end: 24px;
+}
+
+.gp-viewer-modal-title > strong {
+  font-size: var(--text-title);
+  font-weight: var(--weight-semibold);
+}
+
+.gp-viewer-readonly-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--faint);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-regular);
+}
+
+.gp-viewer-modal-body {
+  display: grid;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.gp-viewer-modal-desc {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-meta);
+  line-height: 1.55;
+}
+
+.gp-viewer-code-frame {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--canvas-bg) 52%, var(--surface));
+}
+
+.gp-viewer-code-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-raised) 74%, transparent);
+}
+
+.gp-viewer-code-meta {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.gp-viewer-code-meta > code {
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gp-viewer-code-meta > span {
+  flex: none;
+  color: var(--faint);
+  font-size: var(--text-caption);
+}
+
+.gp-viewer-code-scroll {
+  max-height: min(56vh, 440px);
+  margin: 0;
+  padding: 14px 16px;
+  overflow: auto;
+  color: var(--text);
+  font: var(--text-meta)/1.65 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.gp-copy-modal-form {
+  display: grid;
+  gap: 14px;
+  padding-top: 4px;
+}
+
+.gp-copy-modal-lead {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-meta);
+  line-height: 1.55;
+}
+
+.gp-form-field {
+  display: grid;
+  gap: 6px;
+}
+
+.gp-form-field > label {
+  color: var(--text);
+  font-size: var(--text-control);
+  font-weight: var(--weight-medium);
+}
+
+.gp-form-hint {
+  color: var(--muted);
+  font-size: var(--text-caption);
+  line-height: 1.45;
+}
+
+.gp-form-hint--error {
+  color: var(--negative);
+}
+
+/* ==================== 内置插件配置表单 ==================== */
+
+.gp-plugin-config.plugin-configuration-fields {
+  display: grid;
+  gap: 16px;
+}
+
+.gp-plugin-card {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-raised) 62%, var(--surface));
+  box-shadow: inset 0 1px var(--island-rim);
+}
+
+.gp-plugin-card .settings-plugin-field.gp-plugin-field {
+  min-height: 68px;
+  grid-template-columns: minmax(180px, 1fr) minmax(240px, 1.15fr);
+  gap: 18px;
+  padding: 14px 18px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  background: transparent;
+}
+
+.gp-plugin-card .settings-plugin-field.gp-plugin-field:last-child {
+  border-bottom: 0;
+}
+
+.gp-plugin-field > label > strong {
+  font-size: var(--text-body);
+  font-weight: var(--weight-medium);
+}
+
+.gp-plugin-field > label > small {
+  line-height: 1.45;
+}
+
+.gp-plugin-override-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: color-mix(in srgb, var(--accent) 80%, var(--text));
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  line-height: 1;
+}
+
+.gp-plugin-field__control.settings-plugin-field__control {
+  align-items: center;
+  gap: 8px;
+}
+
+.gp-plugin-field__control .ant-input-affix-wrapper,
+.gp-plugin-field__control .ant-input-number,
+.gp-plugin-field__control > .ant-input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+
+/* 屏蔽 settings.css 遗留的裸 input 样式，避免与 Ant Design 输入包装层产生双重边框。 */
+.plugin-configuration-fields .ant-input-number .ant-input-number-input,
+.plugin-configuration-fields .ant-input-affix-wrapper .ant-input,
+.plugin-configuration-fields .ant-checkbox .ant-checkbox-input {
+  min-height: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.plugin-configuration-fields .ant-input-affix-wrapper .ant-input,
+.plugin-configuration-fields .ant-checkbox .ant-checkbox-input {
+  padding: 0 !important;
+}
+
+.plugin-configuration-fields .ant-input-number .ant-input-number-input {
+  padding: 0 11px !important;
+}
+
+.gp-plugin-reset-btn.ant-btn {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--muted);
+}
+
+.gp-plugin-reset-btn.ant-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.gp-subagent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px 18px;
+}
+
+.gp-subagent-header__copy {
+  display: grid;
+  gap: 3px;
+}
+
+.gp-subagent-header__copy strong {
+  font-size: var(--text-body);
+  font-weight: var(--weight-medium);
+}
+
+.gp-subagent-header__copy small {
+  line-height: 1.45;
+}
+
+.gp-subagent-list-wrap {
+  display: grid;
+  gap: 10px;
+  padding: 12px 18px 14px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  background: color-mix(in srgb, var(--surface) 44%, transparent);
+}
+
+.gp-subagent-list.settings-model-permissions {
+  gap: 4px;
+  max-height: 240px;
+}
+
+.gp-subagent-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.gp-subagent-option:hover {
+  background: color-mix(in srgb, var(--surface-hover) 62%, transparent);
+}
+
+.gp-subagent-option__label {
+  color: var(--text);
+  font-size: var(--text-control);
+  overflow-wrap: anywhere;
+}
+
+.gp-subagent-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+
+.gp-plugin-card__footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 18px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  background: color-mix(in srgb, var(--surface) 38%, transparent);
+}
+
+.gp-credential-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 18px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  background: color-mix(in srgb, var(--surface-raised) 74%, transparent);
+}
+
+.gp-credential-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gp-credential-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  color: var(--muted);
+}
+
+.gp-credential-title-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.gp-credential-title-group > strong {
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
+}
+
+.gp-credential-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gp-plugin-field--credential > label > strong {
+  font-family: var(--font-mono);
+  font-size: var(--text-control);
+}
+
+/* ==================== 响应式与无障碍降级 ==================== */
+
+@media (max-width: 700px) {
+  .gp-color-scheme-options.color-scheme-options {
+    grid-template-columns: 1fr;
+  }
+  .gp-plugin-card .settings-plugin-field.gp-plugin-field {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .gp-plugin-field__control.settings-plugin-field__control {
+    justify-content: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gp-color-scheme-options .gp-scheme-card,
+  .gp-presets-page .settings-preset-card,
+  .gp-presets-page .settings-preset-select,
+  .gp-subagent-option {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .gp-color-scheme-options .gp-scheme-card,
+  .gp-presets-page .settings-preset-card,
+  .gp-preset-empty,
+  .gp-viewer-code-frame,
+  .gp-plugin-card,
+  .gp-danger-modal-callout {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    box-shadow: none;
+  }
+  .gp-color-scheme-options .gp-scheme-card.is-selected,
+  .gp-presets-page .settings-preset-card[data-selected='true'] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  .gp-preset-default-pill,
+  .gp-preset-trust-badge,
+  .gp-plugin-override-badge {
+    border-color: Highlight;
+    background: Canvas;
+    color: Highlight;
+    box-shadow: none;
+  }
+  .gp-scheme-preview {
+    border-color: CanvasText;
+    forced-color-adjust: none;
+  }
+}

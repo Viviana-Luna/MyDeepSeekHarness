@@ -1,0 +1,60 @@
+/* 代码只在块内滚动；切换换行不会改变复制内容。 */
+.block {
+  min-width: 0;
+  max-width: 100%;
+  margin: 0.85em 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-raised);
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 3px 7px 3px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+.language {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.toolbar button {
+  display: grid;
+  flex: none;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.toolbar button:is(:hover, :focus-visible, [aria-pressed='true']) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.block pre {
+  overflow: auto;
+  margin: 0;
+  padding: 10px 12px 12px;
+  white-space: pre;
+  font: var(--text-control)/1.65 var(--font-mono);
+}
+.block[data-wrap='true'] pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (forced-colors: active) {
+  .block,
+  .toolbar {
+    border-color: CanvasText;
+  }
+  .toolbar button[aria-pressed='true'] {
+    outline: 1px solid Highlight;
+  }
+}

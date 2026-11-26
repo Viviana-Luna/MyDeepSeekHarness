@@ -1,0 +1,136 @@
+.navigator {
+  position: absolute;
+  z-index: 6;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  max-height: min(420px, calc(100% - 64px));
+  width: 28px;
+  display: flex;
+}
+
+.rail {
+  position: relative;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  padding: 6px 0;
+}
+
+.rail::-webkit-scrollbar {
+  display: none;
+}
+.rail[data-fade-top='true'] {
+  mask-image: linear-gradient(transparent, #000 16px);
+}
+.rail[data-fade-bottom='true'] {
+  mask-image: linear-gradient(#000 calc(100% - 16px), transparent);
+}
+.rail[data-fade-top='true'][data-fade-bottom='true'] {
+  mask-image: linear-gradient(transparent, #000 16px, #000 calc(100% - 16px), transparent);
+}
+
+.mark {
+  position: relative;
+  display: block;
+  width: 28px;
+  height: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.mark::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 2px;
+  width: 10px;
+  height: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 30%, transparent);
+  transition:
+    width 160ms ease,
+    background-color 160ms ease,
+    opacity 160ms ease;
+}
+
+.mark[data-unloaded='true']::before {
+  width: 7px;
+  opacity: 0.55;
+}
+.mark:is(:hover, :focus-visible)::before {
+  width: 16px;
+  background: var(--text);
+}
+.mark[aria-current='step']::before {
+  width: 18px;
+  background: var(--accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 42%, transparent);
+  opacity: 1;
+}
+.mark[aria-busy='true']::before {
+  background: var(--accent);
+}
+.mark:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  border-radius: 3px;
+}
+
+.preview,
+.notice {
+  position: absolute;
+  left: 36px;
+  width: min(290px, calc(100cqw - 80px));
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-raised, var(--surface));
+  color: var(--text);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.16);
+  pointer-events: none;
+  font-size: var(--text-meta);
+}
+
+.preview span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.preview strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 4px;
+}
+.preview p {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.notice {
+  bottom: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mark::before {
+    transition: none;
+  }
+}
+@media (forced-colors: active) {
+  .mark::before {
+    background: CanvasText;
+  }
+  .mark[aria-current='step']::before {
+    background: Highlight;
+  }
+}

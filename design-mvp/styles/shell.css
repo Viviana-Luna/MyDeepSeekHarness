@@ -1,0 +1,1427 @@
+/**
+ * MyDSH 外壳框架样式（Shell & Optical Islands）
+ * 包含桌面窗口舞台、光学浮岛、液态玻璃顶栏标签、π 形侧栏、膨胀胶囊分隔条与底部光学指令舱。
+ */
+
+/* 外部纵向可滚动展示画廊舞台：支持顺滑上下浏览全部界面画板 */
+.desktop-stage {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 68px;
+  padding: 86px 28px 110px;
+  background:
+    radial-gradient(
+      circle at 18% 15%,
+      color-mix(in srgb, var(--accent) 22%, transparent),
+      transparent 46%
+    ),
+    radial-gradient(circle at 84% 82%, rgb(45 168 216 / 0.16), transparent 48%),
+    linear-gradient(145deg, #07090d 0%, #0f131d 52%, #090c12 100%);
+  background-attachment: fixed;
+}
+
+:root[data-color-scheme='light'] .desktop-stage {
+  background:
+    radial-gradient(
+      circle at 16% 14%,
+      color-mix(in srgb, var(--accent) 18%, transparent),
+      transparent 48%
+    ),
+    radial-gradient(circle at 85% 84%, rgb(56 189 248 / 0.16), transparent 48%),
+    linear-gradient(145deg, #dce4f2 0%, #eef2f9 55%, #dfe7f4 100%);
+  background-attachment: fixed;
+}
+
+/* 单个界面展示画板容器（Artboard Section） */
+.artboard-section {
+  width: min(1400px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  scroll-margin-top: 78px;
+}
+
+.artboard-section--centered {
+  align-items: center;
+}
+
+.artboard-header {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 0 4px;
+}
+
+.artboard-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.artboard-index {
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  color: var(--accent-bright);
+  font: 600 11px/1 var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+:root[data-color-scheme='light'] .artboard-index {
+  color: var(--accent);
+}
+
+.artboard-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: var(--weight-semibold);
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.artboard-desc {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* 应用主窗口（18px 原生圆角无框窗口，固定饱满桌面高度绝不压扁） */
+.mydsh-window {
+  position: relative;
+  width: 100%;
+  height: 790px;
+  flex: none;
+  border-radius: var(--window-outer-radius);
+  overflow: hidden;
+  box-shadow:
+    0 32px 90px rgb(0 0 0 / 0.55),
+    0 8px 24px rgb(0 0 0 / 0.3),
+    0 0 0 1px rgb(255 255 255 / 0.12);
+  isolation: isolate;
+}
+
+.mydsh-window--tall {
+  height: 830px;
+}
+
+.mydsh-window--compact {
+  height: 690px;
+}
+
+:root[data-color-scheme='light'] .mydsh-window {
+  box-shadow:
+    0 28px 80px rgb(15 23 42 / 0.18),
+    0 6px 20px rgb(15 23 42 / 0.08),
+    0 0 0 1px rgb(15 23 42 / 0.1);
+}
+
+/* L0 画布层：支持透明度调节与环境深海漫反射 */
+.window-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-color: color-mix(
+    in srgb,
+    var(--canvas-bg) calc(var(--canvas-alpha) * 100%),
+    transparent
+  );
+  background-image:
+    radial-gradient(ellipse 64% 48% at 12% 0%, var(--canvas-ambient-1), transparent 70%),
+    radial-gradient(ellipse 55% 45% at 92% 100%, var(--canvas-ambient-2), transparent 72%);
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+}
+
+/* macOS 红绿灯按钮组 */
+.traffic-lights {
+  position: absolute;
+  top: calc(var(--window-edge) + 12px);
+  left: calc(var(--window-edge) + 14px);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.traffic-light {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 0.25);
+}
+
+.traffic-light--close {
+  background: #ff5f57;
+}
+.traffic-light--min {
+  background: #febc2e;
+}
+.traffic-light--max {
+  background: #28c840;
+}
+
+/* 外壳主网格：还原并升级 .app-shell */
+.app-shell {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns:
+    var(--sidebar-total, calc(var(--mode-rail-width) + var(--nav-width)))
+    minmax(420px, 1fr) var(--info-total, var(--info-width));
+  grid-template-rows: var(--session-chrome-height) minmax(0, 1fr);
+  column-gap: var(--window-gap);
+  row-gap: var(--window-gap);
+  padding: var(--window-edge);
+  transition:
+    grid-template-columns 380ms var(--ease-out-expo),
+    column-gap 280ms var(--ease-out-expo);
+}
+
+.app-shell[data-nav-collapsed='true'] {
+  --sidebar-total: var(--mode-rail-width);
+}
+
+.app-shell[data-info-collapsed='true'] {
+  grid-template-columns:
+    var(--sidebar-total, calc(var(--mode-rail-width) + var(--nav-width)))
+    minmax(420px, 1fr) 0px;
+}
+
+.app-shell[data-info-collapsed='true'] .info-island {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(18px) scale(0.985);
+}
+
+/* L1 光学浮岛通用材质：顶部受光高光缘 + 微层叠渐变 */
+.island {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--radius-island);
+  border: 1px solid var(--island-border);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface-elevated) 55%, var(--surface)) 0%,
+    var(--surface) 140px
+  );
+  box-shadow: var(--island-shadow);
+  isolation: isolate;
+  transition:
+    opacity 220ms ease,
+    transform 360ms var(--ease-out-expo),
+    background 220ms ease;
+}
+
+/* 顶部光学镜面受光细边（告别死板单调灰框的关键） */
+.island::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 16px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--island-rim-top) 24%,
+    color-mix(in srgb, var(--island-rim-top) 100%, var(--accent) 20%) 50%,
+    var(--island-rim-top) 76%,
+    transparent 100%
+  );
+  z-index: 12;
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   左侧 π 形浮岛（专注项目栏 + 液态透镜模式导轨 + 会话/文件导航）
+   ========================================================================== */
+.sidebar-island {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  display: grid;
+  grid-template-columns: var(--mode-rail-width) minmax(0, 1fr);
+  grid-template-rows: 40px minmax(0, 1fr);
+}
+
+.app-shell[data-nav-collapsed='true'] .sidebar-island {
+  grid-row: 2;
+  grid-template-columns: var(--mode-rail-width) 0px;
+  grid-template-rows: 0px minmax(0, 1fr);
+}
+
+.app-shell[data-nav-collapsed='true'] .project-focus,
+.app-shell[data-nav-collapsed='true'] .navigation-pane {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* π 形顶栏：项目选择器与搜索按钮 */
+.project-focus {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 70px;
+  position: relative;
+}
+
+/* 用柔和渐隐分割线替代生硬通栏横线 */
+.project-focus::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--line-strong) 18%,
+    var(--line) 82%,
+    transparent
+  );
+}
+
+.project-pill {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  border-radius: 9px;
+  background: var(--track-bg);
+  border: 1px solid var(--track-border);
+  box-shadow: inset 0 1px 1.5px rgb(0 0 0 / 0.18);
+  color: var(--text);
+  transition:
+    background 150ms ease,
+    border-color 150ms ease;
+}
+
+.project-pill:hover {
+  background: var(--surface-hover);
+  border-color: var(--line-strong);
+}
+
+.project-pill__badge {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  background: var(--accent-soft);
+  color: var(--accent-bright);
+  flex: none;
+}
+
+:root[data-color-scheme='light'] .project-pill__badge {
+  color: var(--accent);
+}
+
+.project-pill__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-control);
+  font-weight: var(--weight-semibold);
+  text-align: left;
+}
+
+.project-pill__chevron {
+  color: var(--faint);
+  flex: none;
+}
+
+.glass-icon-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  flex: none;
+  transition:
+    color 140ms ease,
+    background 140ms ease,
+    transform 120ms ease;
+}
+
+.glass-icon-btn:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.glass-icon-btn:active {
+  transform: scale(0.94);
+}
+
+/* 左侧 50px 模式导轨：采用沉降微槽 + 上下滑动的液态玻璃方透镜 */
+.mode-rail {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 6px;
+  background: color-mix(in srgb, var(--track-bg) 55%, transparent);
+  border-right: 1px solid var(--line);
+}
+
+.app-shell[data-nav-collapsed='true'] .mode-rail {
+  border-right: 0;
+}
+
+.mode-rail__track {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 13px;
+  background: var(--track-bg);
+  border: 1px solid var(--track-border);
+  box-shadow: var(--track-shadow);
+}
+
+/* 模式栏滑动液态玻璃透镜（呼应顶部标签页透镜！） */
+.mode-rail__lens {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--lens-bg);
+  border: 1px solid var(--lens-border);
+  box-shadow: var(--lens-shadow);
+  transform: translateY(calc(var(--mode-index, 0) * 40px));
+  transition: transform 360ms var(--ease-spring);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* 透镜左侧发光星辉芒 */
+.mode-rail__lens::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 9px;
+  bottom: 9px;
+  width: 2.5px;
+  border-radius: 99px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+.mode-btn {
+  position: relative;
+  z-index: 1;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  transition:
+    color 150ms ease,
+    transform 140ms ease;
+}
+
+.mode-btn:hover {
+  color: var(--text);
+}
+
+.mode-btn.is-active {
+  color: var(--accent-bright);
+}
+
+:root[data-color-scheme='light'] .mode-btn.is-active {
+  color: var(--accent);
+}
+
+.mode-btn__badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3.5px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--accent) 88%, #10131c);
+  color: #fff;
+  font: 600 9.5px/15px var(--font-mono);
+  box-shadow: 0 2px 5px rgb(0 0 0 / 0.35);
+}
+
+.mode-rail__bottom {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 左侧导航内容区（会话分组与精致微玻璃列表） */
+.navigation-pane {
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 10px 8px 8px;
+  overflow-y: auto;
+  transition: opacity 180ms ease;
+}
+
+.nav-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 6px;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
+}
+
+.nav-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 12px;
+}
+
+.session-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 9px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  color: var(--muted);
+  text-align: left;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.session-item:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+/* 选中的会话行：液态微光玻璃条，告别生硬蓝边 */
+.session-item.is-active {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 16%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 6%, var(--surface-hover)) 100%
+  );
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
+  color: var(--text);
+}
+
+.session-item__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: color-mix(in srgb, var(--faint) 45%, transparent);
+}
+
+.session-item.is-active .session-item__dot {
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+.session-item__dot--running {
+  background: var(--positive) !important;
+  box-shadow: 0 0 8px var(--positive) !important;
+  animation: pulse-dot 1.8s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.84);
+  }
+}
+
+.session-item__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-control);
+  font-weight: var(--weight-medium);
+}
+
+.session-item__time {
+  flex: none;
+  font: 400 11px/1 var(--font-mono);
+  color: var(--faint);
+  transition: opacity 120ms ease;
+}
+
+.session-item__actions {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+  border: 1px solid var(--line);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.session-item:hover .session-item__actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.session-item:hover .session-item__time {
+  opacity: 0;
+}
+
+.mini-action-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.mini-action-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+/* ==========================================================================
+   顶部工作标签栏（保留并致敬用户最满意的 Liquid Glass 标签轨道与透镜）
+   ========================================================================== */
+.session-chrome {
+  grid-column: 2 / -1;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: var(--session-chrome-height);
+}
+
+.app-shell[data-nav-collapsed='true'] .session-chrome {
+  grid-column: 1 / -1;
+  padding-left: 74px;
+}
+
+.session-tabs-track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 3px;
+  border-radius: var(--radius-track);
+  background: var(--track-bg);
+  border: 1px solid var(--track-border);
+  box-shadow: var(--track-shadow);
+  isolation: isolate;
+}
+
+/* 顶部选中标签液态玻璃透镜（支持 SDF 边缘折射与弹簧滑动） */
+.session-tab-lens {
+  position: absolute;
+  top: 3px;
+  left: 0;
+  height: 24px;
+  width: var(--lens-w, 180px);
+  transform: translate3d(var(--lens-x, 3px), 0, 0) scale(var(--lens-sx, 1), var(--lens-sy, 1));
+  border-radius: var(--radius-lens);
+  background: var(--lens-bg);
+  border: 1px solid var(--lens-border);
+  box-shadow: var(--lens-shadow);
+  pointer-events: none;
+  z-index: 1;
+  will-change: transform, width;
+}
+
+.session-tab-lens__backdrop {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.session-tab-items {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  align-items: center;
+  gap: 2px;
+}
+
+.work-tab {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 96px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 26px;
+  border-radius: var(--radius-lens);
+  color: var(--muted);
+  font-size: var(--text-control);
+  font-weight: var(--weight-medium);
+  user-select: none;
+  transition:
+    color 140ms ease,
+    background 140ms ease;
+}
+
+.work-tab:not(.is-selected):hover {
+  color: var(--text);
+  background: rgb(255 255 255 / 0.04);
+}
+
+:root[data-color-scheme='light'] .work-tab:not(.is-selected):hover {
+  background: rgb(15 23 42 / 0.04);
+}
+
+.work-tab.is-selected {
+  color: var(--text);
+}
+
+/* 相邻未选中标签之间的柔和竖向刻度 */
+.work-tab::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: 6px;
+  height: 12px;
+  width: 1px;
+  background: var(--line);
+  transition: opacity 120ms ease;
+}
+
+.work-tab:last-child::after,
+.work-tab.is-selected::after,
+.work-tab:has(+ .work-tab.is-selected)::after {
+  opacity: 0;
+}
+
+/* 分屏连体标签组外观 */
+.work-tab-split-group {
+  display: flex;
+  flex: 1.6 1 0;
+  min-width: 196px;
+  height: 24px;
+  border-radius: var(--radius-lens);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 36%, var(--line));
+}
+
+.work-tab__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-tab__dirty {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning);
+  flex: none;
+}
+
+.work-tab__unread {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+  flex: none;
+}
+
+.work-tab__close {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  color: var(--muted);
+  transition:
+    opacity 120ms ease,
+    background 120ms ease;
+}
+
+.work-tab:hover .work-tab__close {
+  opacity: 1;
+}
+
+.work-tab__close:hover {
+  background: var(--surface-active);
+  color: var(--text);
+}
+
+/* 顶栏右侧圆形玻璃动作钮（平铺总览 ⊞、新建 +） */
+.chrome-pill-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.chrome-circle-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--track-bg);
+  border: 1px solid var(--track-border);
+  box-shadow: var(--track-shadow);
+  color: var(--muted);
+  transition:
+    color 140ms ease,
+    background 140ms ease,
+    border-color 140ms ease,
+    transform 120ms ease;
+}
+
+.chrome-circle-btn:hover {
+  color: var(--text);
+  background: var(--surface-raised);
+  border-color: var(--line-strong);
+}
+
+.chrome-circle-btn:active {
+  transform: scale(0.93);
+}
+
+/* ==========================================================================
+   中央主浮岛、右侧检查浮岛与膨胀液态胶囊分隔条
+   ========================================================================== */
+.main-island {
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-shell[data-full-main='true'] .main-island {
+  grid-column: 2 / -1;
+}
+
+.info-island {
+  grid-column: 3;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px 12px;
+}
+
+/* 右侧检查栏顶部：沉降胶囊图标切换器 */
+.inspector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 9px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.inspector-tabs {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--track-bg);
+  border: 1px solid var(--track-border);
+  box-shadow: var(--track-shadow);
+}
+
+.inspector-tab {
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: var(--weight-medium);
+  color: var(--muted);
+  transition: all 150ms ease;
+}
+
+.inspector-tab:hover {
+  color: var(--text);
+}
+
+.inspector-tab.is-active {
+  background: var(--lens-bg);
+  border: 1px solid var(--lens-border);
+  box-shadow: var(--lens-shadow);
+  color: var(--text);
+}
+
+/* 跨栏分隔缝隙中的液态玻璃膨胀胶囊把手 */
+.divider-capsule {
+  position: absolute;
+  top: 50%;
+  z-index: 20;
+  width: 18px;
+  height: 46px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(
+    135deg,
+    rgb(255 255 255 / 0.24) 0%,
+    color-mix(in srgb, var(--surface-raised) 76%, transparent) 52%,
+    rgb(255 255 255 / 0.1) 100%
+  );
+  border: 1px solid var(--lens-border);
+  box-shadow:
+    0 6px 18px rgb(0 0 0 / 0.24),
+    inset 0 1px 0 rgb(255 255 255 / 0.4);
+  backdrop-filter: blur(10px) saturate(1.4);
+  color: var(--muted);
+  opacity: 0.42;
+  transition:
+    opacity 180ms ease,
+    transform 260ms var(--ease-spring),
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.divider-capsule:hover {
+  opacity: 1;
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--lens-border));
+  transform: translate(-50%, -50%) scaleX(1.14) scaleY(1.04);
+}
+
+.divider-capsule--left {
+  left: calc(var(--window-edge) + var(--sidebar-total, 306px) + var(--window-gap) / 2);
+}
+
+.divider-capsule--right {
+  right: calc(var(--window-edge) + var(--info-width) + var(--window-gap) / 2 - 18px);
+}
+
+.app-shell[data-info-collapsed='true'] .divider-capsule--right {
+  right: -4px;
+}
+
+/* 右上角悬浮会话微工具舱（彻底取代原图右上角简陋方格） */
+.session-floating-tools {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 14;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.segmented-glass-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--track-bg) 88%, var(--surface));
+  border: 1px solid var(--line-strong);
+  box-shadow:
+    var(--track-shadow),
+    0 6px 18px rgb(0 0 0 / 0.18);
+  backdrop-filter: blur(14px);
+}
+
+.seg-v-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  transition: all 160ms ease;
+}
+
+.seg-v-btn:hover {
+  color: var(--text);
+}
+
+.seg-v-btn.is-active {
+  background: var(--lens-bg);
+  border: 1px solid var(--lens-border);
+  box-shadow: var(--lens-shadow);
+  color: var(--accent-bright);
+}
+
+:root[data-color-scheme='light'] .seg-v-btn.is-active {
+  color: var(--accent);
+}
+
+/* ==========================================================================
+   L4 底部光学指令舱（Optical Composer Deck + Todos + HUD Readings）
+   ========================================================================== */
+.composer-dock {
+  position: relative;
+  z-index: 10;
+  width: min(820px, calc(100% - 36px));
+  margin: 4px auto 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* 待办清单玻璃胶囊抽屉（位于输入框正上方） */
+.todo-drawer {
+  border-radius: 13px;
+  border: 1px solid var(--line-strong);
+  background: color-mix(in srgb, var(--surface-raised) 86%, transparent);
+  backdrop-filter: blur(16px);
+  box-shadow:
+    0 6px 20px rgb(0 0 0 / 0.18),
+    inset 0 1px 0 var(--island-rim-top);
+  overflow: hidden;
+}
+
+.todo-drawer__head {
+  width: 100%;
+  height: 34px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-meta);
+  color: var(--text);
+}
+
+.todo-drawer__head:hover {
+  background: var(--surface-hover);
+}
+
+.todo-drawer__pill {
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: var(--accent-soft);
+  color: var(--accent-bright);
+  font: 600 11px/1.4 var(--font-mono);
+}
+
+:root[data-color-scheme='light'] .todo-drawer__pill {
+  color: var(--accent);
+}
+
+.todo-drawer__summary {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todo-drawer__list {
+  margin: 0;
+  padding: 2px 12px 10px;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.todo-drawer__list[hidden] {
+  display: none;
+}
+
+.todo-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-meta);
+  color: var(--muted);
+}
+
+.todo-row[data-state='done'] {
+  color: var(--faint);
+  text-decoration: line-through;
+}
+
+.todo-row[data-state='doing'] {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+
+/* 核心光学输入卡片：外环微凹光槽 + 顶部镜面流光 + 悬浮立体阴影 */
+.composer-vessel {
+  position: relative;
+  border-radius: var(--radius-composer);
+  padding: 12px 14px 10px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface-raised) 96%, white 4%) 0%,
+    color-mix(in srgb, var(--surface-elevated) 96%, black 4%) 100%
+  );
+  border: 1px solid var(--line-strong);
+  box-shadow:
+    0 12px 34px rgb(0 0 0 / 0.28),
+    0 2px 6px rgb(0 0 0 / 0.14),
+    inset 0 1px 0 var(--island-rim-top);
+  transition:
+    border-color 200ms ease,
+    box-shadow 200ms ease;
+}
+
+:root[data-color-scheme='light'] .composer-vessel {
+  background: linear-gradient(180deg, #ffffff 0%, #f7f9fe 100%);
+  box-shadow:
+    0 10px 28px rgb(15 23 42 / 0.08),
+    0 2px 5px rgb(15 23 42 / 0.04),
+    inset 0 1px 0 #ffffff;
+}
+
+.composer-vessel:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--line-strong));
+  box-shadow:
+    0 14px 38px rgb(0 0 0 / 0.32),
+    0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--accent) 38%, white);
+}
+
+/* 附件芯片行 */
+.composer-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 9px;
+  border-radius: 9px;
+  background: var(--track-bg);
+  border: 1px solid var(--line);
+  font-size: 11.5px;
+}
+
+.attachment-chip small {
+  color: var(--faint);
+  font-family: var(--font-mono);
+}
+
+.composer-textarea {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  max-height: 140px;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-body);
+  line-height: 1.55;
+}
+
+.composer-textarea::placeholder {
+  color: var(--faint);
+}
+
+/* 输入框底部精密胶囊栏 */
+.composer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 6px;
+}
+
+.composer-bar__left,
+.composer-bar__right {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.composer-pill {
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--track-bg);
+  border: 1px solid var(--track-border);
+  color: var(--muted);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  transition: all 150ms ease;
+}
+
+.composer-pill:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+  border-color: var(--line-strong);
+}
+
+.composer-pill--icon {
+  width: 28px;
+  padding: 0;
+  justify-content: center;
+}
+
+.composer-pill--shield .status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--positive);
+  box-shadow: 0 0 6px var(--positive);
+}
+
+.composer-pill--plan[data-active='true'] {
+  background: color-mix(in srgb, var(--warning) 15%, transparent);
+  border-color: color-mix(in srgb, var(--warning) 38%, transparent);
+  color: var(--warning);
+}
+
+.composer-pill--model strong {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+
+.composer-pill--model em {
+  font-style: normal;
+  color: var(--accent-bright);
+  font-size: 11px;
+}
+
+:root[data-color-scheme='light'] .composer-pill--model em {
+  color: var(--accent);
+}
+
+/* 液态宝石发送按钮 */
+.composer-send-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 82%, white) 0%,
+    var(--accent) 100%
+  );
+  color: var(--accent-contrast);
+  box-shadow:
+    0 4px 14px var(--accent-glow),
+    inset 0 1px 0.5px rgb(255 255 255 / 0.55);
+  transition:
+    transform 150ms var(--ease-spring),
+    box-shadow 160ms ease,
+    filter 150ms ease;
+}
+
+.composer-send-btn:hover {
+  transform: translateY(-1px) scale(1.04);
+  filter: brightness(1.06);
+}
+
+.composer-send-btn:active {
+  transform: scale(0.94);
+}
+
+.composer-send-btn[data-running='true'] {
+  background: color-mix(in srgb, var(--negative) 18%, var(--surface-raised));
+  border: 1px solid color-mix(in srgb, var(--negative) 48%, transparent);
+  color: var(--negative);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--negative) 22%, transparent);
+}
+
+/* 底部 24px 精密读数仪表条（HUD Readings） */
+.composer-hud {
+  position: relative;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.hud-pill {
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  transition: all 140ms ease;
+}
+
+.hud-pill b {
+  font-family: var(--font-mono);
+  font-weight: var(--weight-medium);
+  color: var(--text);
+}
+
+.hud-pill:hover,
+.hud-pill[aria-expanded='true'] {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.hud-ring {
+  width: 13px;
+  height: 13px;
+  transform: rotate(-90deg);
+}
+
+/* 点击读数向上弹出的液态磨砂上下文明细卡 */
+.hud-popover {
+  position: absolute;
+  bottom: 30px;
+  right: 12%;
+  width: 296px;
+  padding: 13px 14px;
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+  border: 1px solid var(--line-strong);
+  box-shadow:
+    0 20px 50px rgb(0 0 0 / 0.42),
+    inset 0 1px 0 var(--island-rim-top);
+  backdrop-filter: blur(20px) saturate(1.4);
+  z-index: 40;
+  text-align: left;
+}
+
+.hud-popover[hidden] {
+  display: none;
+}
+
+.hud-popover__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.hud-stacked-bar {
+  display: flex;
+  height: 6px;
+  border-radius: 99px;
+  overflow: hidden;
+  background: var(--track-bg);
+  gap: 1.5px;
+  margin-bottom: 10px;
+}
+
+.hud-stacked-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+}
+
+.hud-breakdown-rows {
+  display: grid;
+  gap: 5px;
+  font-size: 11.5px;
+}
+
+.hud-breakdown-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+}
+
+.hud-breakdown-row span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hud-swatch {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+}
+
+.hud-breakdown-row code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+}

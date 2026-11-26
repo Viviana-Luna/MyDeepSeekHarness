@@ -1,0 +1,420 @@
+.control {
+  position: relative;
+  min-width: 0;
+}
+
+.planChip[data-plan-active='true'] {
+  display: inline-flex;
+  height: var(--height-icon);
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid var(--composer-button-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warning) 12%, var(--composer-button-face));
+  box-shadow: var(--relief-recessed);
+  color: var(--warning);
+  font-size: var(--text-control);
+  cursor: pointer;
+}
+.planChip:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--warning) 20%, var(--composer-button-face));
+}
+.planChip:disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+
+/* 目录读取失败时的不可用形态：保留同一几何尺寸，但不接收指针与键盘操作。 */
+.trigger[aria-disabled='true'] {
+  cursor: default;
+  opacity: 0.58;
+}
+
+.trigger {
+  display: inline-flex;
+  min-width: 0;
+  max-width: min(220px, 100%);
+  height: var(--height-icon);
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px 0 9px;
+  cursor: pointer;
+  border: 1px solid var(--composer-button-border);
+  border-radius: 999px;
+  background: var(--composer-button-face);
+  box-shadow: var(--relief-recessed);
+  color: var(--muted);
+  font-size: var(--text-control);
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.trigger:hover,
+.trigger[aria-expanded='true'] {
+  border-color: var(--line-strong);
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.trigger:disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+
+.trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modelControl {
+  flex: 0 1 auto;
+}
+.modelTrigger {
+  max-width: min(280px, 100%);
+}
+.modelTrigger > svg {
+  flex: none;
+}
+
+.trigger > svg:last-child {
+  flex: none;
+  transition: transform 120ms ease;
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+.menu {
+  position: fixed;
+  z-index: 120;
+  overflow: hidden auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 15px;
+  background: var(--surface);
+  box-shadow:
+    inset 0 1px var(--island-rim),
+    0 18px 56px rgb(0 0 0 / 0.34);
+  backdrop-filter: blur(18px);
+  color: var(--text);
+}
+
+.permissionMenu {
+  display: flex;
+  width: min(336px, calc(100vw - 36px));
+  max-height: min(420px, calc(100vh - 24px));
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+}
+
+.modelMenu {
+  display: flex;
+  width: max-content;
+  min-width: min(260px, calc(100vw - 32px));
+  max-width: min(420px, calc(100vw - 32px));
+  flex-direction: column;
+  overflow: hidden;
+  padding: 4px;
+  border-radius: 15px;
+  backdrop-filter: blur(18px);
+  box-shadow:
+    inset 0 1px var(--island-rim),
+    0 18px 56px rgb(0 0 0 / 0.34);
+}
+
+.permissionOption > button {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  transition: background-color 120ms ease;
+}
+
+.permissionOption > button:is(:hover, :focus-visible):not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.permissionOption > button[aria-checked='true']:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-hover));
+}
+
+.permissionOption > button[aria-checked='true']:is(:hover, :focus-visible):not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-hover));
+}
+
+.permissionOption > button:disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+
+.permissionOption > button > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.permissionOption strong {
+  overflow: hidden;
+  font-size: var(--text-control);
+  font-weight: var(--weight-medium);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.permissionOption small {
+  color: var(--muted);
+  font-size: var(--text-meta);
+  line-height: 1.42;
+}
+
+.optionMark {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  place-items: center;
+  color: var(--accent);
+}
+
+.permissionMenu > .menuError {
+  padding: 8px 10px;
+}
+
+/* 确认在窗口中居中，由 Modal 管理遮罩、键盘焦点和底部操作。 */
+.permissionDialog {
+  max-width: calc(100vw - 32px);
+}
+.permissionDialog .permissionHeader {
+  margin-bottom: 14px;
+  padding-right: 24px;
+  background: transparent;
+}
+.permissionDialog .permissionFooter {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.permissionDialog .permissionCancel,
+.permissionDialog .permissionConfirm {
+  min-height: 32px;
+  padding-inline: 14px;
+  border-radius: 999px;
+}
+.permissionDialog .permissionCancel {
+  border-color: var(--mode-lens-border);
+  background: var(--mode-lens);
+  color: var(--text);
+  box-shadow: inset 0 1px var(--island-rim);
+}
+.riskTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.riskTitle > svg {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--warning) 13%, transparent);
+  color: var(--warning);
+}
+.riskDescription {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.permissionDialog .riskAcknowledgement {
+  display: flex;
+  width: 100%;
+  margin-top: 18px;
+  padding: 10px 12px;
+  border: 1px solid var(--mode-track-border);
+  border-radius: 11px;
+  background: var(--mode-track);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.triggerEffort {
+  color: var(--faint);
+}
+.modelList {
+  min-height: 0;
+  max-height: 320px;
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+}
+.modelGroup + .modelGroup {
+  margin-top: 4px;
+}
+.modelGroup h3 {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  margin: 0;
+  padding: 5px 8px 3px;
+  background: var(--surface);
+  color: var(--muted);
+  font: var(--weight-medium) var(--text-meta)/1.5 var(--font-ui);
+}
+.effortMenu {
+  width: 152px;
+  padding: 4px;
+}
+.modelOption {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 9px;
+  cursor: pointer;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font-size: var(--text-control);
+}
+.modelName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rowEffort {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.modelOption > svg {
+  flex: none;
+  color: var(--muted);
+}
+.hiddenCheck {
+  visibility: hidden;
+}
+.modelOption:is(:hover, :focus-visible, [aria-expanded='true'], [aria-checked='true']):not(
+    :disabled
+  ) {
+  background: var(--surface-hover);
+}
+.modelOption:disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+.modelMenu > .menuError,
+.modelMenu > .routeWarning {
+  flex: none;
+}
+
+.menuError,
+.routeWarning,
+.empty {
+  margin: 0;
+  padding: 11px 12px;
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+.menuError {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.menuError span {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.menuError button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 7px;
+  cursor: pointer;
+  border-radius: 6px;
+  color: var(--text);
+}
+.menuError button:hover {
+  background: var(--surface-hover);
+}
+.routeWarning {
+  color: var(--negative);
+  border-top: 1px solid var(--line);
+}
+
+@container composer (max-width: 680px) {
+  .trigger:not(.modelTrigger) > span,
+  .trigger:not(.modelTrigger) > svg:last-child {
+    display: none;
+  }
+  .trigger:not(.modelTrigger) {
+    width: var(--height-icon);
+    justify-content: center;
+    padding: 0;
+  }
+}
+
+@container composer (max-width: 400px) {
+  .triggerEffort,
+  .modelTrigger > svg:last-child {
+    display: none;
+  }
+}
+
+@container composer (max-width: 300px) {
+  .modelTrigger > span {
+    display: none;
+  }
+  .modelTrigger {
+    width: var(--height-icon);
+    justify-content: center;
+    padding: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trigger > svg:last-child,
+  .permissionOption > button {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .permissionDialog .riskAcknowledgement,
+  .permissionDialog .permissionCancel {
+    border-color: CanvasText;
+  }
+  .riskTitle > svg,
+  .riskDescription {
+    color: CanvasText;
+  }
+  .planChip,
+  .trigger,
+  .menu,
+  .permissionOption > button[aria-checked='true'],
+  .modelOption[aria-checked='true'] {
+    border: 1px solid CanvasText;
+  }
+}

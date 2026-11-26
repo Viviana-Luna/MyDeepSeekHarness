@@ -1,0 +1,380 @@
+--- a/packages/client/connection/src/index.ts
++++ b/packages/client/connection/src/index.ts
+@@ -1,17 +1,6 @@
+-/** Host HTTP bridge for browser-client RPC. */
++/** MyDSH 本地 IPC 的 Connection 注册入口，不装配 HTTP 或浏览器授权。 */
+ import type { Context } from '@deepseek-ai/cordis'
+-import type { IncomingMessage, ServerResponse } from 'node:http'
+-import z from '@deepseek-ai/schemastery'
+-import type {} from '@deepseek-ai/dsh-attachment'
+-import type {} from '@deepseek-ai/dsh-credentials'
+-// Activates the webServer Context merge used below.
+-import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
+-import { API_PATH } from './api-path.ts'
+-import { bridge, DEFAULT_MAX_REQUEST_BODY_BYTES } from './http-bridge.ts'
+-import { assertTrustedAuthority } from './api-request-trust.ts'
+-import { BrowserAuth } from './browser-auth.ts'
+ import { HostConnectionService } from './rpc-host.ts'
+-import { ConnectionRecoveryConfigSchema, resolveConnectionConfig, type ConnectionRecoveryConfig } from './recovery-config.ts'
+ 
+ export type {
+   ConnectionFetchMethod,
+@@ -46,113 +35,14 @@
+ 
+ export { API_PATH } from './api-path.ts'
+ 
+-/** Stable Cordis plugin name. */
++/** 固定服务名沿用上游，已有 Remote 插件继续注入同一个 Connection。 */
+ export const name = 'client-connection'
++export const inject: string[] = []
+ 
+-declare module '@deepseek-ai/cordis' {
+-  interface Events {
+-    /**
+-     * Admit or wrap an authenticated shared API request, including body transfer.
+-     * Existing requests continue when a listener refuses subsequent requests.
+-     * @param request - Authenticated incoming HTTP request.
+-     * @param response - Response owned until the delegated bridge settles.
+-     * @param next - Delegate to the next listener or the shared API bridge.
+-     * @mode waterfall
+-     */
+-    'connection/request'(request: IncomingMessage, response: ServerResponse, next: () => Promise<void>): Promise<void>
+-  }
+-}
+-
+-/** Headroom for RPC JSON fields around aggregate base64 image payloads. */
+-const REQUEST_ENVELOPE_HEADROOM_BYTES = 1024 * 1024
+-
+-function assertImageBodyCapacity(ctx: Context, maxRequestBodyBytes: number): void {
+-  const attachments = ctx.get('attachments')
+-  if (attachments === undefined) return
+-  const requiredImageBodyBytes = Math.ceil(
+-    attachments.imageLimits.maxMessageImageBytes * 4 / 3,
+-  ) + REQUEST_ENVELOPE_HEADROOM_BYTES
+-  if (maxRequestBodyBytes < requiredImageBodyBytes) {
+-    throw new Error(
+-      `client-connection maxRequestBodyBytes (${String(maxRequestBodyBytes)}) must be at least `
+-      + `${String(requiredImageBodyBytes)} for the configured aggregate image limit`,
+-    )
+-  }
+-}
+-
+-/** Services required before providing Connection. */
+-export const inject = ['credentials']
+-
+-/** Browser authentication, request limits, and connection recovery configuration. */
+-export interface ConnectionConfig {
+-  /** Browser recovery timing, injected into each served page. */
+-  recovery?: ConnectionRecoveryConfig
+-  /**
+-   * Authorities this deployment serves beyond loopback: exact `host:port`, or
+-   * port-less `host` matching any port. The /api trust fence refuses any
+-   * request whose Host is neither loopback nor listed here, so a
+-   * non-loopback (`0.0.0.0`) deployment must declare the names it is reached
+-   * by; the Web runtime derives LAN IP literals from an active all-interface
+-   * bind. An entry that is not a bare, canonical authority fails plugin load.
+-   */
+-  trustedHosts?: string[]
+-  /** Absolute browser-session lifetime in days. Default: 30. */
+-  cookieMaxAgeDays?: number
+-  /** Maximum buffered JSON body for every `/api` request. Default: 300 MiB. */
+-  maxRequestBodyBytes?: number
+-}
+-
+-export const Config: z<ConnectionConfig> = z.object({
+-  recovery: ConnectionRecoveryConfigSchema.default({}),
+-  trustedHosts: z.array(String).default([]),
+-  cookieMaxAgeDays: z.natural().min(1).default(30),
+-  maxRequestBodyBytes: z.natural().min(1).default(DEFAULT_MAX_REQUEST_BODY_BYTES),
+-})
+-
+ /**
+- * Provides carrier-neutral RPC and Fetch registries. When `webServer` is
+- * present, the plugin also mounts the `/api` browser transport with Host/Origin
+- * checks and persistent browser authentication.
+- * @param ctx - Host plugin context.
+- * @param config - resolved plugin config (schema defaults applied).
++ * 只提供载体无关的 RPC 拦截与 Fetch 路由注册。
++ * 请求身份由 Electron 主进程及受限 preload 校验，不创建 Cookie 密钥或 Web 监听。
+  */
+-export async function apply(ctx: Context, config?: ConnectionConfig): Promise<void> {
+-  const recovery = resolveConnectionConfig(config?.recovery)
+-  // The Loader resolves schema defaults; hand-built test contexts may pass none.
+-  const trustedHosts = config?.trustedHosts ?? []
+-  const cookieMaxAgeDays = config?.cookieMaxAgeDays ?? 30
+-  const maxRequestBodyBytes = config?.maxRequestBodyBytes ?? DEFAULT_MAX_REQUEST_BODY_BYTES
+-  // Config boundary: a malformed entry fails the load loudly here rather than
+-  // silently authorizing its hostname prefix at request time.
+-  for (const entry of trustedHosts) assertTrustedAuthority(entry)
+-  assertImageBodyCapacity(ctx, maxRequestBodyBytes)
+-  const connection = new HostConnectionService(
+-    ctx,
+-    trustedHosts,
+-    await BrowserAuth.create(ctx.root, ctx.credentials, cookieMaxAgeDays),
+-  )
+-  ctx.inject(['webServer'], (webCtx) => {
+-    assertImageBodyCapacity(webCtx, maxRequestBodyBytes)
+-    webCtx.on('webserver/index-inject', (table) => {
+-      table.push({ kind: 'global', name: '__DSH_CONNECTION_RECOVERY__', value: recovery })
+-    })
+-    const fetchHandler = connection.createSharedFetchHandler(API_PATH)
+-    const route: WebRoute = {
+-      kind: 'prefix',
+-      path: API_PATH,
+-      handler: async (req, res) => {
+-        const rejection = connection.requestRejection(req)
+-        if (rejection !== undefined) {
+-          res.writeHead(rejection)
+-          res.end(rejection === 401 ? 'unauthorized' : 'forbidden')
+-          return
+-        }
+-        await webCtx.waterfall('connection/request', req, res, () => bridge(req, res, fetchHandler, maxRequestBodyBytes))
+-      },
+-    }
+-    webCtx.effect(() => webCtx.webServer.register(route), 'client-connection: /api route')
+-  })
+-  ctx.inject(['attachments'], (attachmentCtx) => {
+-    assertImageBodyCapacity(attachmentCtx, maxRequestBodyBytes)
+-  })
++export function apply(ctx: Context): void {
++  new HostConnectionService(ctx)
+ }
+--- a/packages/client/connection/src/rpc-host.ts
++++ b/packages/client/connection/src/rpc-host.ts
+@@ -1,17 +1,13 @@
+-/** Host registry and HTTP adapter for generic Connection RPC channels. */
++/** MyDSH 本地 Connection 注册与分发；浏览器授权及独立 HTTP 通道明确拒绝。 */
+ 
+ import { Context, Service } from '@deepseek-ai/cordis'
+-import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
+ import {
+   RpcId,
+   type ClientRequest,
+   type RpcId as RpcIdType,
+ } from './rpc.ts'
+ import { clientRequestSchema } from './rpc-schema.ts'
+-import { bridge } from './http-bridge.ts'
+-import { isTrustedApiRequest } from './api-request-trust.ts'
+ import { API_PATH } from './api-path.ts'
+-import type { BrowserAuth } from './browser-auth.ts'
+ import type {
+   ConnectionIndexRequest,
+   ConnectionIndexResponse,
+@@ -29,7 +25,6 @@
+ } from './rpc.ts'
+ 
+ const INVALID_REQUEST_RPC_ID = RpcId('invalid-request')
+-const CHANNEL_PATTERN = /^\/[A-Za-z0-9._~-]+$/
+ const ENDPOINT_SEGMENT_PATTERN = /^[A-Za-z0-9_$.-]+$/
+ 
+ interface ConnectionRpcInterceptor {
+@@ -61,17 +56,8 @@
+   private readonly interceptors = new Map<string, ConnectionRpcInterceptor>()
+   private readonly fetchRoutes = new Map<string, RegisteredFetchRoute>()
+ 
+-  /**
+-   * Provide the Host half over the active HTTP server.
+-   * @param ctx - owning Connection plugin context.
+-   * @param trustedHosts - deployment authorities accepted by the Host/Origin fence.
+-   * @param browserAuth - process token and persistent browser-session owner.
+-   */
+-  constructor(
+-    ctx: Context,
+-    private readonly trustedHosts: readonly string[],
+-    private readonly browserAuth: BrowserAuth,
+-  ) {
++  /** 注册到插件所属 Context，释放范围仍由 Cordis 管理。 */
++  constructor(ctx: Context) {
+     super(ctx, 'connection')
+   }
+ 
+@@ -93,20 +79,19 @@
+     }
+   }
+ 
+-  /** Apply the configured Host/Origin fence, then browser authentication. */
+-  requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection {
+-    if (!isTrustedApiRequest(request, this.trustedHosts)) return 403
+-    return this.browserAuth.isAuthenticated(request) ? undefined : 401
++  /** MyDSH 不提供 HTTP 接入；保留协议接口并默认拒绝任何浏览器请求。 */
++  requestRejection(_request: ConnectionTrustRequest): ConnectionRequestRejection {
++    return 403
+   }
+ 
+-  /** Authenticate an index request through the process-token exchange or cookie. */
+-  authorizeIndex(request: ConnectionIndexRequest, response: ConnectionIndexResponse): boolean {
+-    return this.browserAuth.authorizeIndex(request, response)
++  /** 本地 IPC 没有首页授权或 Cookie 交换。 */
++  authorizeIndex(_request: ConnectionIndexRequest, _response: ConnectionIndexResponse): boolean {
++    return false
+   }
+ 
+-  /** Add this process's launch token to the clean application URL. */
+-  authenticatedUrl(baseUrl: string): string {
+-    return this.browserAuth.authenticatedUrl(baseUrl)
++  /** 防止调用方把本地核心误当成可登录的 Web Host。 */
++  authenticatedUrl(_baseUrl: string): string {
++    throw new Error('MyDSH 仅支持本地 IPC，不提供浏览器授权地址')
+   }
+ 
+   /**
+@@ -155,30 +140,13 @@
+     }, `client-connection: ${route.path} Fetch route`)
+   }
+ 
++  /** 非共享 RPC 通道在上游依赖 HTTP 监听，MyDSH 必须明确拒绝。 */
+   private register(
+-    owner: Context,
+-    channel: string,
+-    handler: ConnectionRpcHandler,
++    _owner: Context,
++    _channel: string,
++    _handler: ConnectionRpcHandler,
+   ): () => Promise<void> {
+-    assertChannel(channel)
+-    const fetchHandler = rpcFetchHandler(channel, handler)
+-    const route: WebRoute = {
+-      kind: 'prefix',
+-      path: channel,
+-      handler: async (req, res) => {
+-        const rejection = this.requestRejection(req)
+-        if (rejection !== undefined) {
+-          res.writeHead(rejection)
+-          res.end(rejection === 401 ? 'unauthorized' : 'forbidden')
+-          return
+-        }
+-        await bridge(req, res, fetchHandler)
+-      },
+-    }
+-    return owner.effect(
+-      () => owner.webServer.register(route),
+-      `client-connection: ${channel} rpc channel`,
+-    )
++    throw new Error('MyDSH 不提供独立 HTTP 通道，请使用共享 Remote 接口')
+   }
+ 
+   private registerInterceptor(
+@@ -283,12 +251,6 @@
+   return Response.json(body)
+ }
+ 
+-function assertChannel(channel: string): void {
+-  if (!CHANNEL_PATTERN.test(channel) || channel === '/api') {
+-    throw new Error(`connection: invalid or reserved RPC channel ${JSON.stringify(channel)}`)
+-  }
+-}
+-
+ function assertFetchRoute(route: ConnectionFetchRoute): void {
+   if (endpointFromPath(API_PATH, route.path) === undefined) {
+     throw new Error(`connection: invalid exact Fetch route ${JSON.stringify(route.path)}`)
+--- a/packages/client/connection/types/index.d.ts
++++ b/packages/client/connection/types/index.d.ts
+@@ -1,55 +1,12 @@
+-/** Host HTTP bridge for browser-client RPC. */
++/** MyDSH 本地 IPC 的 Connection 注册入口，不装配 HTTP 或浏览器授权。 */
+ import type { Context } from '@deepseek-ai/cordis';
+-import type { IncomingMessage, ServerResponse } from 'node:http';
+-import z from '@deepseek-ai/schemastery';
+-import { type ConnectionRecoveryConfig } from './recovery-config.ts';
+ export type { ConnectionFetchMethod, ConnectionFetchHandler, ConnectionFetchRoute, ConnectionIndexRequest, ConnectionIndexResponse, ConnectionRpcEndpointMatcher, ConnectionRpcFailure, ConnectionRpcHandler, ConnectionRequestRejection, ConnectionRpcResult, ConnectionRequestBodyMode, ConnectionTrustRequest, ClientRequest, HostConnectionHandle, HostConnectionFetch, HostConnectionRpc, RpcMessage, ServerResponse, } from './rpc.ts';
+ export { RpcId, transportError } from './rpc.ts';
+ export { clientRequestSchema, rpcErrorSchema, rpcIdSchema, rpcMessageSchema, rpcResultSchema, serverResponseSchema, } from './rpc-schema.ts';
+ export { HostConnectionService } from './rpc-host.ts';
+ export { API_PATH } from './api-path.ts';
+-/** Stable Cordis plugin name. */
++/** 固定服务名沿用上游，已有 Remote 插件继续注入同一个 Connection。 */
+ export declare const name = "client-connection";
+-declare module '@deepseek-ai/cordis' {
+-    interface Events {
+-        /**
+-         * Admit or wrap an authenticated shared API request, including body transfer.
+-         * Existing requests continue when a listener refuses subsequent requests.
+-         * @param request - Authenticated incoming HTTP request.
+-         * @param response - Response owned until the delegated bridge settles.
+-         * @param next - Delegate to the next listener or the shared API bridge.
+-         * @mode waterfall
+-         */
+-        'connection/request'(request: IncomingMessage, response: ServerResponse, next: () => Promise<void>): Promise<void>;
+-    }
+-}
+-/** Services required before providing Connection. */
+ export declare const inject: string[];
+-/** Browser authentication, request limits, and connection recovery configuration. */
+-export interface ConnectionConfig {
+-    /** Browser recovery timing, injected into each served page. */
+-    recovery?: ConnectionRecoveryConfig;
+-    /**
+-     * Authorities this deployment serves beyond loopback: exact `host:port`, or
+-     * port-less `host` matching any port. The /api trust fence refuses any
+-     * request whose Host is neither loopback nor listed here, so a
+-     * non-loopback (`0.0.0.0`) deployment must declare the names it is reached
+-     * by; the Web runtime derives LAN IP literals from an active all-interface
+-     * bind. An entry that is not a bare, canonical authority fails plugin load.
+-     */
+-    trustedHosts?: string[];
+-    /** Absolute browser-session lifetime in days. Default: 30. */
+-    cookieMaxAgeDays?: number;
+-    /** Maximum buffered JSON body for every `/api` request. Default: 300 MiB. */
+-    maxRequestBodyBytes?: number;
+-}
+-export declare const Config: z<ConnectionConfig>;
+-/**
+- * Provides carrier-neutral RPC and Fetch registries. When `webServer` is
+- * present, the plugin also mounts the `/api` browser transport with Host/Origin
+- * checks and persistent browser authentication.
+- * @param ctx - Host plugin context.
+- * @param config - resolved plugin config (schema defaults applied).
+- */
+-export declare function apply(ctx: Context, config?: ConnectionConfig): Promise<void>;
+-//# sourceMappingURL=index.d.ts.map
+\ No newline at end of file
++/** 只注册本地共享分发服务，请求身份由 Electron 主进程及受限 preload 校验。 */
++export declare function apply(ctx: Context): void;
+--- a/packages/client/connection/types/rpc-host.d.ts
++++ b/packages/client/connection/types/rpc-host.d.ts
+@@ -1,6 +1,5 @@
+-/** Host registry and HTTP adapter for generic Connection RPC channels. */
++/** MyDSH 本地 Connection 注册与分发；浏览器授权及独立 HTTP 通道明确拒绝。 */
+ import { Context, Service } from '@deepseek-ai/cordis';
+-import type { BrowserAuth } from './browser-auth.ts';
+ import type { ConnectionIndexRequest, ConnectionIndexResponse, ConnectionFetchHandler, HostConnectionFetch, ConnectionRequestRejection, ConnectionTrustRequest, HostConnectionHandle, HostConnectionRpc } from './rpc.ts';
+ declare module '@deepseek-ai/cordis' {
+     interface Context {
+@@ -10,26 +9,19 @@
+ }
+ /** Host Connection service whose channel registrations belong to the caller fiber. */
+ export declare class HostConnectionService extends Service implements HostConnectionHandle {
+-    private readonly trustedHosts;
+-    private readonly browserAuth;
+     private readonly interceptors;
+     private readonly fetchRoutes;
+-    /**
+-     * Provide the Host half over the active HTTP server.
+-     * @param ctx - owning Connection plugin context.
+-     * @param trustedHosts - deployment authorities accepted by the Host/Origin fence.
+-     * @param browserAuth - process token and persistent browser-session owner.
+-     */
+-    constructor(ctx: Context, trustedHosts: readonly string[], browserAuth: BrowserAuth);
++    /** 注册到插件所属 Context，释放范围仍由 Cordis 管理。 */
++    constructor(ctx: Context);
+     /** Generic channel registry scoped to the Context reading this service. */
+     get rpc(): HostConnectionRpc;
+     /** Exact Fetch-route registry scoped to the Context reading this service. */
+     get fetch(): HostConnectionFetch;
+-    /** Apply the configured Host/Origin fence, then browser authentication. */
++    /** MyDSH 不提供 HTTP 接入，任何浏览器请求均拒绝。 */
+     requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection;
+-    /** Authenticate an index request through the process-token exchange or cookie. */
++    /** 本地 IPC 没有首页授权或 Cookie 交换，始终拒绝。 */
+     authorizeIndex(request: ConnectionIndexRequest, response: ConnectionIndexResponse): boolean;
+-    /** Add this process's launch token to the clean application URL. */
++    /** MyDSH 不提供浏览器授权地址，调用时抛出明确错误。 */
+     authenticatedUrl(baseUrl: string): string;
+     /**
+      * Compose one shared-channel Fetch handler from exact routes and its interceptor.
+@@ -41,4 +33,3 @@
+     private register;
+     private registerInterceptor;
+ }
+-//# sourceMappingURL=rpc-host.d.ts.map
+\ No newline at end of file

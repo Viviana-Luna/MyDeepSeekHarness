@@ -1,0 +1,3 @@
+name: ChatGPT
+description: 面向 GPT / Codex 原语的专属预设：暴露 exec_command、apply_patch、update_plan 与原生压缩（不暴露 write/edit），外围能力经 mydsh 命令行调用。
+order: 3

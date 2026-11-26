@@ -1,0 +1,77 @@
+# MyDSH ChatGPT 预设：对齐 Codex 后训练原语（不暴露 write/edit），外围业务工具统一经 mydsh 二级 CLI 按需调用。
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    suffix: 当前工作目录是 {{cwd}}。
+    prefix: |
+      你是 MyDSH 中使用 {{model}} 的编码助手。理解用户的实际目标，依据代码和工具结果，在授权范围内完成实现与验证。
+
+      用户要求分析时保持只读；要求修复或实现时，先检查项目规则、相关代码和调用关系，再完成必要改动。复杂任务用 update_plan 记录少量可验收步骤，简单任务直接执行。
+      搜索优先使用 rg 和 rg --files（Windows 下可直接配合 glob / grep）。用 read 阅读文本文件，用 apply_patch 创建或修改文本，用 exec_command 执行命令、Git 检查、构建和验证。
+      当任务涉及数据库、SSH、浏览器自动化、系统级桌面操控，或开发/转换 MyDSH 插件与自定义预设时，按需加载 mydsh-capabilities 或 mydsh-plugin-development Skill，并在 exec_command 中调用受控命令行 `mydsh`（先运行 `mydsh --help` 或 `mydsh <domain> <action> --help` 核对参数）。
+      长命令返回 session_id 后用 job_output 续读，确认是否结束；需要停止时用 job_kill 取消自己启动的作业。已有作业仍运行时不要重复启动。
+      保留用户已有修改，优先修复根因并复用已有接口。先运行相关现有检查，只有新行为没有覆盖时才补少量必要测试。
+      当前模型明确支持图片时，用 view_image 查看本地截图或图片（含 `mydsh` 截图命令返回的 `image_path`）。收到图片省略或能力不支持的提示时，如实说明缺失信息。
+      在长任务中维护目标、约束、关键决定、修改文件、已完成验证、活动作业及下一步。收到压缩摘要或恢复会话后，先结合最新消息核对当前状态，不重复已经执行的写入或命令。
+      完成当前范围前持续推进；只在用户选择、授权或无法自行排除的阻塞上提问。最终报告结果、验证证据与尚未验证的部分。
+- id: agent-instructions
+  name: '@deepseek-ai/dsh-agent-instructions'
+  config:
+    maxBytes: 65536
+- id: coding-tools
+  name: '@deepseek-ai/dsh-agent-presets/coding-tools'
+  config:
+    flavor: codex
+- id: win32-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  disabled: !!js process.platform !== 'win32'
+  config:
+    sampleOverCapGlobResults: false
+- id: tool-jobs
+  name: '@deepseek-ai/dsh-tool-jobs'
+- id: skill-filesystem
+  name: '@mydsh/cli-bridge/preset-skills'
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
+- id: planning
+  name: cordis:group
+  group: true
+  isolate:
+    planMode: true
+  config:
+    - id: plan-mode
+      name: '@deepseek-ai/dsh-plan-mode'
+      config:
+        section: |
+          当前处于计划模式。只读取、搜索和分析，不修改文件、配置或 Git 状态，也不运行会改写文件的检查。
+          实现请求在此模式下表示规划实现。先查清实际代码，只对无法通过检查确定的需求或选择提问。
+          计划写明目标、非目标、最小改动与验收。用 exit_plan_mode 提交完整计划；只有该工具成功或用户通过界面切换模式后，才在下一步开始实施。
+- id: compaction
+  name: cordis:group
+  group: true
+  isolate:
+    compaction: true
+    toolResultPruner: true
+  config:
+    - id: compaction-chatgpt
+      name: '@mydsh/compaction-chatgpt'
+      config:
+        # GPT 在窗口 80% 时使用原生压缩；其他提供方仍使用文本摘要。
+        maxTokens: null
+    - id: command-compact
+      name: '@deepseek-ai/dsh-command-compact'
+    - id: tool-result-pruner
+      name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+      config:
+        thresholdChars: 8192
+        headChars: 4096
+        tailChars: 1024
+- id: tool-ask-user
+  name: '@deepseek-ai/dsh-tool-ask-user'
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'
+  config:
+    fetch: true
+    searchTimeoutMs: 60000
+- id: present
+  name: '@deepseek-ai/dsh-tool-present'

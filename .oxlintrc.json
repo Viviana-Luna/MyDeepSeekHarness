@@ -1,0 +1,340 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "warn"
+  },
+  "options": {
+    "reportUnusedDisableDirectives": "error"
+  },
+  "ignorePatterns": [
+    "lib/**",
+    "node_modules/**",
+    "coverage/**",
+    "release/**",
+    "src/renderer/src/.umi*/**",
+    "vendor/**",
+    "packages/*/*/src/**",
+    "packages/*/*/types/**",
+    "packages/*/*/contracts/**",
+    "!packages/connections/access/src/**",
+    "!packages/connections/database/src/agent-structure.ts",
+    "!packages/connections/database/src/tools.ts",
+    "!packages/cli/cli-bridge/src/**"
+  ],
+  "rules": {
+    "no-var": "error",
+    "prefer-const": "error",
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }
+    ],
+    "max-lines": [
+      "error",
+      {
+        "max": 600,
+        "skipBlankLines": true,
+        "skipComments": true
+      }
+    ],
+    "max-lines-per-function": [
+      "error",
+      {
+        "max": 80,
+        "skipBlankLines": true,
+        "skipComments": true
+      }
+    ],
+    "max-depth": [
+      "error",
+      {
+        "max": 4
+      }
+    ],
+    "max-params": [
+      "error",
+      {
+        "max": 4
+      }
+    ],
+    "max-nested-callbacks": [
+      "error",
+      {
+        "max": 4
+      }
+    ],
+    "no-nested-ternary": "error"
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/*.tsx"
+      ],
+      "rules": {
+        "max-lines-per-function": [
+          "error",
+          {
+            "max": 150,
+            "skipBlankLines": true,
+            "skipComments": true
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "tests/**"
+      ],
+      "rules": {
+        "max-lines-per-function": "off",
+        "max-nested-callbacks": "off"
+      }
+    },
+    {
+      "files": [
+        "src/main/host/host-client.ts",
+        "src/main/index.ts",
+        "src/main/settings/desktop-settings.ts",
+        "src/main/verification/workspace-tabs-verifier.ts",
+        "src/renderer/src/features/composer/Composer.tsx",
+        "src/renderer/src/features/connections/DatabaseWorkspace.tsx",
+        "src/renderer/src/features/conversation/ConversationView.tsx",
+        "src/renderer/src/features/project-workspace/ProjectWorkspaceProvider.tsx",
+        "src/renderer/src/features/terminal/TerminalView.tsx",
+        "src/renderer/src/models/workspace/store.ts",
+        "src/renderer/src/pages/workspace/components/leftpanel/chat-leftpanel/index.tsx",
+        "src/renderer/src/pages/workspace/components/topbar/index.tsx",
+        "src/runtime/import/dsh-import.ts",
+        "src/runtime/workspace/project-service.ts",
+        "src/shared/session-live.ts",
+        "src/shared/session-projection.ts",
+        "tests/host-client.spec.ts",
+        "tests/project-service.spec.ts",
+        "tests/renderer-app-store-commands.spec.ts",
+        "tests/renderer-app-store.spec.ts",
+        "tests/renderer-composer-controls.spec.tsx",
+        "tests/renderer-project-tools.spec.tsx",
+        "tests/renderer-session-views.spec.tsx",
+        "tests/renderer-settings-dialog.spec.tsx",
+        "tests/session-projection.spec.ts"
+      ],
+      "rules": {
+        "max-lines": "off"
+      }
+    },
+    {
+      "files": [
+        "packages/preset/agent-presets/coding-tools.js",
+        "packages/runtime/entry.mjs",
+        "packages/runtime/plugin-tools.mjs",
+        "packages/runtime/plugin-typert.mjs",
+        "scripts/core-smoke-windows.mjs",
+        "scripts/runtime-verification.mjs",
+        "scripts/verify-connection-credentials.mjs",
+        "scripts/verify-connections.mjs",
+        "scripts/verify-core-runtime.mjs",
+        "scripts/verify-native-window-shape.mjs",
+        "scripts/verify-plugin-conversion.mjs",
+        "scripts/verify-queued-cancellation.mjs",
+        "src/main/browser/browser-controller.ts",
+        "src/main/host/host-client.ts",
+        "src/main/host/host-event-stream.ts",
+        "src/main/host/remote-stream.ts",
+        "src/main/index.ts",
+        "src/main/runtime/import-controller.ts",
+        "src/main/runtime/plugin-controller.ts",
+        "src/main/runtime/remote-controller.ts",
+        "src/main/runtime/runtime-install.ts",
+        "src/main/runtime/runtime-stream.ts",
+        "src/main/runtime/runtime-supervisor.ts",
+        "src/main/settings/controller.ts",
+        "src/main/settings/desktop-settings.ts",
+        "src/main/startup/startup-screen.ts",
+        "src/main/verification/compaction-verifier.ts",
+        "src/main/verification/composer-layout-verifier.ts",
+        "src/main/verification/database-verifier.ts",
+        "src/main/verification/interaction-polish-verifier.ts",
+        "src/main/verification/plan-review-verifier.ts",
+        "src/main/verification/plugin-manager-verifier.ts",
+        "src/main/verification/ssh-verifier.ts",
+        "src/main/verification/tab-overflow-verifier.ts",
+        "src/main/verification/window-verifier.ts",
+        "src/main/verification/workspace-review-verifier.ts",
+        "src/main/verification/workspace-tabs-verifier.ts",
+        "src/main/window-background.ts",
+        "src/main/window-controller.ts",
+        "src/renderer/src/features/browser/BrowserPanel.tsx",
+        "src/renderer/src/features/composer/CommandPalette.tsx",
+        "src/renderer/src/features/composer/Composer.tsx",
+        "src/renderer/src/features/composer/ComposerControls.tsx",
+        "src/renderer/src/features/composer/PendingInteractionPanel.tsx",
+        "src/renderer/src/features/connections/ConnectionsWorkspace.tsx",
+        "src/renderer/src/features/connections/DatabaseWorkspace.tsx",
+        "src/renderer/src/features/conversation/ConversationNavigator.tsx",
+        "src/renderer/src/features/conversation/ConversationView.tsx",
+        "src/renderer/src/features/conversation/QueueDock.tsx",
+        "src/renderer/src/features/conversation/useConversationScroll.ts",
+        "src/renderer/src/features/files/CodeEditor.tsx",
+        "src/renderer/src/features/files/FileViewer.tsx",
+        "src/renderer/src/features/files/ProjectSearchDialog.tsx",
+        "src/renderer/src/features/files/QuickOpenDialog.tsx",
+        "src/renderer/src/features/plugins/PluginManager.tsx",
+        "src/renderer/src/features/project-tasks/ProjectTasksPanel.tsx",
+        "src/renderer/src/features/project-tasks/ProjectTasksProvider.tsx",
+        "src/renderer/src/features/project-workspace/ProjectWorkspaceProvider.tsx",
+        "src/renderer/src/features/search/SessionSearch.tsx",
+        "src/renderer/src/features/settings/ArchivedSessionsSettings.tsx",
+        "src/renderer/src/features/settings/ChatGPTSettings.tsx",
+        "src/renderer/src/features/settings/useSettingsCenter.ts",
+        "src/renderer/src/features/source-control/ChangesLeftPanel.tsx",
+        "src/renderer/src/features/source-control/ChangesRightPanel.tsx",
+        "src/renderer/src/features/source-control/GitGraphPanel.tsx",
+        "src/renderer/src/features/source-control/SourceControlProvider.tsx",
+        "src/renderer/src/features/source-control/SourceControlView.tsx",
+        "src/renderer/src/features/terminal/TerminalView.tsx",
+        "src/renderer/src/features/trajectory/TraceInspector.tsx",
+        "src/renderer/src/features/trajectory/TraceTimeline.tsx",
+        "src/renderer/src/features/trajectory/TrajectoryView.tsx",
+        "src/renderer/src/features/trajectory/trajectory-model.ts",
+        "src/renderer/src/features/workspace-tabs/WorkTabPanels.tsx",
+        "src/renderer/src/features/workspace-tabs/WorkspaceTabsProvider.tsx",
+        "src/renderer/src/features/workspace-tabs/useWorkTabs.ts",
+        "src/renderer/src/models/workspace/store.ts",
+        "src/renderer/src/pages/workspace/components/PanelDividers.tsx",
+        "src/renderer/src/pages/workspace/components/leftpanel/chat-leftpanel/index.tsx",
+        "src/renderer/src/pages/workspace/components/mainpanel/index.tsx",
+        "src/renderer/src/pages/workspace/components/rightpanel/index.tsx",
+        "src/renderer/src/pages/workspace/components/topbar/index.tsx",
+        "src/renderer/src/pages/workspace/components/topbar/useSessionTabGlass.ts",
+        "src/runtime/import/dsh-import.ts",
+        "src/runtime/plugins/converter.ts",
+        "src/runtime/plugins/manager.ts",
+        "src/runtime/terminal/terminal-service.ts",
+        "src/runtime/workspace/git-review-service.ts",
+        "src/runtime/workspace/project-service.ts",
+        "src/runtime/workspace/workspace-index-service.ts",
+        "src/shared/host-live.ts",
+        "src/shared/session-follow.ts",
+        "src/shared/session-live.ts",
+        "src/shared/session-projection.ts"
+      ],
+      "rules": {
+        "max-lines-per-function": "off"
+      }
+    },
+    {
+      "files": [
+        "packages/preset/agent-presets/patch-format.js",
+        "scripts/core-smoke-windows.mjs",
+        "scripts/core/import-dsh.mjs",
+        "src/main/index.ts",
+        "src/main/verification/compaction-verifier.ts",
+        "src/main/verification/plan-review-verifier.ts",
+        "src/renderer/src/features/trajectory/trajectory-model.ts",
+        "src/runtime/import/dsh-import.ts",
+        "tests/compaction-safety.spec.mjs"
+      ],
+      "rules": {
+        "max-depth": "off"
+      }
+    },
+    {
+      "files": [
+        "packages/preset/agent-presets/coding-tools.js",
+        "src/main/browser/browser-controller.ts",
+        "src/main/host/host-client.ts",
+        "src/main/index.ts",
+        "src/main/runtime/import-controller.ts",
+        "src/main/runtime/runtime-supervisor.ts",
+        "src/main/verification/compaction-verifier.ts",
+        "src/main/verification/interaction-polish-verifier.ts",
+        "src/main/verification/plan-review-verifier.ts",
+        "src/main/verification/workspace-review-verifier.ts",
+        "src/main/verification/workspace-tabs-verifier.ts",
+        "src/renderer/src/pages/workspace/components/topbar/useSessionTabGlass.ts",
+        "src/runtime/plugins/converter.ts",
+        "src/runtime/workspace/workspace-index-service.ts",
+        "tests/compaction-safety.spec.mjs",
+        "tests/renderer-workspace-tabs.spec.tsx"
+      ],
+      "rules": {
+        "max-params": "off"
+      }
+    },
+    {
+      "files": [
+        "packages/preset/agent-presets/patch-format.js",
+        "packages/runtime/entry.mjs",
+        "packages/runtime/plugin-tools.mjs",
+        "scripts/core/build-runtime.mjs",
+        "scripts/core/import-dsh.mjs",
+        "scripts/verify-connections.mjs",
+        "scripts/verify-packaged-runtime.mjs",
+        "src/main/connections/connection-system.ts",
+        "src/main/host/host-client.ts",
+        "src/main/index.ts",
+        "src/main/runtime/plugin-controller.ts",
+        "src/main/runtime/runtime-stream.ts",
+        "src/main/startup/window-controls.js",
+        "src/main/window-controller.ts",
+        "src/renderer/src/features/browser/BrowserPanel.tsx",
+        "src/renderer/src/features/composer/CommandPalette.tsx",
+        "src/renderer/src/features/composer/Composer.tsx",
+        "src/renderer/src/features/composer/ComposerControls.tsx",
+        "src/renderer/src/features/composer/ComposerStatus.tsx",
+        "src/renderer/src/features/composer/ComposerTodos.tsx",
+        "src/renderer/src/features/composer/PendingInteractionPanel.tsx",
+        "src/renderer/src/features/composer/command-palette.ts",
+        "src/renderer/src/features/connections/DatabaseWorkspace.tsx",
+        "src/renderer/src/features/conversation/ConversationNavigator.tsx",
+        "src/renderer/src/features/conversation/ConversationView.tsx",
+        "src/renderer/src/features/files/FileOutlinePanel.tsx",
+        "src/renderer/src/features/files/ProjectSearchDialog.tsx",
+        "src/renderer/src/features/files/QuickOpenDialog.tsx",
+        "src/renderer/src/features/project-tasks/ProjectTasksPanel.tsx",
+        "src/renderer/src/features/search/SessionSearch.tsx",
+        "src/renderer/src/features/settings/ArchivedSessionsSettings.tsx",
+        "src/renderer/src/features/settings/ChatGPTSettings.tsx",
+        "src/renderer/src/features/settings/useSettingsCenter.ts",
+        "src/renderer/src/features/source-control/ChangesLeftPanel.tsx",
+        "src/renderer/src/features/source-control/ChangesRightPanel.tsx",
+        "src/renderer/src/features/source-control/SourceControlView.tsx",
+        "src/renderer/src/features/source-control/diff-model.ts",
+        "src/renderer/src/features/trajectory/TraceInspector.tsx",
+        "src/renderer/src/features/trajectory/TraceTimeline.tsx",
+        "src/renderer/src/features/trajectory/trajectory-model.ts",
+        "src/renderer/src/features/workspace-tabs/WorkTabPanels.tsx",
+        "src/renderer/src/features/workspace-tabs/useWorkTabs.ts",
+        "src/renderer/src/models/workspace/store.ts",
+        "src/renderer/src/pages/workspace/components/PanelDividers.tsx",
+        "src/renderer/src/pages/workspace/components/leftpanel/chat-leftpanel/index.tsx",
+        "src/renderer/src/pages/workspace/components/mainpanel/index.tsx",
+        "src/renderer/src/pages/workspace/components/rightpanel/chat-rightpanel/index.tsx",
+        "src/renderer/src/pages/workspace/components/rightpanel/index.tsx",
+        "src/renderer/src/pages/workspace/components/topbar/index.tsx",
+        "src/renderer/src/pages/workspace/components/topbar/useSessionTabGlass.ts",
+        "src/renderer/src/plugins/builtin/session.tsx",
+        "src/renderer/src/plugins/slot-core.ts",
+        "src/renderer/src/shared/ui/AnchoredPanel.tsx",
+        "src/runtime/plugins/manager.ts",
+        "src/runtime/workspace/project-service.ts",
+        "src/shared/browser.ts",
+        "src/shared/session-follow.ts",
+        "src/shared/session-live.ts",
+        "src/shared/session-projection.ts",
+        "src/shared/window.ts",
+        "tests/renderer-app-store-commands.spec.ts",
+        "tests/renderer-app-store.spec.ts",
+        "tests/ssh-connections.spec.mjs"
+      ],
+      "rules": {
+        "no-nested-ternary": "off"
+      }
+    }
+  ]
+}

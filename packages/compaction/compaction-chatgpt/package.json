@@ -1,0 +1,24 @@
+{
+  "name": "@mydsh/compaction-chatgpt",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MyDSH ChatGPT 订阅的自动原生上下文压缩插件",
+  "main": "lib/index.js",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./lib/index.js"
+    }
+  },
+  "license": "GPL-3.0-or-later",
+  "dependencies": {
+    "@deepseek-ai/cordis": "workspace:*",
+    "@deepseek-ai/dsh-agent": "workspace:*",
+    "@deepseek-ai/dsh-commands": "workspace:*",
+    "@deepseek-ai/dsh-compaction": "workspace:*",
+    "@deepseek-ai/dsh-compaction-basic": "workspace:*",
+    "@mydsh/llm-chatgpt": "workspace:*"
+  }
+}

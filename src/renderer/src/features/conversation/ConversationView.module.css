@@ -1,0 +1,1321 @@
+.frame {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  flex-direction: column;
+  container-type: inline-size;
+  --conversation-width: min(
+    var(--conversation-preferred-width, clamp(660px, 64cqw, 860px)),
+    max(640px, calc(100cqw - 176px)),
+    calc(100cqw - 88px)
+  );
+}
+
+.content {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.widthHandle {
+  position: absolute;
+  top: 14%;
+  bottom: 14%;
+  z-index: 5;
+  width: 16px;
+  cursor: ew-resize;
+  touch-action: none;
+  border-radius: 8px;
+  outline-offset: -3px;
+}
+
+.leftHandle {
+  left: calc((100% - var(--conversation-width)) / 2 - 24px);
+}
+.rightHandle {
+  right: calc((100% - var(--conversation-width)) / 2 - 24px);
+}
+.widthHandle::before {
+  content: '';
+  position: absolute;
+  inset: 0 6px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text) 16%, transparent);
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+.widthHandle:is(:hover, :focus-visible)::before {
+  opacity: 1;
+}
+.frame[data-resizing-content='true'] .widthHandle::before {
+  background: color-mix(in srgb, var(--text) 28%, transparent);
+  opacity: 1;
+  transition: none;
+}
+.frame[data-resizing-content='true'] {
+  user-select: none;
+}
+@container (width < 728px) {
+  .widthHandle {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .widthHandle::before,
+  .widthHandle::after {
+    transition: none;
+  }
+}
+@media (forced-colors: active) {
+  .widthHandle::before {
+    background: ButtonText;
+  }
+  .widthHandle:is(:hover, :focus)::before,
+  .frame[data-resizing-content='true'] .widthHandle::before {
+    background: Highlight;
+    forced-color-adjust: none;
+    box-shadow: none;
+  }
+}
+
+.view {
+  --conversation-icon-gutter: 22px;
+  --conversation-surface-shadow: -2px -2px 5px var(--relief-light), 2px 3px 6px var(--relief-dark);
+  min-height: 0;
+  padding: 28px 0;
+  scrollbar-gutter: stable both-edges;
+  color: var(--text-primary, var(--text, #f4f5f7));
+}
+
+/* 浮层脱离正文滚动区，避免底部留白再次参与百分比高度和 sticky 偏移计算。 */
+.latestButton {
+  position: absolute;
+  z-index: 7;
+  bottom: 8px;
+  left: 50%;
+  translate: -50% 0;
+  display: flex;
+  width: fit-content;
+  min-height: 30px;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  padding: 5px 9px;
+  cursor: pointer;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-raised) 92%, var(--surface));
+  box-shadow: 0 7px 24px rgb(0 0 0 / 0.22);
+  color: var(--text);
+  font-size: var(--text-meta);
+  backdrop-filter: blur(18px);
+}
+
+.loadingOlder {
+  width: min(100%, 860px);
+  margin: 0 auto 18px;
+  color: var(--muted);
+  font-size: var(--text-meta);
+  text-align: center;
+}
+
+.paginationError {
+  display: flex;
+  width: min(100%, 860px);
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: -10px auto 16px;
+  color: var(--danger, var(--negative, #ff5964));
+  font-size: var(--text-meta);
+  text-align: center;
+}
+
+.retryOlder {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 4px 9px;
+  cursor: pointer;
+  border: 1px solid color-mix(in srgb, currentcolor 42%, transparent);
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.retryOlder:hover {
+  background: var(--surface-hover);
+}
+
+.list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  max-width: 100%;
+  gap: 16px;
+  width: min(100%, var(--conversation-width, 800px));
+  margin: 0 auto;
+  padding: 0;
+  list-style: none;
+}
+
+.message {
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+}
+
+.messageTime {
+  margin-inline-start: auto;
+  color: var(--text-tertiary, var(--faint, #676b75));
+  font: var(--text-caption)/1.4 var(--font-mono);
+  white-space: nowrap;
+}
+
+.messageText {
+  min-width: 0;
+  max-width: 100%;
+  color: var(--text);
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: calc(var(--text-body) + 1px);
+  line-height: 1.7;
+}
+
+.messageBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  justify-items: start;
+  gap: 6px;
+}
+
+.messageActions {
+  display: flex;
+  height: 28px;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  color: var(--text-tertiary, var(--faint, #676b75));
+}
+
+/* 保留操作行高度，悬浮时正文与阅读位置不跳动；键盘与触屏仍可使用。 */
+@media (hover: hover) and (pointer: fine) {
+  .messageActions {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease-out;
+  }
+
+  .message:hover .messageActions,
+  .message:has(:focus-visible) .messageActions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .messageActions {
+    transition: none;
+  }
+}
+
+.messageAction {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  cursor: pointer;
+  border: 0;
+  border-radius: 28px;
+  background: transparent;
+  color: inherit;
+}
+
+.messageAction:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-primary, var(--text, #f4f5f7));
+  opacity: 1;
+}
+
+.messageAction[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--accent, #4d6bfe) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent, #4d6bfe) 54%, transparent);
+  color: var(--accent, #4d6bfe);
+}
+
+.messageAction[aria-pressed='true'] svg {
+  fill: currentcolor;
+}
+
+.messageAction:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.messageAction:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent, #4d6bfe) 78%, white);
+  outline-offset: 2px;
+}
+
+.messageActionNotice {
+  margin-left: 4px;
+  color: var(--text-secondary, var(--muted, #989ba4));
+  font-size: var(--text-caption);
+  line-height: 1.4;
+}
+
+.eventRow {
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+}
+.eventRow + .eventRow {
+  margin-top: -11px;
+}
+
+/* 只让正在发生的过程入场，历史记录和加载更早内容保持静止。 */
+.eventRow:has(> .toolDisclosure[data-state='running']),
+.eventRow:has(> .commandDisclosure[data-state='running']) {
+  animation: conversation-enter 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes conversation-enter {
+  from {
+    opacity: 0.55;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.processToggle {
+  display: flex;
+  min-height: 26px;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: var(--text-body);
+  text-align: left;
+}
+.processToggle:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+.processToggle svg {
+  flex: none;
+}
+.processToggle[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
+
+/* 一轮的终端失败：常驻在失败的那一轮后面，用负面色标出但不打断阅读节奏。 */
+.errorRow {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--negative) 42%, var(--line));
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--negative) 7%, var(--surface-raised));
+  color: var(--text);
+  font-size: var(--text-control);
+}
+
+.errorDot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--negative);
+}
+
+.errorCopy {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+
+.errorCopy > strong {
+  font-size: var(--text-control);
+  font-weight: var(--weight-medium);
+}
+.errorCopy > span {
+  min-width: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.errorCode {
+  flex: none;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--surface-hover);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+}
+
+.errorRow[data-severity='warning'] {
+  border-color: color-mix(in srgb, var(--warning) 42%, var(--line));
+  background: color-mix(in srgb, var(--warning) 7%, var(--surface-raised));
+}
+.errorRow[data-severity='warning'] .errorDot {
+  background: var(--warning);
+}
+
+.retryStatus {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  color: var(--muted);
+  font-size: var(--text-control);
+  overflow-wrap: anywhere;
+}
+.retryStatus > [role='status'] {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+.retryStatus > [role='status'] > :first-child {
+  color: var(--warning);
+}
+.retryStatus summary {
+  cursor: pointer;
+}
+.retryStatus summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.retryStatus p {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+}
+
+@media (forced-colors: active) {
+  .errorRow,
+  .retryStatus,
+  .errorRow[data-severity='warning'] {
+    border-color: CanvasText;
+  }
+  .errorRow .errorDot,
+  .errorRow[data-severity='warning'] .errorDot {
+    background: CanvasText;
+  }
+}
+
+.eventDisclosure,
+.thinking {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  flex-direction: column;
+  color: var(--text-secondary, var(--muted, #989ba4));
+}
+
+.thinking,
+.toolDisclosure {
+  overflow: hidden;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: var(--relief-recessed);
+  outline: 1px solid color-mix(in srgb, var(--text) 9%, transparent);
+  outline-offset: -1px;
+}
+
+.thinking[data-active='true'] {
+  animation: conversation-enter 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.toolDisclosure[data-error] .disclosureLeading {
+  color: var(--negative);
+}
+.trailingChevron {
+  flex: none;
+  margin-left: 8px;
+  opacity: 0.45;
+  transition:
+    transform 160ms ease,
+    opacity 160ms ease;
+}
+:is(.thinking, .toolDisclosure):hover .trailingChevron {
+  opacity: 0.9;
+}
+:is(.thinking, .toolDisclosure)[open] .trailingChevron {
+  transform: rotate(90deg);
+}
+
+.eventDisclosure summary,
+.commandRow,
+.thinking summary {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 24px;
+  align-items: center;
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+  color: var(--text-secondary, var(--muted, #989ba4));
+  font-size: var(--text-body);
+  line-height: calc(var(--text-body) + 9px);
+  list-style: none;
+  user-select: none;
+}
+
+.thinking summary,
+.toolDisclosure summary {
+  min-height: 32px;
+  padding: 4px 10px;
+}
+
+.eventDisclosure summary::-webkit-details-marker,
+.thinking summary::-webkit-details-marker {
+  display: none;
+}
+
+.disclosureLeading {
+  position: relative;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  margin-inline-end: calc(var(--conversation-icon-gutter) - 16px);
+  color: var(--text-tertiary, var(--faint, #676b75));
+}
+
+.disclosureIcon,
+.disclosureChevron {
+  position: absolute;
+  inset: 1px;
+  transition:
+    opacity 100ms ease,
+    transform 140ms ease;
+}
+
+.disclosureChevron {
+  opacity: 0;
+}
+
+.eventDisclosure summary:hover .disclosureIcon,
+.thinking summary:hover .disclosureIcon,
+.eventDisclosure[open] .disclosureIcon,
+.thinking[open] .disclosureIcon {
+  opacity: 0;
+}
+
+.eventDisclosure summary:hover .disclosureChevron,
+.thinking summary:hover .disclosureChevron,
+.eventDisclosure[open] .disclosureChevron,
+.thinking[open] .disclosureChevron {
+  opacity: 1;
+}
+
+.eventDisclosure[open] .disclosureChevron,
+.thinking[open] .disclosureChevron {
+  transform: rotate(90deg);
+}
+
+.disclosureTitle,
+.thinkingLabel {
+  flex: 0 0 auto;
+  color: var(--text-secondary, var(--muted, #989ba4));
+  font-size: inherit;
+  font-weight: var(--weight-regular);
+}
+
+.disclosureSeparator {
+  width: 2px;
+  height: 2px;
+  flex: 0 0 2px;
+  margin: 0 8px;
+  border-radius: 1px;
+  background: var(--text-tertiary, var(--faint, #676b75));
+}
+
+.disclosureSummary,
+.thinkingPreview {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-tertiary, var(--faint, #676b75));
+  font-weight: var(--weight-regular);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
+  .thinking[data-active='true'] .thinkingPreview {
+    --summary-ink: var(--text-tertiary, var(--faint, #676b75));
+    background-image: linear-gradient(
+      90deg,
+      var(--summary-ink) 40%,
+      color-mix(in srgb, var(--text) 55%, var(--summary-ink)) 50%,
+      var(--summary-ink) 60%
+    );
+    background-size: 250% 100%;
+    background-clip: text;
+    color: transparent;
+    animation: thinking-sweep 1.8s linear infinite;
+  }
+}
+
+@keyframes thinking-sweep {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+.eventDisclosure summary:hover,
+.commandRow:hover,
+.thinking summary:hover {
+  color: var(--text-primary, var(--text, #f4f5f7));
+}
+
+.eventDisclosure summary:focus-visible,
+.commandRow:focus-visible,
+.thinking summary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent, #4d6bfe) 74%, white);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.thinking summary:focus-visible,
+.toolDisclosure summary:focus-visible {
+  outline-offset: -2px;
+}
+
+.commandRow {
+  width: 100%;
+  text-align: left;
+}
+.commandRow[aria-disabled='true'] {
+  cursor: default;
+}
+.commandRow > svg {
+  flex: none;
+  margin-left: 6px;
+}
+.commandChevronOpen {
+  transform: rotate(90deg);
+}
+.commandBody {
+  max-height: 260px;
+  margin: 6px 0 0 var(--conversation-icon-gutter);
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--muted);
+  font: var(--text-meta)/1.5 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.commandDisclosure[data-error='true'] :is(.disclosureLeading, .disclosureSummary, .commandBody) {
+  color: var(--negative);
+}
+
+.thinkingBody {
+  padding-block: 4px;
+  padding-inline-start: var(--conversation-icon-gutter);
+}
+
+.thinkingBody .messageText {
+  color: var(--text-secondary, var(--muted, #989ba4));
+  font-size: var(--text-body);
+  line-height: 1.62;
+}
+
+.contextBody {
+  box-sizing: border-box;
+  width: calc(100% - 22px);
+  max-height: 180px;
+  margin: 4px 0 0 22px;
+  padding: 10px 12px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--code-bg, color-mix(in srgb, var(--surface-raised, #202126) 72%, transparent));
+  color: var(--text-secondary, var(--muted, #989ba4));
+  font: 400 var(--text-caption)/1.55 var(--font-mono);
+}
+
+.contextBody pre {
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.contextCaption {
+  margin: 0 0 7px;
+  color: var(--text-tertiary, var(--faint, #676b75));
+}
+
+.contextSections {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.contextSections div {
+  display: grid;
+  gap: 2px;
+}
+
+.contextSections dt {
+  color: var(--text-tertiary, var(--faint, #676b75));
+}
+
+.contextSections dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary, var(--muted, #989ba4));
+  white-space: pre-wrap;
+}
+
+.contextEntries {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.contextEntries li {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px;
+}
+
+.contextEntries code {
+  color: var(--text-secondary, var(--muted, #989ba4));
+}
+
+.contextEntries span {
+  overflow: hidden;
+  color: var(--text-tertiary, var(--faint, #676b75));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolDisclosure[data-error='true'] .disclosureSummary {
+  color: var(--danger, var(--negative, #ff5964));
+}
+
+.toolBody {
+  display: flex;
+  width: calc(100% - 20px);
+  max-height: 260px;
+  flex-direction: column;
+  margin: 4px 10px 10px;
+  overflow: auto;
+  border: 1px solid var(--line, #34363e);
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: var(--relief-recessed, none);
+  font: 400 var(--text-caption)/1.55 var(--font-mono);
+}
+
+.toolBody div {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 14px;
+  padding: 10px 12px;
+}
+
+.toolBody div + div {
+  border-top: 1px solid var(--line, #34363e);
+}
+
+.toolBody dt {
+  color: var(--text-tertiary, var(--faint, #676b75));
+}
+
+.toolBody dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary, var(--muted, #989ba4));
+  white-space: pre-wrap;
+}
+
+.toolBody dd[data-error='true'] {
+  color: var(--danger, var(--negative, #ff5964));
+}
+
+.toolEmpty {
+  margin: 4px 10px 10px;
+  color: var(--text-tertiary, var(--faint, #676b75));
+  font-size: var(--text-caption);
+}
+.toolResult {
+  animation: tool-result-reveal 480ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes tool-result-reveal {
+  from {
+    clip-path: inset(0 0 100% 0);
+    opacity: 0.25;
+  }
+  to {
+    clip-path: inset(0);
+    opacity: 1;
+  }
+}
+
+.replyActivity {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px 0 6px;
+  border-radius: 999px;
+  color: var(--text-secondary, var(--muted, #989ba4));
+  font-size: var(--text-meta);
+  line-height: 1.5;
+  font-size: 12.5px;
+}
+.replyText {
+  display: inline-block;
+  background: linear-gradient(90deg, var(--muted), var(--text) 48%, var(--muted));
+  background-size: 220% 100%;
+  background-clip: text;
+  color: transparent;
+  animation:
+    reply-quip-enter 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    text-shimmer 2.4s linear infinite;
+}
+.assistant[data-message-status='streaming'] .messageBody > .messageText {
+  animation: conversation-enter 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes reply-quip-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes text-shimmer {
+  to {
+    background-position: -220% 0;
+  }
+}
+
+.interrupted {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--surface-hover);
+  color: var(--text-tertiary, var(--faint, #676b75));
+  font-size: var(--text-caption);
+  line-height: 1.5;
+}
+
+.fileReference {
+  display: inline;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  border: 0;
+  background: none;
+  color: var(--accent, #4d6bfe);
+  font: inherit;
+  font-weight: 500;
+  text-align: inherit;
+  text-decoration: none;
+  vertical-align: baseline;
+}
+
+.messageLink {
+  color: var(--accent, #4d6bfe);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.linkIcon {
+  width: 1.1em;
+  height: 1.1em;
+  margin-right: 5px;
+  vertical-align: -0.25em;
+}
+
+.fileReference:hover,
+.fileReference:focus,
+.messageLink:hover,
+.messageLink:focus {
+  outline: none;
+  text-decoration: underline dotted currentColor;
+  text-underline-offset: 3px;
+}
+
+.fileReference:focus-visible,
+.messageLink:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent, #4d6bfe) 78%, white);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.user {
+  justify-self: end;
+  width: fit-content;
+  max-width: min(100%, 760px);
+}
+
+.user .messageBody {
+  /* 气泡按正文收缩，不随下方复制按钮与时间戳的宽度拉伸。 */
+  width: fit-content;
+  margin-inline-start: auto;
+  padding: 12px 14px;
+  border: 1px solid transparent;
+  border-radius: 16px 16px 4px 16px;
+  /* 露出气泡下的对话背景，壁纸也能与周围连续。 */
+  background: transparent;
+  box-shadow: var(--conversation-surface-shadow);
+}
+
+@media (prefers-contrast: more) {
+  .view {
+    --conversation-surface-shadow: none;
+  }
+  .user .messageBody {
+    border-color: var(--line-strong);
+  }
+  .thinking,
+  .toolDisclosure {
+    outline: 1px solid var(--line-strong);
+    outline-offset: -1px;
+  }
+}
+
+.messageText[data-streaming-cursor='true'] > :last-child:not([data-code-block])::after,
+.messageText[data-streaming-cursor='true'] > [data-code-block]:last-child pre code::after {
+  display: inline-block;
+  width: 0.52em;
+  height: 0.95em;
+  margin-inline-start: 3px;
+  background: var(--accent);
+  content: '';
+  vertical-align: -0.08em;
+  animation: cursor-blink 1s steps(2, end) infinite;
+}
+
+@keyframes cursor-blink {
+  50% {
+    opacity: 0.12;
+  }
+}
+
+.user .messageActions {
+  justify-content: flex-end;
+}
+
+.assistant {
+  --message-block-shadow: var(--relief-recessed);
+  justify-self: start;
+}
+
+.assistant > .messageBody {
+  gap: 16px;
+}
+
+.state {
+  display: grid;
+  place-content: center;
+  min-height: 320px;
+  gap: 7px;
+  padding: 28px;
+  color: var(--text-secondary, var(--muted, #989ba4));
+  text-align: center;
+}
+
+.state strong {
+  color: var(--text-primary, var(--text, #f4f5f7));
+  font-size: var(--text-title);
+}
+
+.error {
+  color: var(--danger, var(--negative, #ff5964));
+}
+
+@media (max-width: 680px) {
+  .view {
+    padding-block: 18px;
+  }
+
+  .message {
+    width: 100%;
+  }
+
+  .user {
+    width: fit-content;
+    max-width: 100%;
+  }
+
+  .contextEntries li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toolResult,
+  .eventRow:has(> .toolDisclosure[data-state='running']),
+  .eventRow:has(> .commandDisclosure[data-state='running']),
+  .assistant[data-message-status='streaming'] .messageBody > .messageText,
+  .disclosureIcon,
+  .disclosureChevron,
+  .thinking[data-active='true'],
+  .replyText,
+  .messageText[data-streaming-cursor='true'] > :last-child::after,
+  .messageText[data-streaming-cursor='true'] > [data-code-block]:last-child pre code::after {
+    animation: none;
+    transition: none;
+  }
+
+  .replyText {
+    background: none;
+    color: var(--text);
+  }
+}
+
+@media (forced-colors: active) {
+  .toolResult {
+    animation: none;
+  }
+  .eventRow:has(> .toolDisclosure[data-state='running']),
+  .eventRow:has(> .commandDisclosure[data-state='running']),
+  .assistant[data-message-status='streaming'] .messageBody > .messageText {
+    animation: none;
+  }
+  .user .messageBody,
+  .thinking,
+  .contextBody,
+  .commandBody,
+  .toolBody {
+    border-color: CanvasText;
+  }
+  .user .messageBody {
+    background: Canvas;
+    box-shadow: none;
+  }
+  .thinking,
+  .toolDisclosure {
+    outline: 1px solid CanvasText;
+    outline-offset: -1px;
+    box-shadow: none;
+    animation: none;
+  }
+  .messageText[data-streaming-cursor='true'] > :last-child::after,
+  .messageText[data-streaming-cursor='true'] > [data-code-block]:last-child pre code::after {
+    background: CanvasText;
+    forced-color-adjust: none;
+  }
+  .replyText {
+    background: none;
+    color: CanvasText;
+    animation: none;
+  }
+}
+.messageText p {
+  margin: 0 0 0.85em;
+}
+.messageText p:last-child {
+  margin-bottom: 0;
+}
+.messageText strong {
+  color: var(--text);
+  font-weight: var(--weight-semibold);
+}
+.messageText :is(ul, ol) {
+  margin: 0.45em 0 0.85em;
+  padding-inline-start: 1.55em;
+}
+.messageText li + li {
+  margin-top: 0.32em;
+}
+.messageText li > p {
+  margin-bottom: 0.35em;
+}
+.messageText li > p:last-child {
+  margin-bottom: 0;
+}
+.messageText :not(pre) > code {
+  padding: 0.08em 0.38em;
+  border: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--text) 5.5%, transparent);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  line-height: 1.4;
+}
+.tableScroll {
+  max-width: 100%;
+  margin: 12px 0;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+}
+.tableScroll table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.tableScroll :is(th, td) {
+  /* 最小宽度只计算内容，给「右上」「已确认」这类短标签留出空间。 */
+  box-sizing: content-box;
+  min-inline-size: 3ic;
+  padding: 7px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+.tableScroll tr > :not(:last-child) {
+  border-inline-end: 1px solid var(--line);
+}
+.tableScroll th,
+.tableScroll tbody tr:not(:last-child) td {
+  border-block-end: 1px solid var(--line);
+}
+.tableScroll th {
+  background: var(--surface-raised);
+}
+.messageText blockquote {
+  margin: 12px 0;
+  padding-inline-start: 12px;
+  border-inline-start: 3px solid var(--line-strong);
+}
+
+/* 块底露出原有的聊天背景，助手内容用内阴影与用户气泡区分。 */
+.view .messageText :where(.tableScroll, [data-code-block], blockquote) {
+  border: 1px solid color-mix(in srgb, var(--text) 9%, transparent);
+  border-radius: var(--radius-card);
+  background: transparent;
+  box-shadow: var(--message-block-shadow, var(--relief-raised));
+}
+.view .messageText .tableScroll th {
+  background: color-mix(in srgb, var(--relief-light) 55%, transparent);
+}
+.view .messageText blockquote {
+  padding: 8px 12px;
+}
+@media (prefers-contrast: more) {
+  .view .messageText :is(.tableScroll, [data-code-block], blockquote) {
+    border-color: var(--line-strong);
+    box-shadow: none;
+  }
+}
+@media (forced-colors: active) {
+  .view .messageText :is(.tableScroll, [data-code-block], blockquote) {
+    border-color: CanvasText;
+    box-shadow: none;
+  }
+  .messageText :not(pre) > code {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+}
+
+/* 回复里的标题提供清晰阅读层级，同时保持适合对话窗口的紧凑梯度。 */
+.messageText :is(h1, h2, h3, h4, h5, h6) {
+  margin: 1.15em 0 0.45em;
+  color: var(--text);
+  font-size: inherit;
+  font-weight: var(--weight-semibold);
+  line-height: 1.4;
+}
+.messageText h1 {
+  font-size: calc(var(--text-body) + 4px);
+}
+.messageText h2 {
+  font-size: calc(var(--text-body) + 3px);
+}
+.messageText h3 {
+  font-size: calc(var(--text-body) + 2px);
+}
+.messageText > :first-child {
+  margin-top: 0;
+}
+.messageText > :last-child {
+  margin-bottom: 0;
+}
+.messageText hr {
+  height: 1px;
+  margin: 24px 0;
+  border: 0;
+  background: var(--line);
+}
+.thinkingBody .messageText :is(h1, h2, h3, h4, h5, h6) {
+  font-size: inherit;
+}
+
+.frame[data-composer-overlay] > :global(.composer-dock) {
+  position: absolute;
+  z-index: 6;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-inline: 0;
+}
+.frame[data-composer-overlay]::after {
+  --composer-scrim: var(--island-face, var(--surface));
+  position: absolute;
+  z-index: 5;
+  /* 渐隐只覆盖正文，两侧滚动条槽留给浏览器绘制。 */
+  inset-inline: var(--scrollbar-size);
+  bottom: 0;
+  height: calc(var(--conversation-dock-space, 180px) + 28px);
+  pointer-events: none;
+  content: '';
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--composer-scrim) 72%, transparent) 30%,
+    color-mix(in srgb, var(--composer-scrim) 96%, transparent) 62%,
+    var(--composer-scrim) 100%
+  );
+  backdrop-filter: blur(12px) saturate(1.04);
+  mask-image: linear-gradient(180deg, transparent, rgb(0 0 0 / 0.55) 24%, #000 48%);
+}
+@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+  .latestButton {
+    background: var(--surface);
+    backdrop-filter: none;
+  }
+  .frame[data-composer-overlay]::after {
+    background: var(--composer-scrim);
+    backdrop-filter: none;
+    mask-image: none;
+  }
+}
+.frame[data-composer-overlay] .view {
+  padding-bottom: var(--conversation-dock-space, 180px);
+}
+.frame[data-composer-overlay] .view::-webkit-scrollbar-track:vertical {
+  margin-bottom: 8px;
+}
+.frame[data-composer-overlay] .latestButton {
+  bottom: var(--conversation-dock-space, 180px);
+}
+
+/* 对话与空会话顶部三层渐进式渐变模糊：顶端用实色渐隐彻底吸收滚动残影，中上段辅以轻度柔焦过渡。 */
+.topProgressiveBlur {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  height: 52px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.topProgressiveBlurLow {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    var(--island-face, var(--surface)) 0%,
+    color-mix(in srgb, var(--island-face, var(--surface)) 92%, transparent) 26%,
+    color-mix(in srgb, var(--island-face, var(--surface)) 52%, transparent) 60%,
+    transparent 100%
+  );
+  backdrop-filter: blur(2px);
+  mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 46%,
+    rgb(0 0 0 / 0.45) 76%,
+    transparent 100%
+  );
+}
+
+.topProgressiveBlurMid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 62%;
+  backdrop-filter: blur(5px);
+  mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 32%,
+    rgb(0 0 0 / 0.35) 68%,
+    transparent 100%
+  );
+}
+
+.topProgressiveBlurHigh {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 36%;
+  backdrop-filter: blur(9px);
+  mask-image: linear-gradient(to bottom, #000 0%, rgb(0 0 0 / 0.65) 48%, transparent 100%);
+}
+
+:global(.app-shell[data-session-tabs-visible='false'] .main-island) .view {
+  padding-top: 52px;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .topProgressiveBlurLow {
+    background: linear-gradient(
+      to bottom,
+      var(--island-face, var(--surface)) 0%,
+      color-mix(in srgb, var(--island-face, var(--surface)) 72%, transparent) 46%,
+      transparent 100%
+    );
+    backdrop-filter: none;
+    mask-image: none;
+  }
+  .topProgressiveBlurMid,
+  .topProgressiveBlurHigh {
+    display: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .topProgressiveBlur {
+    display: none;
+  }
+}

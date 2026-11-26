@@ -1,0 +1,32 @@
+packages:
+  - packages/*
+  - packages/*/*
+  - vendor/*
+
+# 核心插件通过 peer 声明共享服务，由 pnpm 连接工作区中的唯一实现。
+autoInstallPeers: true
+allowBuilds:
+  core-js: false
+  core-js-pure: false
+  es5-ext: false
+  esbuild: true
+  node-pty: true
+  ssh2: false
+  cpu-features: false
+  # 桌面包运行需要下载 Electron 二进制，缺省不放行会让 pnpm install 后无法启动应用。
+  electron: true
+  # MyDSH 只生成 NSIS 安装包，不运行 Squirrel 的 7-Zip 准备脚本；干净安装时明确跳过。
+  electron-winstaller: false
+  sharp: false
+  # koffi 的平台包 @koromix/koffi-<平台> 自带 koffi.node，不需要它自己的构建脚本。
+  koffi: false
+  "@google/genai": false
+  protobufjs: false
+
+patchedDependencies:
+  "@umijs/bundler-webpack@4.7.3": patches/@umijs__bundler-webpack@4.7.3.patch
+  "liquid-glass-web-react@0.1.1": patches/liquid-glass-web-react@0.1.1.patch
+
+# electron-builder 使用新的下载缓存 API，上游 26.15.3 的 ^3 依赖声明没有导出该 API。
+overrides:
+  "app-builder-lib@26.15.3>@electron/get": 5.1.0

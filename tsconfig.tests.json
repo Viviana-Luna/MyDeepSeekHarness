@@ -1,0 +1,36 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "rootDir": ".",
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": [
+        "./src/renderer/src/*"
+      ],
+      "@@/*": [
+        "./src/renderer/src/.umi/*"
+      ]
+    },
+    "types": [
+      "node",
+      "./src/renderer/src/.umi/typings"
+    ],
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": [
+    "src",
+    "tests",
+    "vitest.config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "lib",
+    "dist",
+    "build",
+    "src/renderer/src/.umi*"
+  ]
+}

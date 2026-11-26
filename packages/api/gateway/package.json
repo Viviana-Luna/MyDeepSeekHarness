@@ -1,0 +1,57 @@
+{
+  "name": "@deepseek-ai/dsh-api-gateway",
+  "description": "Typert Remote Host dispatcher and Client API endpoint",
+  "version": "0.1.6-alpha.2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "packages/api/gateway"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./types": {
+      "types": "./types/types.d.ts",
+      "default": "./lib/types.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-typert-registry",
+        "@deepseek-ai/dsh-client-connection"
+      ],
+      "platform": "web",
+      "immediately": true
+    }
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "lib/types/**/*.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@deepseek-ai/dsh-deque": "workspace:^",
+    "@deepseek-ai/dsh-timeout": "workspace:^",
+    "@deepseek-ai/schemastery": "workspace:^",
+    "ws": "^8.21.0",
+    "@deepseek-ai/dsh-typert-protocol": "workspace:^"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:^"
+  },
+  "private": true
+}

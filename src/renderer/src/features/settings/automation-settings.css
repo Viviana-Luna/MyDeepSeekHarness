@@ -1,0 +1,614 @@
+/* 设置中心「浏览器与桌面操控」页专用样式：沿用厚玻璃卡片语言，提供全宽规则块、状态胶囊与权限清单。 */
+
+.automation-page .settings-section__body:has(> .settings-row, > .automation-block-row) {
+  padding-inline: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-raised) 65%, var(--surface));
+  box-shadow: inset 0 1px var(--island-rim);
+}
+
+/* 覆盖 settings.css 中高权重旧表单规则，避免 Ant Design 复合输入框出现双边框或错位。 */
+.settings-dialog
+  [data-automation-settings]
+  .ant-input-affix-wrapper
+  > input.ant-input:not([role='combobox']) {
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.settings-dialog
+  [data-automation-settings]
+  .ant-input-number
+  input.ant-input-number-input:not([role='combobox']) {
+  min-height: 0 !important;
+  height: 100%;
+  padding: 0 10px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* 接管中的急停警告卡片 */
+.automation-takeover-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--warning) 44%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface-raised));
+  box-shadow: inset 0 1px var(--island-rim);
+}
+
+.automation-takeover-banner__lead {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.automation-takeover-banner__emblem {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--warning) 14%, var(--surface));
+  color: var(--warning);
+}
+
+.automation-takeover-banner__copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.automation-takeover-banner__title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.automation-takeover-banner__title-row strong {
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
+  color: var(--text);
+}
+
+.automation-takeover-banner__steps {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--warning) 36%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  color: var(--muted);
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.automation-takeover-banner__copy p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-meta);
+  line-height: 1.5;
+}
+
+.automation-takeover-banner__action {
+  flex: none;
+}
+
+.automation-kbd {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--line-strong) 80%, transparent);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+}
+
+/* 操作反馈横幅 */
+.automation-feedback-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-raised) 74%, var(--surface));
+}
+
+.automation-feedback-banner[data-tone='success'] {
+  border-color: color-mix(in srgb, var(--positive) 38%, var(--line));
+  background: color-mix(in srgb, var(--positive) 8%, var(--surface));
+}
+
+.automation-feedback-banner[data-tone='error'] {
+  border-color: color-mix(in srgb, var(--negative) 42%, var(--line));
+  background: color-mix(in srgb, var(--negative) 8%, var(--surface));
+}
+
+.automation-feedback-banner__content {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  font-size: var(--text-meta);
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.automation-feedback-banner__content > svg {
+  flex: none;
+}
+
+.automation-feedback-banner[data-tone='success'] .automation-feedback-banner__content > svg {
+  color: var(--positive);
+}
+
+.automation-feedback-banner[data-tone='error'] .automation-feedback-banner__content > svg {
+  color: var(--negative);
+}
+
+.automation-feedback-banner__close {
+  flex: none;
+  color: var(--muted);
+}
+
+.automation-retry-bar {
+  display: flex;
+  align-items: center;
+}
+
+/* 行内状态胶囊与控件并排 */
+.automation-row-inline {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.automation-status-pill {
+  display: inline-flex;
+  max-width: 220px;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  color: var(--muted);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.automation-status-pill[data-state='positive'] {
+  border-color: color-mix(in srgb, var(--positive) 36%, var(--line));
+  background: color-mix(in srgb, var(--positive) 10%, var(--surface));
+  color: var(--positive);
+}
+
+.automation-status-pill[data-state='warning'] {
+  border-color: color-mix(in srgb, var(--warning) 40%, var(--line));
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface));
+  color: var(--warning);
+}
+
+.automation-status-pill__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 卡片内的全宽上下堆叠块 */
+.automation-block-row {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.automation-block-row:last-child {
+  border-bottom: 0;
+}
+
+.automation-block-row__surface {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+
+.automation-block-row[data-tone='danger'] .automation-block-row__surface {
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--negative) 28%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--negative) 5%, var(--surface));
+}
+
+.automation-block-header {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.automation-block-header__copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.automation-block-header__title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.automation-block-header__title-row strong {
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
+  color: var(--text);
+}
+
+.automation-block-header__copy small {
+  color: var(--muted);
+  font-size: var(--text-meta);
+  line-height: 1.5;
+}
+
+.automation-block-header__icon {
+  flex: none;
+  color: var(--negative);
+}
+
+.automation-block-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  color: var(--muted);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+}
+
+.automation-block-badge[data-tone='danger'] {
+  border-color: color-mix(in srgb, var(--negative) 38%, var(--line));
+  background: color-mix(in srgb, var(--negative) 11%, var(--surface));
+  color: var(--negative);
+}
+
+/* 域名规则输入栏与芯片列表 */
+.automation-origin-input-row,
+.automation-control-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.automation-origin-input-row > .ant-input-affix-wrapper,
+.automation-origin-input-row > .ant-input,
+.automation-control-row > .ant-select,
+.automation-control-row > .ant-input-affix-wrapper,
+.automation-control-row > .ant-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.automation-origin-input-row > .ant-btn,
+.automation-control-row > .ant-btn {
+  flex: none;
+}
+
+.automation-inline-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--negative);
+  font-size: var(--text-caption);
+  line-height: 1.45;
+}
+
+.automation-inline-error > svg {
+  flex: none;
+}
+
+.automation-origin-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.automation-origin-chip {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 5px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 84%, transparent);
+  color: var(--text);
+  font-size: var(--text-caption);
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.automation-origin-chip[data-tone='danger'] {
+  border-color: color-mix(in srgb, var(--negative) 34%, var(--line));
+  background: color-mix(in srgb, var(--negative) 9%, var(--surface));
+}
+
+.automation-origin-chip__label {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.automation-origin-chip__remove {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.automation-origin-chip__remove:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--negative) 16%, transparent);
+  color: var(--negative);
+}
+
+.automation-origin-chip__remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.automation-origin-empty {
+  margin: 0;
+  padding: 8px 11px;
+  border: 1px dashed color-mix(in srgb, var(--line) 85%, transparent);
+  border-radius: 9px;
+  color: var(--faint);
+  font-size: var(--text-meta);
+  line-height: 1.45;
+}
+
+/* 外置浏览器连接配置 */
+.automation-connection-stack {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.automation-mode-segmented {
+  background: var(--mode-track);
+  border: 1px solid var(--mode-track-border);
+  padding: 3px;
+}
+
+.automation-port-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.automation-port-group {
+  display: inline-flex;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  transition: border-color 140ms ease;
+}
+
+.automation-port-group:focus-within {
+  border-color: var(--accent);
+}
+
+.automation-port-prefix {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border-right: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-raised) 76%, var(--surface));
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  user-select: none;
+}
+
+.automation-port-input {
+  width: 112px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* 系统桌面操控权限清单 */
+.automation-permission-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--surface) 64%, transparent);
+  list-style: none;
+}
+
+.automation-permission-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+}
+
+.automation-permission-item:last-child {
+  border-bottom: 0;
+}
+
+.automation-permission-item__name {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: var(--text-control);
+  font-weight: var(--weight-medium);
+}
+
+.automation-permission-item__name > svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.automation-permission-item__state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.automation-permission-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-caption);
+  line-height: 1.5;
+}
+
+.automation-scope-select {
+  min-width: 210px;
+}
+
+@container settings-content (max-width: 620px) {
+  .automation-page .settings-row:has(.automation-mode-segmented) {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .automation-page .settings-row:has(.automation-mode-segmented) .settings-row__control {
+    justify-content: flex-start;
+  }
+
+  .automation-takeover-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .automation-takeover-banner__action {
+    align-self: flex-end;
+  }
+
+  .automation-permission-item {
+    flex-wrap: wrap;
+  }
+
+  .automation-permission-item__state {
+    justify-content: flex-start;
+  }
+}
+
+@container settings-content (max-width: 480px) {
+  .automation-origin-input-row,
+  .automation-control-row {
+    flex-wrap: wrap;
+  }
+
+  .automation-origin-input-row > .ant-input-affix-wrapper,
+  .automation-control-row > .ant-select,
+  .automation-control-row > .ant-input-affix-wrapper {
+    flex-basis: 100%;
+  }
+
+  .automation-scope-select {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .automation-origin-chip,
+  .automation-origin-chip__remove,
+  .automation-port-group {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .automation-page .settings-section__body:has(> .settings-row, > .automation-block-row),
+  .automation-takeover-banner,
+  .automation-feedback-banner,
+  .automation-block-row[data-tone='danger'] .automation-block-row__surface,
+  .automation-origin-chip,
+  .automation-status-pill,
+  .automation-port-group,
+  .automation-permission-list,
+  .automation-kbd {
+    border-color: CanvasText;
+    background: Canvas;
+    box-shadow: none;
+  }
+
+  .automation-origin-chip__remove:hover:not(:disabled) {
+    outline: 1px solid Highlight;
+  }
+}

@@ -1,0 +1,225 @@
+/**
+ * MyDSH MVP 视觉设计系统 Token 定义（Abyssal Glass · 深海折光浮岛）
+ * 延续顶栏液态玻璃标签页的「沉降凹槽 + 边缘折射透镜 + 顶部镜面高光」基因，统一全站材质与曲率。
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* 字体家族与排版尺度 */
+  --font-ui:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Helvetica Neue', sans-serif;
+  --font-display:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'PingFang SC', 'Helvetica Neue', sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', 'SF Mono', Menlo, Monaco, Consolas, monospace;
+
+  --text-caption: 11px;
+  --text-meta: 12px;
+  --text-control: 12.5px;
+  --text-body: 13.5px;
+  --text-title: 15px;
+  --text-heading: 19px;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  /* 同心曲率系统（外窗 18px - 边距 8px = 浮岛 12px，层层内推） */
+  --window-outer-radius: 18px;
+  --window-edge: 8px;
+  --window-gap: 8px;
+  --radius-island: max(8px, calc(var(--window-outer-radius) - var(--window-edge) + 2px));
+  --radius-composer: 18px;
+  --radius-track: 16px;
+  --radius-lens: 12px;
+  --radius-card: 12px;
+  --radius-control: 8px;
+  --radius-pill: 999px;
+  --radius-dialog: 22px;
+
+  /* 主题强调色（默认：深海星辉蓝） */
+  --accent: #5e7cff;
+  --accent-bright: #859fff;
+  --accent-contrast: #ffffff;
+  --accent-glow: color-mix(in srgb, var(--accent) 32%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 15%, transparent);
+
+  /* 语义状态色 */
+  --positive: #36cc72;
+  --negative: #ff5d6c;
+  --warning: #f0a948;
+  --info: #56b6e6;
+
+  /* L0 画布与环境漫反射 */
+  --canvas-alpha: 0.92;
+  --canvas-bg: #0c0e13;
+  --canvas-ambient-1: color-mix(in srgb, var(--accent) 13%, transparent);
+  --canvas-ambient-2: rgb(56 189 248 / 0.06);
+
+  /* L1 光学浮岛基座（告别纯灰平涂，引入深空微层叠与顶部受光缘） */
+  --surface: #14171f;
+  --surface-elevated: #1a1e28;
+  --surface-raised: #202532;
+  --surface-hover: rgb(255 255 255 / 0.055);
+  --surface-active: rgb(255 255 255 / 0.09);
+  --surface-selected: color-mix(in srgb, var(--accent) 16%, #1b202c);
+
+  /* L2 沉降轨道槽（与顶栏标签轨道完全同源） */
+  --track-bg: rgb(7 9 14 / 0.52);
+  --track-border: rgb(255 255 255 / 0.055);
+  --track-shadow: inset 0 1.5px 3px rgb(0 0 0 / 0.48), 0 1px 0 rgb(255 255 255 / 0.055);
+
+  /* L3 液态玻璃透镜与悬浮胶囊材质 */
+  --lens-bg: linear-gradient(180deg, rgb(255 255 255 / 0.14) 0%, rgb(255 255 255 / 0.05) 100%);
+  --lens-border: rgb(255 255 255 / 0.18);
+  --lens-shadow:
+    0 3px 10px rgb(0 0 0 / 0.28), inset 0 1px 0.5px rgb(255 255 255 / 0.34),
+    inset 0 -1px 0.5px rgb(0 0 0 / 0.2);
+
+  /* 浮岛与卡片描边高光 */
+  --island-border: rgb(255 255 255 / 0.085);
+  --island-rim-top: rgb(255 255 255 / 0.16);
+  --island-shadow: 0 10px 30px rgb(0 0 0 / 0.32), 0 2px 6px rgb(0 0 0 / 0.2);
+  --line: rgb(255 255 255 / 0.075);
+  --line-strong: rgb(255 255 255 / 0.14);
+
+  /* 文本对比阶梯 */
+  --text: #f2f4f9;
+  --muted: #98a0b3;
+  --faint: #677086;
+
+  /* 代码与差异语义色 */
+  --code-bg: #10131a;
+  --code-keyword: #d98ec4;
+  --code-string: #9ece6a;
+  --code-type: #7dcfff;
+  --code-func: #7aa2f7;
+  --code-number: #ff9e64;
+  --code-comment: #636d83;
+  --diff-add-bg: rgb(54 204 114 / 0.12);
+  --diff-add-word: rgb(54 204 114 / 0.28);
+  --diff-del-bg: rgb(255 93 108 / 0.12);
+  --diff-del-word: rgb(255 93 108 / 0.28);
+
+  /* 布局轨道尺寸 */
+  --session-chrome-height: 34px;
+  --mode-rail-width: 50px;
+  --nav-width: 256px;
+  --info-width: 284px;
+
+  /* 动效曲线 */
+  --ease-out-expo: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.42, 0.64, 1);
+}
+
+/* 晨光浅海主题（Light Mode） */
+:root[data-color-scheme='light'] {
+  color-scheme: light;
+
+  --canvas-bg: #e9eef6;
+  --canvas-ambient-1: color-mix(in srgb, var(--accent) 16%, transparent);
+  --canvas-ambient-2: rgb(56 189 248 / 0.1);
+
+  --surface: #f9fafd;
+  --surface-elevated: #f1f4fa;
+  --surface-raised: #ffffff;
+  --surface-hover: rgb(18 28 52 / 0.05);
+  --surface-active: rgb(18 28 52 / 0.085);
+  --surface-selected: color-mix(in srgb, var(--accent) 13%, #eef2fb);
+
+  --track-bg: rgb(21 32 58 / 0.065);
+  --track-border: rgb(21 32 58 / 0.07);
+  --track-shadow: inset 0 1px 2.5px rgb(15 23 42 / 0.09), 0 1px 0 rgb(255 255 255 / 0.85);
+
+  --lens-bg: linear-gradient(180deg, rgb(255 255 255 / 0.96) 0%, rgb(245 248 255 / 0.86) 100%);
+  --lens-border: rgb(255 255 255 / 0.95);
+  --lens-shadow:
+    0 2px 8px rgb(15 23 42 / 0.1), inset 0 1px 0.5px #ffffff, 0 0 0 0.5px rgb(15 23 42 / 0.08);
+
+  --island-border: rgb(15 23 42 / 0.09);
+  --island-rim-top: rgb(255 255 255 / 0.95);
+  --island-shadow: 0 8px 26px rgb(15 23 42 / 0.07), 0 1px 3px rgb(15 23 42 / 0.04);
+  --line: rgb(15 23 42 / 0.08);
+  --line-strong: rgb(15 23 42 / 0.15);
+
+  --text: #141925;
+  --muted: #586278;
+  --faint: #8993a8;
+
+  --code-bg: #f3f5fa;
+  --code-keyword: #8c3b7a;
+  --code-string: #3b7228;
+  --code-type: #16688a;
+  --code-func: #29579e;
+  --code-number: #a65414;
+  --code-comment: #768096;
+  --diff-add-bg: rgb(36 168 88 / 0.11);
+  --diff-add-word: rgb(36 168 88 / 0.24);
+  --diff-del-bg: rgb(224 62 78 / 0.1);
+  --diff-del-word: rgb(224 62 78 / 0.22);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  font-family: var(--font-ui);
+  font-size: var(--text-body);
+  font-weight: var(--weight-regular);
+  line-height: 1.5;
+  color: var(--text);
+  background-color: #080a10;
+  -webkit-font-smoothing: antialiased;
+}
+
+:root[data-color-scheme='light'] body {
+  background-color: #dfe6f3;
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+button {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* 统一细腻滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+  margin-block: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 26%, transparent);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--muted) 46%, transparent);
+}

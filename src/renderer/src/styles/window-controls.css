@@ -1,0 +1,117 @@
+:root {
+  --window-controls-height: 0px;
+}
+:root[data-platform='win32'] {
+  --window-controls-height: 32px;
+}
+
+.windows-chrome {
+  position: relative;
+  z-index: 9;
+  display: flex;
+  flex: none;
+  height: 33px;
+  padding-inline: 8px;
+  border-bottom: 1px solid var(--line, currentColor);
+  justify-content: flex-end;
+  -webkit-app-region: drag;
+}
+.info-island > .windows-chrome {
+  margin: -12px -12px 12px;
+}
+.session-chrome > .windows-chrome {
+  height: var(--session-chrome-height);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  background: var(--surface);
+}
+.launch-window + .windows-chrome {
+  position: fixed;
+  inset: 10px 10px auto auto;
+  width: 132px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.window-controls {
+  display: flex;
+  align-self: flex-start;
+  background: transparent;
+  color: var(--text, var(--ink));
+  overflow: hidden;
+  -webkit-app-region: no-drag;
+}
+.window-controls button {
+  display: grid;
+  width: 44px;
+  height: 32px;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  cursor: default;
+  -webkit-app-region: no-drag;
+}
+.window-controls button svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+}
+.window-controls button:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.window-controls button:active {
+  background: color-mix(in srgb, currentColor 20%, transparent);
+}
+.window-controls button[data-window-action='close']:hover {
+  color: white;
+  background: #c42b1c;
+}
+.window-controls button[data-window-action='close']:active {
+  color: white;
+  background: #a82418;
+}
+.window-controls button:disabled {
+  opacity: 0.35;
+  background: transparent;
+}
+.window-controls button:focus-visible {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: -3px;
+}
+.window-control-error {
+  position: absolute;
+  right: 140px;
+  top: 4px;
+  max-width: calc(100% - 148px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text, var(--ink));
+}
+@media (forced-colors: active) {
+  .window-controls {
+    background: ButtonFace;
+    color: ButtonText;
+    outline: 1px solid ButtonText;
+    outline-offset: -1px;
+  }
+  .window-controls button:hover {
+    background: Highlight;
+    color: HighlightText;
+  }
+  .window-controls button:focus-visible {
+    outline-color: Highlight;
+  }
+}
