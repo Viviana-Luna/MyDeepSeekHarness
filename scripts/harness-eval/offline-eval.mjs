@@ -450,8 +450,14 @@ async function buildSqlStdinFailureMessage(runShell, queryRun, queries) {
   const capturedQueries = queries.map(item => ({ ...item }))
   let winProbe = ''
   if (process.platform === 'win32') {
+    const nodePath = process.execPath.replaceAll("'", "''")
     const probe = await runShell(
-      `$PSVersionTable.PSVersion.ToString(); (Get-Command mydsh).Source; 'SELECT ''quote'' FROM items;' | mydsh.cmd db query --connection-id eval-pg --sql-stdin`,
+      [
+        `'SELECT ''quote'' FROM items;' | mydsh.cmd db query --connection-id eval-pg --sql-stdin`,
+        `Write-Output ("CMD_EXIT=" + $LASTEXITCODE)`,
+        `'hello-pipe' | & '${nodePath}' -e "let s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>console.log('NODE_GOT='+JSON.stringify(s)))"`,
+        `Write-Output ("NODE_EXIT=" + $LASTEXITCODE)`,
+      ].join('; '),
     ).catch(error => ({ error: String(error) }))
     winProbe = ` | winProbe=${JSON.stringify(probe)}`
   }

@@ -242,29 +242,39 @@ describe('旧版本核心目录清理', () => {
         bundleDirectory: older.bundleDirectory,
         mydshHome: newer.mydshHome,
       })
-      // 目录只读时无法删除其中文件；复现清理失败并确认不影响本次安装。Windows 无法这样注入，由安装包验收覆盖。
-      await chmod(join(newer.mydshHome, 'runtime', '0.1.0-test'), 0o555)
-      const installed = await ensureRuntimeInstalled({
-        bundleDirectory: newer.bundleDirectory,
-        mydshHome: newer.mydshHome,
-      })
-      expect(installed.installed).toBe(true)
-      expect(installed.manifest.version).toBe('0.2.0-test')
-      expect(await readFile(installed.entryPath, 'utf8')).toContain('ready')
-      expect((await readdir(join(newer.mydshHome, 'runtime'))).toSorted()).toEqual([
-        '.trash-0.1.0-test',
-        '0.2.0-test',
-      ])
-      await chmod(join(newer.mydshHome, 'runtime', '.trash-0.1.0-test'), 0o755)
-      expect(
-        (
-          await ensureRuntimeInstalled({
-            bundleDirectory: newer.bundleDirectory,
-            mydshHome: newer.mydshHome,
-          })
-        ).installed,
-      ).toBe(false)
-      expect(await readdir(join(newer.mydshHome, 'runtime'))).toEqual(['0.2.0-test'])
+      // 锁定旧核心内的子目录使递归删除失败，同时保持旧核心目录本身可改名为 .trash-（兼容 macOS 15+ APFS 对只读目录 rename 的限制）。
+      const staleDir = join(newer.mydshHome, 'runtime', '0.1.0-test')
+      const lockedSubdir = join(staleDir, 'locked')
+      const trashedLockedSubdir = join(newer.mydshHome, 'runtime', '.trash-0.1.0-test', 'locked')
+      await mkdir(lockedSubdir, { recursive: true })
+      await writeFile(join(lockedSubdir, 'held.js'), 'held\n')
+      await chmod(lockedSubdir, 0o555)
+      try {
+        const installed = await ensureRuntimeInstalled({
+          bundleDirectory: newer.bundleDirectory,
+          mydshHome: newer.mydshHome,
+        })
+        expect(installed.installed).toBe(true)
+        expect(installed.manifest.version).toBe('0.2.0-test')
+        expect(await readFile(installed.entryPath, 'utf8')).toContain('ready')
+        expect((await readdir(join(newer.mydshHome, 'runtime'))).toSorted()).toEqual([
+          '.trash-0.1.0-test',
+          '0.2.0-test',
+        ])
+        await chmod(trashedLockedSubdir, 0o755)
+        expect(
+          (
+            await ensureRuntimeInstalled({
+              bundleDirectory: newer.bundleDirectory,
+              mydshHome: newer.mydshHome,
+            })
+          ).installed,
+        ).toBe(false)
+        expect(await readdir(join(newer.mydshHome, 'runtime'))).toEqual(['0.2.0-test'])
+      } finally {
+        await chmod(lockedSubdir, 0o755).catch(() => undefined)
+        await chmod(trashedLockedSubdir, 0o755).catch(() => undefined)
+      }
     },
   )
 
