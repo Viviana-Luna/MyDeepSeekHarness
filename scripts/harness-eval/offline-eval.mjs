@@ -446,6 +446,18 @@ async function verifyScreenshotAndApprovalFlows(ctx, runShell, handle, installed
   }
 }
 
+async function buildSqlStdinFailureMessage(runShell, queryRun, queries) {
+  const capturedQueries = queries.map(item => ({ ...item }))
+  let winProbe = ''
+  if (process.platform === 'win32') {
+    const probe = await runShell(
+      `$PSVersionTable.PSVersion.ToString(); (Get-Command mydsh).Source; 'SELECT ''quote'' FROM items;' | mydsh.cmd db query --connection-id eval-pg --sql-stdin`,
+    ).catch(error => ({ error: String(error) }))
+    winProbe = ` | winProbe=${JSON.stringify(probe)}`
+  }
+  return `mydsh --sql-stdin 多行查询失败：${JSON.stringify(queryRun)} | queries=${JSON.stringify(capturedQueries)}${winProbe}`
+}
+
 async function verifySandboxCliAndSecurity(ctx, tempHome, queries, installedIds) {
   await registerEvalVisionAdapter(ctx)
   const handle = await ctx.agents.create({
@@ -487,7 +499,7 @@ async function verifySandboxCliAndSecurity(ctx, tempHome, queries, installedIds)
         : `cat <<'SQL' | mydsh db query --connection-id eval-pg --sql-stdin\nSELECT 'quote', "$identifier", $1 FROM items;\nSQL`
     const queryRun = await runShell(sqlCmd)
     if (queryRun.exitCode !== 0 || queries.length !== 1 || !queries[0].sql.includes("'quote'")) {
-      throw new Error(`mydsh --sql-stdin 多行查询失败：${JSON.stringify(queryRun)}`)
+      throw new Error(await buildSqlStdinFailureMessage(runShell, queryRun, queries))
     }
 
     await verifyScreenshotAndApprovalFlows(ctx, runShell, handle, installedIds)

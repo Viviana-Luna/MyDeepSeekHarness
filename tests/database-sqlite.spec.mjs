@@ -26,7 +26,7 @@ afterEach(async () => {
 
 async function createTempSqliteDb() {
   const dir = await mkdtemp(join(tmpdir(), 'mydsh-sqlite-e2e-'))
-  cleanups.push(() => rm(dir, { recursive: true, force: true }))
+  cleanups.push(() => rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }))
   const dbPath = join(dir, 'sample.db')
   const db = new DatabaseSync(dbPath)
   try {
@@ -237,8 +237,8 @@ describe.skipIf(process.platform !== 'darwin' && process.platform !== 'win32')(
       const mydshHome = await mkdtemp(join(tmpdir(), 'mydsh-protected-home-'))
       const outside = await mkdtemp(join(tmpdir(), 'mydsh-outside-sqlite-'))
       cleanups.push(
-        () => rm(mydshHome, { recursive: true, force: true }),
-        () => rm(outside, { recursive: true, force: true }),
+        () => rm(mydshHome, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }),
+        () => rm(outside, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }),
       )
       const internalDb = join(mydshHome, 'sessions.db')
       const validDb = join(outside, 'valid.db')

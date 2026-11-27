@@ -6,6 +6,15 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
+      platforms:
+        description: '本次构建并打包的平台（标签推送默认双端同时发布）'
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - macos
+          - windows
       draft:
         description: '先创建 Draft 草稿（推荐，确认产物与说明后再手动发布）'
         required: false
@@ -29,6 +38,7 @@ jobs:
       tag: ${{ steps.check.outputs.tag }}
       prerelease: ${{ steps.check.outputs.prerelease }}
       draft: ${{ steps.check.outputs.draft }}
+      platforms: ${{ steps.check.outputs.platforms }}
     steps:
       - name: 检出仓库代码
         uses: actions/checkout@v4
@@ -39,6 +49,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           REF_NAME: ${{ github.ref_name }}
           INPUT_DRAFT: ${{ inputs.draft }}
+          INPUT_PLATFORMS: ${{ inputs.platforms }}
           GITHUB_SHA: ${{ github.sha }}
         run: |
           node --input-type=module - <<'EOF'
@@ -91,20 +102,24 @@ jobs:
 
           const prerelease = version.includes('-')
           const draft = eventName === 'workflow_dispatch' ? process.env.INPUT_DRAFT !== 'false' : true
+          const rawPlatforms = eventName === 'workflow_dispatch' ? process.env.INPUT_PLATFORMS : 'all'
+          const platforms = ['all', 'macos', 'windows'].includes(rawPlatforms) ? rawPlatforms : 'all'
           const outputFile = process.env.GITHUB_OUTPUT
           appendFileSync(outputFile, `version=${version}\n`)
           appendFileSync(outputFile, `tag=${expectedTag}\n`)
           appendFileSync(outputFile, `prerelease=${String(prerelease)}\n`)
           appendFileSync(outputFile, `draft=${String(draft)}\n`)
+          appendFileSync(outputFile, `platforms=${platforms}\n`)
           console.log(
-            `版本校验通过：tag=${expectedTag} prerelease=${String(prerelease)} draft=${String(draft)}`,
+            `版本校验通过：tag=${expectedTag} prerelease=${String(prerelease)} draft=${String(draft)} platforms=${platforms}`,
           )
           EOF
 
   build-macos:
     name: 构建并验收 macOS 安装包
     needs: validate
-    runs-on: macos-14
+    if: needs.validate.outputs.platforms == 'all' || needs.validate.outputs.platforms == 'macos'
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - name: 检出仓库代码
@@ -161,6 +176,7 @@ jobs:
   build-windows:
     name: 构建并验收 Windows 安装包
     needs: validate
+    if: needs.validate.outputs.platforms == 'all' || needs.validate.outputs.platforms == 'windows'
     runs-on: windows-2025
     timeout-minutes: 35
     steps:
@@ -229,6 +245,12 @@ jobs:
       - validate
       - build-macos
       - build-windows
+    if: >-
+      always() &&
+      needs.validate.result == 'success' &&
+      (needs.build-macos.result == 'success' || needs.build-macos.result == 'skipped') &&
+      (needs.build-windows.result == 'success' || needs.build-windows.result == 'skipped') &&
+      (needs.build-macos.result == 'success' || needs.build-windows.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -236,7 +258,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - name: 下载双端安装包产物
+      - name: 下载安装包产物
         uses: actions/download-artifact@v4
         with:
           pattern: installer-*
@@ -246,24 +268,29 @@ jobs:
       - name: 生成 SHA256 校验清单
         env:
           VERSION: ${{ needs.validate.outputs.version }}
+          PLATFORMS: ${{ needs.validate.outputs.platforms }}
         run: |
           set -euo pipefail
           MAC_DMG="mydsh-macOS-arm64-${VERSION}.dmg"
           WIN_EXE="mydsh-Windows-x64-${VERSION}.exe"
           cd release-assets
-          test -f "$MAC_DMG"
-          test -f "$WIN_EXE"
-          LC_ALL=C sha256sum "$MAC_DMG" "$WIN_EXE" > SHA256SUMS.txt
+          FILES=()
+          if [[ "$PLATFORMS" == "all" || "$PLATFORMS" == "macos" ]]; then
+            test -f "$MAC_DMG"
+            FILES+=("$MAC_DMG")
+          fi
+          if [[ "$PLATFORMS" == "all" || "$PLATFORMS" == "windows" ]]; then
+            test -f "$WIN_EXE"
+            FILES+=("$WIN_EXE")
+          fi
+          LC_ALL=C sha256sum "${FILES[@]}" > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: 生成构建来源证明
         if: github.event.repository.private == false
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: |
-            release-assets/mydsh-macOS-arm64-${{ needs.validate.outputs.version }}.dmg
-            release-assets/mydsh-Windows-x64-${{ needs.validate.outputs.version }}.exe
-            release-assets/SHA256SUMS.txt
+          subject-path: release-assets/*
 
       - name: 创建或刷新 GitHub Release
         env:
@@ -275,6 +302,7 @@ jobs:
           TAG: ${{ needs.validate.outputs.tag }}
           PRERELEASE: ${{ needs.validate.outputs.prerelease }}
           DRAFT: ${{ needs.validate.outputs.draft }}
+          PLATFORMS: ${{ needs.validate.outputs.platforms }}
         run: |
           set -euo pipefail
           MAC_DMG="mydsh-macOS-arm64-${VERSION}.dmg"
@@ -305,15 +333,24 @@ jobs:
             --jq .body 2>/dev/null || true)"
 
           CHECKSUMS="$(cat release-assets/SHA256SUMS.txt)"
+          TABLE_ROWS=""
+          UPLOAD_FILES=()
+          if [[ "$PLATFORMS" == "all" || "$PLATFORMS" == "macos" ]]; then
+            TABLE_ROWS+="| macOS | Apple Silicon (\`arm64\`) | \`${MAC_DMG}\` |"$'\n'
+            UPLOAD_FILES+=("release-assets/${MAC_DMG}")
+          fi
+          if [[ "$PLATFORMS" == "all" || "$PLATFORMS" == "windows" ]]; then
+            TABLE_ROWS+="| Windows 11 | \`x64\` | \`${WIN_EXE}\` |"$'\n'
+            UPLOAD_FILES+=("release-assets/${WIN_EXE}")
+          fi
+          UPLOAD_FILES+=("release-assets/SHA256SUMS.txt")
 
           cat > release-notes.md <<EOF
           ## 安装包清单
 
           | 平台 | 架构 | 安装包 |
           | --- | --- | --- |
-          | macOS | Apple Silicon (\`arm64\`) | \`${MAC_DMG}\` |
-          | Windows 11 | \`x64\` | \`${WIN_EXE}\` |
-
+          ${TABLE_ROWS}
           > [!NOTE]
           > 当前构建默认使用 ad-hoc 签名，尚未接入商业代码签名或 Apple 公证。首次打开时 macOS Gatekeeper 或 Windows SmartScreen 可能出现安全提示，确认校验和无误后按系统提示放行即可。
 
@@ -345,8 +382,4 @@ jobs:
             CREATE_ARGS+=(--draft)
           fi
 
-          gh release create "$TAG" \
-            "release-assets/${MAC_DMG}" \
-            "release-assets/${WIN_EXE}" \
-            "release-assets/SHA256SUMS.txt" \
-            "${CREATE_ARGS[@]}"
+          gh release create "$TAG" "${UPLOAD_FILES[@]}" "${CREATE_ARGS[@]}"
