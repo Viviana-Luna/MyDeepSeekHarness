@@ -1779,38 +1779,50 @@ async function main(): Promise<void> {
       }};
     });`,
     )
-    const extensionReady = (await win.webContents.executeJavaScript(`(async () => {
+    const extensionResult = (await win.webContents.executeJavaScript(`(async () => {
       await window.dshDesktop.host.call('mydshPlugins.install', { path: ${JSON.stringify(extensionSource)} });
-      const wait = async check => { for (let i = 0; i < 120; i++) {
+      const wait = async check => { for (let i = 0; i < 200; i++) {
         if (check()) return true;
         await new Promise(resolve => setTimeout(resolve, 25));
       } return false; };
+      const fail = stage => ({
+        ok: false,
+        stage,
+        viewport: { width: innerWidth, height: innerHeight },
+        compact: window.matchMedia('(max-width: 1268px)').matches,
+        probe: document.querySelector('[data-plugin-probe]')?.getAttribute('data-plugin-probe') ?? null,
+        island: document.querySelector('[data-plugin-island]')?.getAttribute('data-plugin-island') ?? null,
+        inspector: document.querySelector('#session-inspector') !== null,
+      });
       const loaded = () => document.querySelector('[data-plugin-probe="ready"]') !== null
         && document.querySelector('[data-plugin-island]') !== null;
       const absent = () => document.querySelector('[data-plugin-probe]') === null
         && document.querySelector('[data-plugin-island]') === null;
-      if (!await wait(loaded)) return false;
-      if (document.querySelector('.right-island-tabs [data-tab-id="conversation"]')) return false;
+      if (!await wait(loaded)) return fail('loaded');
+      if (document.querySelector('.right-island-tabs [data-tab-id="conversation"]')) return fail('unexpected-conversation-tab');
       // 右侧栏目减少后扩展可能直接可见；按实际呈现入口验收，不假设一定溢出。
       const directTab = document.querySelector('.right-island-tabs [data-island-id="verification.island"]');
       if (directTab) directTab.click();
       else {
         const overflowTrigger = document.querySelector('[aria-label="更多右侧栏目"][aria-haspopup="menu"]');
-        if (!overflowTrigger) return false;
+        if (!overflowTrigger) return fail('missing-overflow-trigger');
         overflowTrigger.click();
-        if (!await wait(() => document.querySelector('.right-island-overflow-menu button[data-island-id="verification.island"]') !== null)) return false;
+        if (!await wait(() => document.querySelector('.right-island-overflow-menu button[data-island-id="verification.island"]') !== null)) return fail('missing-overflow-item');
         document.querySelector('.right-island-overflow-menu button[data-island-id="verification.island"]')?.click();
       }
-      if (!await wait(() => document.querySelector('[data-plugin-island="right:foreground"]') !== null)) return false;
+      if (!await wait(() => document.querySelector('[data-plugin-island="right:foreground"]') !== null)) return fail('foreground');
       await window.dshDesktop.host.call('mydshPlugins.disable', { id: 'verification.extension' });
-      if (!await wait(absent) || document.querySelector('#session-inspector') === null) return false;
+      if (!await wait(absent) || document.querySelector('#session-inspector') === null) return fail('disable');
       await window.dshDesktop.host.call('mydshPlugins.enable', { id: 'verification.extension' });
-      if (!await wait(() => loaded() && document.querySelector('[data-plugin-island="right:foreground"]') !== null)) return false;
+      if (!await wait(() => loaded() && document.querySelector('[data-plugin-island="right:foreground"]') !== null)) return fail('reenable');
       await window.dshDesktop.host.call('mydshPlugins.uninstall', { id: 'verification.extension' });
-      return await wait(absent) && document.querySelector('#session-inspector') !== null;
-    })()`)) as boolean
-    if (!extensionReady)
-      throw new Error('真实插件安装、浮岛切换、共享依赖、Remote 或插槽释放验收失败')
+      if (!await wait(absent) || document.querySelector('#session-inspector') === null) return fail('uninstall');
+      return { ok: true };
+    })()`)) as { ok: boolean; stage?: string; viewport?: { width: number; height: number } }
+    if (!extensionResult.ok)
+      throw new Error(
+        `真实插件安装、浮岛切换、共享依赖、Remote 或插槽释放验收失败：${JSON.stringify(extensionResult)}`,
+      )
     console.log('desktop-shell-verify-local: frontend-plugin lifecycle ready')
     console.log('desktop-shell-verify-local: renderer-initial')
     const initial = (await win.webContents.executeJavaScript(`(async () => {
@@ -8610,7 +8622,9 @@ async function main(): Promise<void> {
           if (process.platform === 'win32') win.setMaximizable(true)
           win.setMinimumSize(900, 600)
           win.setSize(1280, 800)
-          win.center()
+          // 后台离屏验收需维持 1280×800 标准画布；Windows 上 center() 会把窗口压到当前显示器工作区
+          // （如 1024×768 CI 环境会被缩小到 1024×720，从而触发窄屏隐藏右侧浮岛）。
+          if (!VERIFY_BACKGROUND) win.center()
         }
         await win.loadFile(RENDERER_PATH)
       } else {

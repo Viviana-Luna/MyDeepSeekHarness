@@ -249,16 +249,16 @@ export async function emulateVerificationMedia(
   })
 }
 
-export async function clickTrustedElement(win: BrowserWindow, selector: string): Promise<void> {
-  // 分隔胶囊在悬停后才接收鼠标事件；先移入目标，再检查实际命中。
-  const hoverPoint = (await win.webContents.executeJavaScript(`(() => {
-    const element = [...document.querySelectorAll(${JSON.stringify(selector)})].find(node => node.checkVisibility())
-    if (!element) return null
-    const rect = element.getBoundingClientRect()
-    return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) }
-  })()`)) as { x: number; y: number } | null
-  if (hoverPoint !== null) win.webContents.sendInputEvent({ type: 'mouseMove', ...hoverPoint })
-  const point = (await win.webContents.executeJavaScript(`(async () => {
+const POPUP_CONTAINER_SELECTOR =
+  '[data-anchored-menu], .settings-dialog, .session-search-dialog, .ant-modal, .ant-select-dropdown, .ant-dropdown, .ant-picker-dropdown, .ant-popover'
+
+/**
+ * 构造在页面内解析并等待可点击目标的脚本。
+ * 弹层（含 AntD @rc-component/motion 的 prepare -> start -> active 状态机）在离屏 Chromium 中
+ * 可能晚数帧才启动入场动画，必须等入场类名移除、有限动画结束且不透明度落稳后再测量点击坐标。
+ */
+export function buildTrustedClickTargetScript(selector: string): string {
+  return `(async () => {
     // 菜单挂载晚于触发点击；工作标签还会保留隐藏 DOM，必须等待可见目标出现。
     const element = await (async () => {
       for (let attempt = 0; attempt < 80; attempt++) {
@@ -277,17 +277,33 @@ export async function clickTrustedElement(win: BrowserWindow, selector: string):
     // 更改和提交各自滚动，点击列表动作前先把目标滚入所在视口。
     if (element.closest('.scm-pane-content'))
       element.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' })
-    // 原生点击使用窗口坐标；弹层缩放或入场尚未结束时，旧坐标会落到另一项菜单。
-    const popup = element.closest('[data-anchored-menu], .settings-dialog, .session-search-dialog, .ant-modal, .ant-select-dropdown, .ant-dropdown, .ant-picker-dropdown, .ant-popover')
+    // 原生点击使用窗口坐标；弹层缩放或入场尚未结束时，旧坐标会落到另一项菜单或被切帧吞掉。
+    const popup = element.closest(${JSON.stringify(POPUP_CONTAINER_SELECTOR)})
     if (popup instanceof HTMLElement) {
-      // 弹层可能在后续绘制帧启动过渡，先等待它进入动画阶段再取最终坐标。
+      const hasMotionClass = () =>
+        typeof popup.className === 'string' &&
+        /(?:^|\\s)ant-[^\\s]+-(?:appear|enter|leave)(?:-(?:prepare|start|active))?(?:\\s|$)/.test(popup.className)
       await Promise.race([
         new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))),
         new Promise(resolve => setTimeout(resolve, 200)),
       ])
-      await Promise.all(popup.getAnimations({ subtree: true })
-        .filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity)
-        .map(animation => animation.finished.catch(() => {})))
+      const deadline = Date.now() + 2500
+      while (Date.now() < deadline) {
+        const running = popup.getAnimations({ subtree: true })
+          .filter(animation =>
+            animation.playState !== 'finished' &&
+            animation.effect?.getComputedTiming().iterations !== Infinity)
+        if (running.length > 0) {
+          await Promise.race([
+            Promise.all(running.map(animation => animation.finished.catch(() => {}))),
+            new Promise(resolve => setTimeout(resolve, 250)),
+          ])
+          continue
+        }
+        const opacity = Number.parseFloat(getComputedStyle(popup).opacity)
+        if (!hasMotionClass() && (Number.isNaN(opacity) || opacity >= 0.99)) break
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
     }
     // 弹层动画结束与命中区域更新可能不在同一帧；等待真实命中目标，不能穿透遮挡点击。
     let blockedBy
@@ -303,7 +319,21 @@ export async function clickTrustedElement(win: BrowserWindow, selector: string):
       await new Promise(resolve => setTimeout(resolve, 25))
     }
     throw new Error('验收目标被其他元素遮挡：' + ${JSON.stringify(selector)} + '；' + JSON.stringify(blockedBy))
-  })()`)) as { x: number; y: number }
+  })()`
+}
+
+export async function clickTrustedElement(win: BrowserWindow, selector: string): Promise<void> {
+  // 分隔胶囊在悬停后才接收鼠标事件；先移入目标，再检查实际命中。
+  const hoverPoint = (await win.webContents.executeJavaScript(`(() => {
+    const element = [...document.querySelectorAll(${JSON.stringify(selector)})].find(node => node.checkVisibility())
+    if (!element) return null
+    const rect = element.getBoundingClientRect()
+    return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) }
+  })()`)) as { x: number; y: number } | null
+  if (hoverPoint !== null) win.webContents.sendInputEvent({ type: 'mouseMove', ...hoverPoint })
+  const point = (await win.webContents.executeJavaScript(
+    buildTrustedClickTargetScript(selector),
+  )) as { x: number; y: number }
   sendTrustedClick(win, point)
   await new Promise(resolve => {
     setTimeout(resolve, 80)

@@ -155,7 +155,27 @@ export async function verifyPluginManager(
       'desktop-shell-verify-local: plugin-manager-failure',
       error,
       await win.webContents.executeJavaScript(
-        `({ text: document.querySelector('.plugin-manager')?.textContent, dialogs: [...document.querySelectorAll('.ant-modal-wrap')].map(node=>({visible:node.checkVisibility(),text:node.textContent})), active:document.querySelector('[data-view][aria-current]')?.getAttribute('data-view'), nav:document.querySelector('.app-shell')?.getAttribute('data-navigation-collapsed') })`,
+        `(() => {
+          const okButton = document.querySelector('.ant-modal-footer .ant-btn-primary')
+          const modal = okButton?.closest('.ant-modal')
+          return {
+            text: document.querySelector('.plugin-manager')?.textContent,
+            dialogs: [...document.querySelectorAll('.ant-modal-wrap')].map(node => ({
+              visible: node.checkVisibility(),
+              text: node.textContent,
+            })),
+            inputValue: document.getElementById('plugin-package-path')?.value ?? null,
+            okButton: okButton instanceof HTMLButtonElement ? {
+              disabled: okButton.disabled,
+              loading: okButton.classList.contains('ant-btn-loading'),
+              modalClass: modal?.className ?? null,
+              modalOpacity: modal instanceof HTMLElement ? getComputedStyle(modal).opacity : null,
+            } : null,
+            alert: document.querySelector('.plugin-install [role="alert"]')?.textContent ?? null,
+            active: document.querySelector('[data-view][aria-current]')?.getAttribute('data-view'),
+            nav: document.querySelector('.app-shell')?.getAttribute('data-navigation-collapsed'),
+          }
+        })()`,
       ),
     )
     await capture('verify-plugin-manager-failure.png')

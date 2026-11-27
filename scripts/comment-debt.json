@@ -243,7 +243,6 @@
     "tests/compaction-safety.spec.mjs",
     "tests/connection-credentials.spec.mjs",
     "tests/connections-verification.spec.mjs",
-    "tests/desktop-verifier.spec.ts",
     "tests/diff-model.spec.ts",
     "tests/dsh-import.spec.ts",
     "tests/file-operations.spec.ts",
