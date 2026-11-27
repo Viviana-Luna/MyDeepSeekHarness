@@ -32,22 +32,45 @@ export async function verifyTabEdgeMotion(win: BrowserWindow): Promise<void> {
   await win.webContents.executeJavaScript('new Promise(resolve=>setTimeout(resolve,1000))')
   /* oxlint-disable no-await-in-loop -- 同一透镜必须按顺序切换并采样。 */
   for (const selector of [first, last]) {
-    await clickTrustedElement(win, selector)
-    const result = (await win.webContents.executeJavaScript(`(async () => {
+    // 必须在点击前启动逐帧采样：clickTrustedElement 自带 80ms 稳定等待，点击后再读会错过边缘压缩峰值帧。
+    const sampling = win.webContents.executeJavaScript(`(async () => {
+      const target = document.querySelector(${JSON.stringify(selector)})
       const lens = document.querySelector('.session-tab-lens')
       const root = document.querySelector('.session-tab-glass')
-      let contained = true, compressed = false, maximumHeight = 0
-      for (let frame = 0; frame < 90; frame++) {
-        await new Promise(resolve => requestAnimationFrame(resolve))
-        const a = lens.getBoundingClientRect(), b = root.getBoundingClientRect()
-        const active = document.querySelector('.session-tab-shell[data-selected]').getBoundingClientRect()
-        contained &&= a.left >= b.left - .6 && a.right <= b.right + .6
-        compressed ||= Math.min(Math.abs(a.left-b.left), Math.abs(a.right-b.right)) < .6 && a.width < active.width * .995
-        maximumHeight = Math.max(maximumHeight, a.height)
+      let clicked = false
+      const onClick = () => { clicked = true }
+      target?.addEventListener('click', onClick, { once: true })
+      try {
+        for (let waitFrame = 0; waitFrame < 120 && !clicked; waitFrame += 1) {
+          await new Promise(resolve => requestAnimationFrame(resolve))
+        }
+        let contained = true, compressed = false, maximumHeight = 0
+        for (let frame = 0; frame < 90; frame++) {
+          await new Promise(resolve => requestAnimationFrame(resolve))
+          const a = lens.getBoundingClientRect(), b = root.getBoundingClientRect()
+          const active = document.querySelector('.session-tab-shell[data-selected]').getBoundingClientRect()
+          contained &&= a.left >= b.left - .6 && a.right <= b.right + .6
+          compressed ||= Math.min(Math.abs(a.left-b.left), Math.abs(a.right-b.right)) < .6 && a.width < active.width * .995
+          maximumHeight = Math.max(maximumHeight, a.height)
+        }
+        const a = lens.getBoundingClientRect(), b = document.querySelector('.session-tab-shell[data-selected]').getBoundingClientRect()
+        return { contained, compressed, maximumHeight, restored: Math.abs(a.left-b.left) < 1 && Math.abs(a.width-b.width) < 1 && Math.abs(a.height-26) < .1 }
+      } finally {
+        target?.removeEventListener('click', onClick)
       }
-      const a = lens.getBoundingClientRect(), b = document.querySelector('.session-tab-shell[data-selected]').getBoundingClientRect()
-      return { contained, compressed, maximumHeight, restored: Math.abs(a.left-b.left) < 1 && Math.abs(a.width-b.width) < 1 && Math.abs(a.height-26) < .1 }
-    })()`)) as { contained: boolean; compressed: boolean; restored: boolean; maximumHeight: number }
+    })()`)
+    try {
+      await clickTrustedElement(win, selector)
+    } catch (error) {
+      await sampling.catch(() => undefined)
+      throw error
+    }
+    const result = (await sampling) as {
+      contained: boolean
+      compressed: boolean
+      restored: boolean
+      maximumHeight: number
+    }
     console.log('desktop-shell-verify-local: tab-edge-motion', result)
     if (!result.contained || !result.compressed || !result.restored || result.maximumHeight > 29.2)
       throw new Error('标签边缘挤压或圆弧完整性验收失败：' + JSON.stringify(result))

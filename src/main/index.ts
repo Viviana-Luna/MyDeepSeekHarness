@@ -3226,15 +3226,30 @@ async function main(): Promise<void> {
       }, 60)
       if (!(confirmButton instanceof HTMLButtonElement)) return { ok: false, stage: 'confirm-button' }
       confirmButton.click()
-      await wait(() => trigger.getAttribute('aria-label') === '访问模式，当前：完全权限' && !trigger.disabled, 80)
-      const switched = trigger.getAttribute('aria-label') === '访问模式，当前：完全权限'
+      await wait(
+        () =>
+          document.querySelector('[role="dialog"]') === null
+          && trigger.getAttribute('aria-label') === '访问模式，当前：完全权限'
+          && !trigger.disabled,
+        120,
+      )
+      const switched = document.querySelector('[role="dialog"]') === null
+        && trigger.getAttribute('aria-label') === '访问模式，当前：完全权限'
         && document.querySelector('.composer-command-state') === null
         && document.querySelector('[aria-label="消息队列"]') === null
         && !document.querySelector('.composer-tools').textContent.includes('待处理')
         && composer.value === '权限切换时保留这条草稿'
       trigger.click()
-      const workspaceItem = await wait(() => document.querySelector('button[aria-label="工作区内修改"]'), 60)
-      if (workspaceItem instanceof HTMLButtonElement) workspaceItem.click()
+      const workspaceItem = await wait(() => document.querySelector('button[aria-label="工作区内修改"]'), 80)
+      if (!(workspaceItem instanceof HTMLButtonElement)) {
+        return {
+          ok: false,
+          stage: 'restore-menu',
+          hasDialog: document.querySelector('[role="dialog"]') !== null,
+          triggerLabel: trigger.getAttribute('aria-label'),
+        }
+      }
+      workspaceItem.click()
       await wait(() => trigger.getAttribute('aria-label') === '访问模式，当前：工作区内修改', 80)
       valueSetter?.call(composer, '')
       composer.dispatchEvent(new Event('input', { bubbles: true }))
@@ -7595,10 +7610,18 @@ async function main(): Promise<void> {
       (await captureVerifiedPage(win)).toPNG(),
     )
     await verifySettingsHeader()
+    const waitForSettingsClosed = async (): Promise<void> => {
+      await win.webContents.executeJavaScript(`(async () => {
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          const dialog = document.querySelector('.settings-dialog[role="dialog"]')
+          const modalVisible = [...document.querySelectorAll('.ant-modal-wrap')].some(node => node.checkVisibility())
+          if (dialog === null && !modalVisible) return
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+      })()`)
+    }
     await clickTrustedElement(win, '.settings-dialog button[aria-label="关闭设置"]')
-    await new Promise(resolve => {
-      setTimeout(resolve, 300)
-    })
+    await waitForSettingsClosed()
     nativeTheme.themeSource = 'light'
     await new Promise(resolve => {
       setTimeout(resolve, 140)
@@ -7959,9 +7982,7 @@ async function main(): Promise<void> {
       (await captureVerifiedPage(win)).toPNG(),
     )
     await clickTrustedElement(win, '.settings-dialog button[aria-label="关闭设置"]')
-    await new Promise(resolve => {
-      setTimeout(resolve, 300)
-    })
+    await waitForSettingsClosed()
 
     await dragTrustedElementHorizontally(win, '.panel-divider--information', -220)
     const wideInformationResizable = (await win.webContents.executeJavaScript(`(() => {
@@ -8232,9 +8253,7 @@ async function main(): Promise<void> {
     )) as boolean
     if (narrowSettingsClosePresent) {
       await clickTrustedElement(win, '.settings-dialog button[aria-label="关闭设置"]')
-      await new Promise(resolve => {
-        setTimeout(resolve, 300)
-      })
+      await waitForSettingsClosed()
     }
 
     settingsController.publish(settingsStore.update({ canvasTransparency: 0.32 }))
