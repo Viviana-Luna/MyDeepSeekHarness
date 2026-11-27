@@ -56,7 +56,7 @@ export async function seedComposerReadings(
     },
   })
   const ready = await win.webContents.executeJavaScript(`(async () => {
-    for (let attempt = 0; attempt < 80; attempt++) {
+    for (let attempt = 0; attempt < 120; attempt++) {
       if ([...document.querySelectorAll('[data-composer-readings]')].some(node => node.checkVisibility())) return true
       await new Promise(resolve => setTimeout(resolve, 25))
     }

@@ -2,6 +2,11 @@ import type { BrowserWindow } from 'electron'
 import type { DesktopSessionFrame } from '../../shared/session-live.ts'
 import { clickTrustedElement, emulateVerificationMedia } from './desktop-verifier.ts'
 import { readVerificationProjection } from './session-projection-fixture.ts'
+import {
+  pollRenderer,
+  waitForMediaFeature,
+  waitForViewportSettled,
+} from './verification-wait.ts'
 
 /** 仅向隔离验收会话注入投影和失败事件，不读取或修改用户会话。 */
 export async function verifyCompactionReadings(
@@ -28,8 +33,6 @@ export async function verifyCompactionReadings(
         omitted: 0,
       },
     })
-  const settle = () =>
-    win.webContents.executeJavaScript('new Promise(resolve => setTimeout(resolve, 350))')
   const panel = '[role="dialog"][aria-label="上下文占用"]'
   try {
     /* oxlint-disable no-await-in-loop -- 同一个真实窗口依次覆盖尺寸、主题及状态转换。 */
@@ -42,30 +45,35 @@ export async function verifyCompactionReadings(
       win.setSize(sample.width, sample.height)
       appearance(sample.scheme)
       pressure({ projectedTokens: 395_000, contextWindow: 272_000 })
-      await settle()
+      await waitForViewportSettled(win, { scheme: sample.scheme })
       await clickTrustedElement(
         win,
         '[data-composer-readings] button[aria-label="上下文占用 145%"]',
       )
-      const overflow = await win.webContents.executeJavaScript(`(() => {
-        const panel = document.querySelector('${panel}')
-        const ring = document.querySelector('[data-composer-readings] button[aria-label="上下文占用 145%"] circle[stroke-dasharray]')
-        const arc = ring?.getAttribute('stroke-dasharray')?.split(' ').map(Number)
-        return { percent: panel?.textContent.includes('上下文已用 145%') === true,
-          warning: panel?.textContent.includes('超过标称窗口') === true,
-          // 圆环按 SVG 半径核对整圈，避免把路径近似长度当作占用环使用的圆周。
-          arc: arc ?? null, length: ring instanceof SVGCircleElement ? 2 * Math.PI * ring.r.baseVal.value : null }
-      })()`)
+      const overflowPolled = await pollRenderer<{
+        percent: boolean
+        warning: boolean
+        arc: number[] | null
+        length: number | null
+      }>(win, {
+        probe: `(() => {
+          const panel = document.querySelector('${panel}')
+          const ring = document.querySelector('[data-composer-readings] button[aria-label="上下文占用 145%"] circle[stroke-dasharray]')
+          const arc = ring?.getAttribute('stroke-dasharray')?.split(' ').map(Number)
+          return {
+            percent: panel?.textContent.includes('上下文已用 145%') === true,
+            warning: panel?.textContent.includes('超过标称窗口') === true,
+            // 圆环按 SVG 半径核对整圈，避免把路径近似长度当作占用环使用的圆周。
+            arc: arc ?? null,
+            length: ring instanceof SVGCircleElement ? 2 * Math.PI * ring.r.baseVal.value : null,
+          }
+        })()`,
+        condition: `state.percent && state.warning && state.arc?.length === 2 && state.arc[0] === state.arc[1] && state.length !== null && Math.abs(state.arc[0] - state.length) < 0.1`,
+      })
+      const overflow = overflowPolled.value
       console.log('desktop-shell-verify-local: compaction-overflow', overflow)
-      if (
-        !overflow.percent ||
-        !overflow.warning ||
-        overflow.arc?.length !== 2 ||
-        overflow.arc[0] !== overflow.arc[1] ||
-        overflow.length === null ||
-        Math.abs(overflow.arc[0] - overflow.length) >= 0.1
-      )
-        throw new Error('超窗读数未显示 145% 或图形未封顶：' + JSON.stringify(overflow))
+      if (!overflowPolled.ok)
+        throw new Error('超窗读数未显示 145% 或图形未封顶：' + JSON.stringify(overflowPolled))
       await capture(`verify-compaction-overflow-${sample.width}-${sample.scheme}.png`)
       pressure({
         projectedTokens: 395_000,
@@ -73,19 +81,30 @@ export async function verifyCompactionReadings(
         nativeCompaction: true,
         awaitingUsage: true,
       })
-      await settle()
-      const waiting = await win.webContents.executeJavaScript(`(() => {
-        const panel = document.querySelector('${panel}')
-        if (!panel) return false
-        const rect = panel.getBoundingClientRect(), style = getComputedStyle(panel)
-        return panel.textContent.includes('请求占用：等待更新') && !panel.textContent.includes('145%')
-          && panel.textContent.includes('本地保留历史与配置（估算，非请求占用）') && panel.textContent.includes('~395K')
-          && !!document.querySelector('[data-composer-readings] button[aria-label="请求占用等待更新"]')
-          && rect.top >= 0 && rect.right <= innerWidth && rect.bottom < innerHeight
-          && panel.scrollWidth <= panel.clientWidth + 1 && parseFloat(style.borderTopWidth) > 0
-          && style.borderTopStyle !== 'none' && style.backgroundColor !== 'rgba(0, 0, 0, 0)'
-      })()`)
-      if (!waiting) throw new Error('原生压缩等待状态、历史区分、面板描边或布局验收失败')
+      const waiting = await pollRenderer<Record<string, unknown>>(win, {
+        probe: `(() => {
+          const panel = document.querySelector('${panel}')
+          if (!panel) return { ok: false, missing: true }
+          const rect = panel.getBoundingClientRect(), style = getComputedStyle(panel)
+          const text = panel.textContent ?? ''
+          const hasButton = Boolean(document.querySelector('[data-composer-readings] button[aria-label="请求占用等待更新"]'))
+          const ok = text.includes('请求占用：等待更新') && !text.includes('145%')
+            && text.includes('本地保留历史与配置（估算，非请求占用）') && text.includes('~395K')
+            && hasButton && rect.top >= 0 && rect.right <= innerWidth && rect.bottom < innerHeight
+            && panel.scrollWidth <= panel.clientWidth + 1 && parseFloat(style.borderTopWidth) > 0
+            && style.borderTopStyle !== 'none' && style.backgroundColor !== 'rgba(0, 0, 0, 0)'
+          return {
+            ok, hasButton, rect: rect.toJSON(), innerWidth, innerHeight,
+            scrollWidth: panel.scrollWidth, clientWidth: panel.clientWidth,
+            borderTopWidth: style.borderTopWidth, borderTopStyle: style.borderTopStyle,
+            backgroundColor: style.backgroundColor,
+          }
+        })()`,
+        condition: 'state.ok === true',
+      })
+      if (!waiting.ok) {
+        throw new Error(`原生压缩等待状态、历史区分、面板描边或布局验收失败：${JSON.stringify(waiting)}`)
+      }
       await capture(`verify-compaction-waiting-${sample.width}-${sample.scheme}.png`)
       if (sample.width === 1280 && sample.scheme === 'dark') {
         for (const [name, features] of [
@@ -99,23 +118,36 @@ export async function verifyCompactionReadings(
           ['solid', [{ name: 'prefers-reduced-transparency', value: 'reduce' }]],
         ] as const) {
           await emulateVerificationMedia(win, [...features])
-          await settle()
-          const visible = await win.webContents
-            .executeJavaScript(`document.querySelector('${panel}')?.checkVisibility()
-            && document.querySelector('${panel}').textContent.includes('等待更新')`)
-          if (!visible) throw new Error('压缩读数在无障碍降级下不可见')
+          await waitForMediaFeature(
+            win,
+            name === 'accessible' ? '(forced-colors: active)' : '(prefers-reduced-transparency: reduce)',
+          )
+          const visible = await pollRenderer<{ visible: boolean; hasText: boolean }>(win, {
+            probe: `(() => {
+              const node = document.querySelector('${panel}')
+              return { visible: node?.checkVisibility() === true, hasText: node?.textContent.includes('等待更新') === true }
+            })()`,
+            condition: 'state.visible && state.hasText',
+            timeoutMs: 1_500,
+          })
+          if (!visible.ok) throw new Error(`压缩读数在无障碍降级下不可见：${JSON.stringify(visible)}`)
           await capture(`verify-compaction-${name}.png`)
         }
         await emulateVerificationMedia(win)
       }
       pressure({ projectedTokens: 2000, contextWindow: 272_000, nativeCompaction: true })
-      await settle()
-      const fresh = await win.webContents.executeJavaScript(`(() => {
-        const panel = document.querySelector('${panel}')
-        return panel?.textContent.includes('上下文已用 1%') && !panel.textContent.includes('等待更新')
-          && panel.textContent.includes('~395K') && panel.textContent.includes('本地历史不会全部重发')
-      })()`)
-      if (!fresh) throw new Error('原生压缩后的有效占用未替换等待状态')
+      const fresh = await pollRenderer<{ ok: boolean; text: string }>(win, {
+        probe: `(() => {
+          const text = document.querySelector('${panel}')?.textContent ?? ''
+          return {
+            ok: text.includes('上下文已用 1%') && !text.includes('等待更新')
+              && text.includes('~395K') && text.includes('本地历史不会全部重发'),
+            text: text.slice(0, 240),
+          }
+        })()`,
+        condition: 'state.ok === true',
+      })
+      if (!fresh.ok) throw new Error(`原生压缩后的有效占用未替换等待状态：${JSON.stringify(fresh)}`)
       await clickTrustedElement(win, '[data-composer-readings] button[aria-label="上下文占用 1%"]')
     }
     /* oxlint-enable no-await-in-loop */
@@ -152,12 +184,17 @@ export async function verifyCompactionReadings(
         },
       },
     })
-    await settle()
-    const failure = await win.webContents.executeJavaScript(`(() => {
-      const text = document.querySelector('#conversation-view')?.textContent ?? ''
-      return text.includes('上下文压缩失败：隔离验收：摘要参数不支持') && text.includes('会话和工具结果已保留')
-    })()`)
-    if (!failure) throw new Error('压缩失败及恢复方式未进入真实对话视图')
+    const failure = await pollRenderer<{ ok: boolean; snippet: string }>(win, {
+      probe: `(() => {
+        const text = document.querySelector('#conversation-view')?.textContent ?? ''
+        return {
+          ok: text.includes('上下文压缩失败：隔离验收：摘要参数不支持') && text.includes('会话和工具结果已保留'),
+          snippet: text.slice(-240),
+        }
+      })()`,
+      condition: 'state.ok === true',
+    })
+    if (!failure.ok) throw new Error(`压缩失败及恢复方式未进入真实对话视图：${JSON.stringify(failure)}`)
     await capture('verify-compaction-failure.png')
     console.log('desktop-shell-verify-local: compaction-readings', {
       overflow: true,
@@ -185,6 +222,6 @@ export async function verifyCompactionReadings(
         omitted: 0,
       },
     })
-    await settle()
+    await waitForViewportSettled(win)
   }
 }

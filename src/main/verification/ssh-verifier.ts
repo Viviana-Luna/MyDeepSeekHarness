@@ -2,6 +2,11 @@ import { lstatSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, type BrowserWindow } from 'electron'
 import { clickTrustedElement, emulateVerificationMedia } from './desktop-verifier.ts'
+import {
+  pollRenderer,
+  waitForMediaFeature,
+  waitForViewportSettled,
+} from './verification-wait.ts'
 
 const hostCard = (name: string) =>
   `[aria-label="全部主机"] [aria-label=${JSON.stringify(`连接 ${name}`)}]`
@@ -14,7 +19,6 @@ async function verifySshDialogLayout(
   appearance: (scheme: 'light' | 'dark') => void,
   capture: (name: string) => Promise<string>,
 ): Promise<void> {
-  const js = (source: string) => win.webContents.executeJavaScript(source)
   await emulateVerificationMedia(win)
   /* oxlint-disable no-await-in-loop -- 同一窗口按尺寸和主题顺序检查弹窗。 */
   for (const [width, scheme] of [
@@ -25,21 +29,31 @@ async function verifySshDialogLayout(
   ] as const) {
     win.setSize(width, width === 1280 ? 800 : 1000)
     appearance(scheme)
-    await js('new Promise(resolve=>setTimeout(resolve,350))')
-    const valid = await js(`(() => {
-      const modal=document.querySelector('.ssh-connection-modal__container')
-      const body=document.querySelector('.ssh-connection-modal__body')
-      const footer=document.querySelector('.ssh-connection-modal__footer')
-      const name=document.getElementById('name'), environment=document.getElementById('environment')
-      if(!modal||!body||!footer||!name||!environment)return false
-      const box=modal.getBoundingClientRect(), end=footer.getBoundingClientRect()
-      const style=getComputedStyle(modal)
-      return box.top>=0 && box.bottom<=innerHeight && end.bottom<=innerHeight
-        && body.scrollHeight<=body.clientHeight+1 && body.scrollWidth<=body.clientWidth+1
-        && Math.abs(name.getBoundingClientRect().top-environment.getBoundingClientRect().top)<1
-        && style.borderTopStyle==='solid' && Number.parseFloat(style.borderTopLeftRadius)>0
-    })()`)
-    if (!valid) throw new Error('SSH 连接弹窗的尺寸、字段布局或描边验收失败')
+    await waitForViewportSettled(win, { scheme })
+    const valid = await pollRenderer<Record<string, unknown>>(win, {
+      probe: `(() => {
+        const modal=document.querySelector('.ssh-connection-modal__container')
+        const body=document.querySelector('.ssh-connection-modal__body')
+        const footer=document.querySelector('.ssh-connection-modal__footer')
+        const name=document.getElementById('name'), environment=document.getElementById('environment')
+        if(!modal||!body||!footer||!name||!environment) return { ok: false, missing: true }
+        const box=modal.getBoundingClientRect(), end=footer.getBoundingClientRect()
+        const style=getComputedStyle(modal)
+        const ok = box.top>=0 && box.bottom<=innerHeight && end.bottom<=innerHeight
+          && body.scrollHeight<=body.clientHeight+1 && body.scrollWidth<=body.clientWidth+1
+          && Math.abs(name.getBoundingClientRect().top-environment.getBoundingClientRect().top)<1
+          && style.borderTopStyle==='solid' && Number.parseFloat(style.borderTopLeftRadius)>0
+        return {
+          ok, box: box.toJSON(), footerBottom: end.bottom, innerHeight,
+          bodyScroll: { sw: body.scrollWidth, cw: body.clientWidth, sh: body.scrollHeight, ch: body.clientHeight },
+          borderTopStyle: style.borderTopStyle, radius: style.borderTopLeftRadius,
+        }
+      })()`,
+      condition: 'state.ok === true',
+    })
+    if (!valid.ok) {
+      throw new Error(`SSH 连接弹窗的尺寸、字段布局或描边验收失败：${JSON.stringify(valid)}`)
+    }
     await capture(`verify-ssh-dialog-${width}-${scheme}.png`)
   }
   /* oxlint-enable no-await-in-loop */
@@ -48,13 +62,21 @@ async function verifySshDialogLayout(
     { name: 'prefers-reduced-motion', value: 'reduce' },
     { name: 'prefers-reduced-transparency', value: 'reduce' },
   ])
-  const accessible = await js(`(() => {
-    const icon=document.querySelector('.ssh-dialog-title__icon')
-    return matchMedia('(forced-colors: active)').matches && icon
-      && getComputedStyle(icon).borderTopStyle==='solid'
-      && document.querySelector('.ssh-connection-modal__footer button')?.checkVisibility()
-  })()`)
-  if (!accessible) throw new Error('SSH 连接弹窗的无障碍降级验收失败')
+  await waitForMediaFeature(win, '(forced-colors: active)')
+  const accessible = await pollRenderer<Record<string, unknown>>(win, {
+    probe: `(() => {
+      const icon=document.querySelector('.ssh-dialog-title__icon')
+      const forced = matchMedia('(forced-colors: active)').matches
+      const border = icon ? getComputedStyle(icon).borderTopStyle : ''
+      const buttonVisible = document.querySelector('.ssh-connection-modal__footer button')?.checkVisibility() === true
+      return { ok: forced && Boolean(icon) && border === 'solid' && buttonVisible, forced, border, buttonVisible }
+    })()`,
+    condition: 'state.ok === true',
+    timeoutMs: 1_500,
+  })
+  if (!accessible.ok) {
+    throw new Error(`SSH 连接弹窗的无障碍降级验收失败：${JSON.stringify(accessible)}`)
+  }
   await capture('verify-ssh-dialog-accessible.png')
   await emulateVerificationMedia(win)
   appearance('dark')
@@ -174,35 +196,30 @@ export async function verifySshWorkspace(
   ] as const) {
     win.setSize(width, width === 1280 ? 800 : 1000)
     appearance(scheme)
-    await js('new Promise(r=>setTimeout(r,450))')
-    const layout = await js(`(() => {
-      const panel=document.querySelector('[data-connections-workspace]'), home=document.querySelector('[aria-label="SSH 导航"] .ssh-home')
-      const search=home?.querySelector('.ssh-home__search')?.getBoundingClientRect()
-      const actions=home?.querySelector('.ssh-home__toolbar-actions')?.getBoundingClientRect()
-      const cards=[...(home?.querySelectorAll('[aria-label="全部主机"] .ssh-host-card')??[])]
-      return {
-        visible: !!home?.checkVisibility(),
-        toolbarInline: !!search && !!actions && Math.abs(search.top-actions.top)<6 && search.right<=actions.left,
-        count: cards.length === 2,
-        fits: !!home && home.scrollWidth<=home.clientWidth+1 && document.documentElement.scrollWidth===innerWidth,
-        cards: cards.every(card=>getComputedStyle(card).borderTopStyle==='solid' && card.getBoundingClientRect().width>200),
-        recentInMain: !!panel?.querySelector('[aria-label="最近连接"] [data-ssh-host]')
-          && !home?.querySelector('[aria-label="最近连接"]'),
-        navigationOpen: document.querySelector('.app-shell')?.dataset.navigationCollapsed!=='true',
-        homeWidth: home?.clientWidth ?? 0,
-        cardWidths: cards.map(card=>card.getBoundingClientRect().width),
-      }
-    })()`)
-    if (
-      !layout.visible ||
-      !layout.toolbarInline ||
-      !layout.count ||
-      !layout.fits ||
-      !layout.cards ||
-      !layout.recentInMain ||
-      !layout.navigationOpen
-    )
-      throw new Error('SSH 主机列表的尺寸、卡片或描边验收失败：' + JSON.stringify(layout))
+    await waitForViewportSettled(win, { scheme })
+    const polled = await pollRenderer<Record<string, unknown>>(win, {
+      probe: `(() => {
+        const panel=document.querySelector('[data-connections-workspace]'), home=document.querySelector('[aria-label="SSH 导航"] .ssh-home')
+        const search=home?.querySelector('.ssh-home__search')?.getBoundingClientRect()
+        const actions=home?.querySelector('.ssh-home__toolbar-actions')?.getBoundingClientRect()
+        const cards=[...(home?.querySelectorAll('[aria-label="全部主机"] .ssh-host-card')??[])]
+        return {
+          visible: !!home?.checkVisibility(),
+          toolbarInline: !!search && !!actions && Math.abs(search.top-actions.top)<6 && search.right<=actions.left,
+          count: cards.length === 2,
+          fits: !!home && home.scrollWidth<=home.clientWidth+1 && document.documentElement.scrollWidth===innerWidth,
+          cards: cards.every(card=>getComputedStyle(card).borderTopStyle==='solid' && card.getBoundingClientRect().width>200),
+          recentInMain: !!panel?.querySelector('[aria-label="最近连接"] [data-ssh-host]')
+            && !home?.querySelector('[aria-label="最近连接"]'),
+          navigationOpen: document.querySelector('.app-shell')?.dataset.navigationCollapsed!=='true',
+          homeWidth: home?.clientWidth ?? 0,
+          cardWidths: cards.map(card=>card.getBoundingClientRect().width),
+        }
+      })()`,
+      condition: `state.visible && state.toolbarInline && state.count && state.fits && state.cards && state.recentInMain && state.navigationOpen`,
+    })
+    if (!polled.ok)
+      throw new Error('SSH 主机列表的尺寸、卡片或描边验收失败：' + JSON.stringify(polled))
     images.push(await capture(`verify-ssh-hosts-${width}-${scheme}.png`))
   }
   /* oxlint-enable no-await-in-loop */
@@ -253,11 +270,16 @@ export async function verifySshWorkspace(
   ] as const) {
     win.setSize(width, width === 1280 ? 800 : 1000)
     appearance(scheme)
-    await js('new Promise(r=>setTimeout(r,450))')
-    const layout = await js(
-      `(() => { const terminal=document.querySelector('[data-ssh-terminal]:not([hidden])'), panel=terminal?.closest('.work-tab-panel'), tab=document.querySelector(${JSON.stringify(shellTab('集成验收服务器'))}), bounds=panel?.getBoundingClientRect(); return bounds?.width>450 && bounds.height>500 && panel.scrollWidth<=panel.clientWidth+1 && terminal.clientHeight>300 && tab?.checkVisibility() && tab.getAttribute('aria-selected')==='true' && document.querySelector('.app-shell')?.dataset.navigationCollapsed!=='true' && !panel.querySelector('[role="tablist"], .ssh-host-card') && document.documentElement.scrollWidth===innerWidth })()`,
-    )
-    if (!layout) throw new Error('SSH 界面布局、描边或终端区域验收失败')
+    await waitForViewportSettled(win, { scheme })
+    const layout = await pollRenderer<Record<string, unknown>>(win, {
+      probe: `(() => {
+        const terminal=document.querySelector('[data-ssh-terminal]:not([hidden])'), panel=terminal?.closest('.work-tab-panel'), tab=document.querySelector(${JSON.stringify(shellTab('集成验收服务器'))}), bounds=panel?.getBoundingClientRect()
+        const ok = Boolean(bounds && panel && terminal && tab) && bounds.width>450 && bounds.height>500 && panel.scrollWidth<=panel.clientWidth+1 && terminal.clientHeight>300 && tab.checkVisibility() && tab.getAttribute('aria-selected')==='true' && document.querySelector('.app-shell')?.dataset.navigationCollapsed!=='true' && !panel.querySelector('[role="tablist"], .ssh-host-card') && document.documentElement.scrollWidth===innerWidth
+        return { ok, bounds: bounds?.toJSON() ?? null, terminalHeight: terminal?.clientHeight ?? 0, innerWidth }
+      })()`,
+      condition: 'state.ok === true',
+    })
+    if (!layout.ok) throw new Error(`SSH 界面布局、描边或终端区域验收失败：${JSON.stringify(layout)}`)
     images.push(await capture(`verify-ssh-${width}-${scheme}.png`))
   }
   await wait(
@@ -268,7 +290,7 @@ export async function verifySshWorkspace(
     { name: 'prefers-reduced-motion', value: 'reduce' },
     { name: 'prefers-reduced-transparency', value: 'reduce' },
   ])
-  await js('new Promise(r=>setTimeout(r,250))')
+  await waitForMediaFeature(win, '(forced-colors: active)')
   await wait(
     `document.querySelector('[data-ssh-terminal]:not([hidden])')?.dataset.sshTerminal===${JSON.stringify(id)}`,
   )

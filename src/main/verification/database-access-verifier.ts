@@ -2,6 +2,11 @@
 /* oxlint-disable no-await-in-loop -- 同一窗口的尺寸、主题与截图必须顺序验收。 */
 import type { BrowserWindow } from 'electron'
 import { clickTrustedElement, emulateVerificationMedia } from './desktop-verifier.ts'
+import {
+  pollRenderer,
+  waitForMediaFeature,
+  waitForViewportSettled,
+} from './verification-wait.ts'
 
 interface AccessVerification {
   win: BrowserWindow
@@ -160,10 +165,23 @@ async function verifyModalLayout({
   ] as const) {
     win.setSize(width, width === 1280 ? 800 : 1000)
     appearance(scheme)
-    const fits = await win.webContents.executeJavaScript(
-      `new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>{const panel=document.querySelector('.database-connection-modal-container, .ant-modal-container, .ant-modal-content');if(!panel){resolve(false);return}const bounds=panel.getBoundingClientRect();resolve(bounds.left>=0&&bounds.right<=innerWidth&&bounds.bottom<=innerHeight&&panel.scrollWidth<=panel.clientWidth+1)})))`,
-    )
-    if (!fits) throw new Error('数据库 Agent 权限弹窗超出窗口或发生横向溢出')
+    await waitForViewportSettled(win, { scheme })
+    const fits = await pollRenderer<Record<string, unknown>>(win, {
+      probe: `(() => {
+        const panel=document.querySelector('.database-connection-modal-container, .ant-modal-container, .ant-modal-content')
+        if(!panel) return { ok: false, missing: true }
+        const bounds=panel.getBoundingClientRect()
+        return {
+          ok: bounds.left>=0 && bounds.right<=innerWidth && bounds.bottom<=innerHeight && panel.scrollWidth<=panel.clientWidth+1,
+          bounds: bounds.toJSON(), innerWidth, innerHeight,
+          scrollWidth: panel.scrollWidth, clientWidth: panel.clientWidth,
+        }
+      })()`,
+      condition: 'state.ok === true',
+    })
+    if (!fits.ok) {
+      throw new Error(`数据库 Agent 权限弹窗超出窗口或发生横向溢出：${JSON.stringify(fits)}`)
+    }
     images.push(await capture(`verify-database-access-${width}-${scheme}.png`))
   }
   await emulateVerificationMedia(win, [
@@ -171,9 +189,11 @@ async function verifyModalLayout({
     { name: 'prefers-reduced-motion', value: 'reduce' },
     { name: 'prefers-reduced-transparency', value: 'reduce' },
   ])
+  await waitForMediaFeature(win, '(forced-colors: active)')
   images.push(await capture('verify-database-access-accessible.png'))
   await emulateVerificationMedia(win)
   win.setSize(1280, 800)
   appearance('dark')
+  await waitForViewportSettled(win, { scheme: 'dark' })
   return images
 }

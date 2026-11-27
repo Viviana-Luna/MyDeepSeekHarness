@@ -73,4 +73,34 @@ describe('真实 Electron 验收基础设施', () => {
     const point = await evaluate()
     expect(point).toEqual({ x: 400, y: 300 })
   })
+
+  it('点击液态形变菜单项前等待 data-menu-morph 从 active 变为 settled', async () => {
+    const menu = document.createElement('div')
+    menu.setAttribute('data-anchored-menu', 'true')
+    menu.dataset.menuMorph = 'active'
+    menu.style.opacity = '1'
+    menu.getAnimations = () => []
+    const item = document.createElement('button')
+    item.setAttribute('role', 'menuitem')
+    menu.append(item)
+    document.body.append(menu)
+
+    let settled = false
+    item.checkVisibility = () => true
+    item.getClientRects = () =>
+      [makeRect(settled ? 260 : 80, settled ? 184 : 64)] as unknown as DOMRectList
+    item.getBoundingClientRect = () => makeRect(settled ? 260 : 80, settled ? 184 : 64)
+    document.elementFromPoint = () => item
+
+    setTimeout(() => {
+      settled = true
+      menu.dataset.menuMorph = 'settled'
+    }, 60)
+
+    const evaluate = new Function(
+      `return ${buildTrustedClickTargetScript('[role="menuitem"]')}`,
+    ) as () => Promise<{ x: number; y: number }>
+    const point = await evaluate()
+    expect(point).toEqual({ x: 300, y: 200 })
+  })
 })

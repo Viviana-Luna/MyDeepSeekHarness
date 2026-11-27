@@ -1,5 +1,6 @@
 import type { BrowserWindow } from 'electron'
 import { clickTrustedElement } from './desktop-verifier.ts'
+import { pollCondition, pollRenderer } from './verification-wait.ts'
 
 async function waitFor(test: () => boolean): Promise<void> {
   /* oxlint-disable no-await-in-loop -- 原生窗口变化需要有界串行轮询，不能并发读取同一状态。 */
@@ -81,15 +82,13 @@ export async function verifyWindowControls(
   const normal = win.getBounds()
   await clickTrustedElement(win, '[data-window-action="toggle-maximize"]')
   await waitFor(() => win.isMaximized())
-  await new Promise(resolve => {
-    setTimeout(resolve, 100)
+  const maximizeLabel = await pollRenderer<string | null>(win, {
+    probe: `document.querySelector('[data-window-action="toggle-maximize"]')?.getAttribute('aria-label') ?? null`,
+    condition: `state === '还原窗口'`,
+    timeoutMs: 2_000,
   })
-  if (
-    !(await win.webContents.executeJavaScript(
-      `document.querySelector('[data-window-action="toggle-maximize"]')?.getAttribute('aria-label') === '还原窗口'`,
-    ))
-  ) {
-    throw new Error('最大化后未呈现还原按钮')
+  if (!maximizeLabel.ok) {
+    throw new Error(`最大化后未呈现还原按钮：${JSON.stringify(maximizeLabel)}`)
   }
   await clickTrustedElement(win, '[data-window-action="toggle-maximize"]')
   await waitFor(() => !win.isMaximized())
@@ -99,12 +98,16 @@ export async function verifyWindowControls(
   win.show()
   win.focus()
   await waitFor(() => !win.isMinimized() && win.isFocused())
+  const boundsRestored = await pollCondition(
+    () => {
+      const current = win.getBounds()
+      return Math.abs(current.width - normal.width) <= 1 && Math.abs(current.height - normal.height) <= 1
+    },
+    { timeoutMs: 1_500 },
+  )
   const restored = win.getBounds()
-  if (
-    Math.abs(restored.width - normal.width) > 1 ||
-    Math.abs(restored.height - normal.height) > 1
-  ) {
-    throw new Error('窗口还原后尺寸未恢复')
+  if (!boundsRestored) {
+    throw new Error(`窗口还原后尺寸未恢复：${JSON.stringify({ normal, restored })}`)
   }
   return true
 }

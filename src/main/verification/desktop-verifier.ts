@@ -1,4 +1,5 @@
 import type { BrowserWindow, NativeImage, Rectangle } from 'electron'
+import { pollRenderer } from './verification-wait.ts'
 
 export type VerifyStage = 'initializing' | 'startup' | 'host' | 'settings' | 'complete'
 
@@ -210,15 +211,15 @@ export async function captureVerifiedPage(
   win: BrowserWindow,
   bounds?: Rectangle,
 ): Promise<NativeImage> {
-  /* oxlint-disable no-await-in-loop -- 同一窗口截图必须串行，瞬态错误最多重试两次。 */
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  /* oxlint-disable no-await-in-loop -- 同一窗口截图必须串行，瞬态错误最多重试五次。 */
+  for (let attempt = 0; attempt < 6; attempt += 1) {
     try {
       return await win.webContents.capturePage(bounds, {
         stayHidden: !win.isVisible(),
         stayAwake: true,
       })
     } catch (error) {
-      if (attempt === 2 || !(error instanceof Error) || error.message !== 'UnknownVizError')
+      if (attempt === 5 || !(error instanceof Error) || error.message !== 'UnknownVizError')
         throw error
       await new Promise(resolve => {
         setTimeout(resolve, 150)
@@ -301,7 +302,9 @@ export function buildTrustedClickTargetScript(selector: string): string {
           continue
         }
         const opacity = Number.parseFloat(getComputedStyle(popup).opacity)
-        if (!hasMotionClass() && (Number.isNaN(opacity) || opacity >= 0.99)) break
+        // 液态形变菜单的 clip-path 动画（450ms）晚于透明代理动画（190ms）结束，必须等待形变落稳。
+        const morphActive = popup.dataset.menuMorph === 'active'
+        if (!hasMotionClass() && !morphActive && (Number.isNaN(opacity) || opacity >= 0.99)) break
         await new Promise(resolve => setTimeout(resolve, 25))
       }
     }
@@ -339,12 +342,24 @@ export async function clickTrustedElement(win: BrowserWindow, selector: string):
     setTimeout(resolve, 80)
   })
   if (selector.startsWith('.settings-nav__items')) {
-    const selected = (await win.webContents.executeJavaScript(`(() => {
-      const target = document.querySelector(${JSON.stringify(selector)})
-      return { ready: target?.classList.contains('ant-menu-item-selected') === true,
-        requested: target?.textContent, selected: document.querySelector('.settings-nav__items .ant-menu-item-selected')?.textContent }
-    })()`)) as { ready: boolean; requested?: string; selected?: string }
-    if (!selected.ready) throw new Error('设置菜单原生点击未选中目标：' + JSON.stringify(selected))
+    const selected = await pollRenderer<{
+      ready: boolean
+      requested?: string | null
+      selected?: string | null
+    }>(win, {
+      probe: `(() => {
+        const target = document.querySelector(${JSON.stringify(selector)})
+        return {
+          ready: target?.classList.contains('ant-menu-item-selected') === true,
+          requested: target?.textContent ?? null,
+          selected: document.querySelector('.settings-nav__items .ant-menu-item-selected')?.textContent ?? null,
+        }
+      })()`,
+      condition: 'state.ready === true',
+      timeoutMs: 1_500,
+      intervalMs: 25,
+    })
+    if (!selected.ok) throw new Error('设置菜单原生点击未选中目标：' + JSON.stringify(selected))
   }
 }
 

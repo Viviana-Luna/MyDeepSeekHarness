@@ -5,6 +5,11 @@ import type { DatabaseProfile } from '../../../packages/connections/database/typ
 import { clickTrustedElement, emulateVerificationMedia } from './desktop-verifier.ts'
 import { verifyDatabaseHome } from './database-home-verifier.ts'
 import { verifyDatabaseAccess } from './database-access-verifier.ts'
+import {
+  pollRenderer,
+  waitForMediaFeature,
+  waitForViewportSettled,
+} from './verification-wait.ts'
 
 /** 同一真实工作区完成直连、结构、查询、取消及 SSH 通道，数据仅来自临时夹具。 */
 export async function verifyDatabaseWorkspace(
@@ -235,11 +240,22 @@ export async function verifyDatabaseWorkspace(
   ] as const) {
     win.setSize(width, width === 1280 ? 800 : 1000)
     appearance(scheme)
-    await js('new Promise(r=>setTimeout(r,400))')
-    const layout = await js(
-      `(()=>{const main=document.querySelector('[data-database-workspace]'),nav=document.querySelector('.navigation-island .connections-navigation'),a=main.getBoundingClientRect(),b=nav.getBoundingClientRect(),grid=main.querySelector('.database-results'),notice=main.querySelector('[aria-label="数据库只读说明"]');return nav.checkVisibility()&&b.right<a.left&&nav.querySelector('[data-database-table="samples"]')?.checkVisibility()&&!main.querySelector('.connections-list')&&!main.querySelector('.database-browse-controls')&&notice?.checkVisibility()&&notice.textContent.includes('单条 SELECT')&&grid.clientHeight>400&&a.width>600&&document.documentElement.scrollWidth===innerWidth})()`,
-    )
-    if (!layout) throw new Error('数据库导航没有位于左浮岛或主区发生溢出')
+    await waitForViewportSettled(win, { scheme })
+    const layout = await pollRenderer<Record<string, unknown>>(win, {
+      probe: `(()=>{
+        const main=document.querySelector('[data-database-workspace]'),nav=document.querySelector('.navigation-island .connections-navigation')
+        if (!main || !nav) return { ok: false, missing: true }
+        const a=main.getBoundingClientRect(),b=nav.getBoundingClientRect(),grid=main.querySelector('.database-results'),notice=main.querySelector('[aria-label="数据库只读说明"]')
+        const ok = Boolean(grid && notice) && nav.checkVisibility() && b.right<a.left
+          && nav.querySelector('[data-database-table="samples"]')?.checkVisibility()===true
+          && !main.querySelector('.connections-list') && !main.querySelector('.database-browse-controls')
+          && notice.checkVisibility() && notice.textContent.includes('单条 SELECT')
+          && grid.clientHeight>400 && a.width>600 && document.documentElement.scrollWidth===innerWidth
+        return { ok, mainBounds: a.toJSON(), navBounds: b.toJSON(), gridHeight: grid?.clientHeight ?? 0, innerWidth }
+      })()`,
+      condition: 'state.ok === true',
+    })
+    if (!layout.ok) throw new Error(`数据库导航没有位于左浮岛或主区发生溢出：${JSON.stringify(layout)}`)
     images.push(await capture(`verify-database-${width}-${scheme}.png`))
   }
   await emulateVerificationMedia(win, [
@@ -247,6 +263,7 @@ export async function verifyDatabaseWorkspace(
     { name: 'prefers-reduced-motion', value: 'reduce' },
     { name: 'prefers-reduced-transparency', value: 'reduce' },
   ])
+  await waitForMediaFeature(win, '(forced-colors: active)')
   await capture('verify-database-accessible.png')
   await emulateVerificationMedia(win)
   console.log('MYDSH_DATABASE_VISUAL_READY ' + JSON.stringify(images))

@@ -2,9 +2,7 @@
 import type { BrowserWindow } from 'electron'
 import type { DesktopSessionFrame } from '../../shared/session-live.ts'
 import { clickTrustedElement, emulateVerificationMedia } from './desktop-verifier.ts'
-
-const settle = (win: BrowserWindow) =>
-  win.webContents.executeJavaScript('new Promise(resolve => setTimeout(resolve, 200))')
+import { pollRenderer, waitForViewportSettled } from './verification-wait.ts'
 
 /** 在离屏或高负载 Chromium 中轮询等待 CSS 过渡收束，避免固定延时导致的伪失败。 */
 async function waitForCondition<T>(
@@ -14,12 +12,39 @@ async function waitForCondition<T>(
 ): Promise<T> {
   let latest = (await win.webContents.executeJavaScript(expression)) as T
   /* oxlint-disable no-await-in-loop -- 串行轮询当前窗口的渲染计算样式。 */
-  for (let attempt = 0; attempt < 60 && !predicate(latest); attempt += 1) {
+  for (let attempt = 0; attempt < 80 && !predicate(latest); attempt += 1) {
     await win.webContents.executeJavaScript('new Promise(resolve => setTimeout(resolve, 25))')
     latest = (await win.webContents.executeJavaScript(expression)) as T
   }
   /* oxlint-enable no-await-in-loop */
   return latest
+}
+
+async function waitForTabLensSettled(win: BrowserWindow, timeoutMs = 3_500) {
+  return pollRenderer<{
+    restored: boolean
+    moving: boolean
+    leftDiff: number
+    widthDiff: number
+    height: number
+  }>(win, {
+    probe: `(() => {
+      const lens = document.querySelector('.session-tab-lens')
+      const selected = document.querySelector('.session-tab-shell[data-selected]')
+      if (!lens || !selected) return { restored: false, moving: true, leftDiff: 999, widthDiff: 999, height: 0 }
+      const a = lens.getBoundingClientRect(), b = selected.getBoundingClientRect()
+      const leftDiff = Math.abs(a.left - b.left)
+      const widthDiff = Math.abs(a.width - b.width)
+      const moving = lens.dataset.moving === 'true'
+      return {
+        restored: !moving && leftDiff < 1 && widthDiff < 1 && Math.abs(a.height - 26) < 0.1,
+        moving, leftDiff, widthDiff, height: a.height,
+      }
+    })()`,
+    condition: 'state.restored === true',
+    timeoutMs,
+    intervalMs: 25,
+  })
 }
 
 /** 逐帧检查边缘挤压和中途反向，避免仅检查最终位置掩盖被裁切的动画。 */
@@ -29,7 +54,7 @@ export async function verifyTabEdgeMotion(win: BrowserWindow): Promise<void> {
   const last = '.session-tab-unit:last-child .session-tab-shell:last-child .session-tab'
   // 从明确的另一端开始，避免前一项验收或恢复的标签顺序使首次点击仍是当前标签。
   await clickTrustedElement(win, last)
-  await win.webContents.executeJavaScript('new Promise(resolve=>setTimeout(resolve,1000))')
+  await waitForTabLensSettled(win)
   /* oxlint-disable no-await-in-loop -- 同一透镜必须按顺序切换并采样。 */
   for (const selector of [first, last]) {
     // 必须在点击前启动逐帧采样：clickTrustedElement 自带 80ms 稳定等待，点击后再读会错过边缘压缩峰值帧。
@@ -41,20 +66,31 @@ export async function verifyTabEdgeMotion(win: BrowserWindow): Promise<void> {
       const onClick = () => { clicked = true }
       target?.addEventListener('click', onClick, { once: true })
       try {
-        for (let waitFrame = 0; waitFrame < 120 && !clicked; waitFrame += 1) {
+        const clickDeadline = performance.now() + 4000
+        while (!clicked && performance.now() < clickDeadline) {
           await new Promise(resolve => requestAnimationFrame(resolve))
         }
-        let contained = true, compressed = false, maximumHeight = 0
-        for (let frame = 0; frame < 90; frame++) {
+        let contained = true, compressed = false, maximumHeight = 0, frames = 0
+        const motionDeadline = performance.now() + 3500
+        for (let frame = 0; frame < 180 && performance.now() < motionDeadline; frame++) {
           await new Promise(resolve => requestAnimationFrame(resolve))
+          frames += 1
           const a = lens.getBoundingClientRect(), b = root.getBoundingClientRect()
           const active = document.querySelector('.session-tab-shell[data-selected]').getBoundingClientRect()
-          contained &&= a.left >= b.left - .6 && a.right <= b.right + .6
-          compressed ||= Math.min(Math.abs(a.left-b.left), Math.abs(a.right-b.right)) < .6 && a.width < active.width * .995
+          contained &&= a.left >= b.left - 0.6 && a.right <= b.right + 0.6
+          compressed ||= Math.min(Math.abs(a.left - b.left), Math.abs(a.right - b.right)) < 0.6 && a.width < active.width * 0.995
           maximumHeight = Math.max(maximumHeight, a.height)
+          const settled = lens.dataset.moving !== 'true' && Math.abs(a.left - active.left) < 1
+            && Math.abs(a.width - active.width) < 1 && Math.abs(a.height - 26) < 0.1
+          if (frame >= 12 && compressed && settled) break
         }
         const a = lens.getBoundingClientRect(), b = document.querySelector('.session-tab-shell[data-selected]').getBoundingClientRect()
-        return { contained, compressed, maximumHeight, restored: Math.abs(a.left-b.left) < 1 && Math.abs(a.width-b.width) < 1 && Math.abs(a.height-26) < .1 }
+        return {
+          clicked, frames, contained, compressed, maximumHeight,
+          moving: lens.dataset.moving === 'true',
+          restored: Math.abs(a.left - b.left) < 1 && Math.abs(a.width - b.width) < 1 && Math.abs(a.height - 26) < 0.1,
+          lensRect: a.toJSON(), activeRect: b.toJSON(),
+        }
       } finally {
         target?.removeEventListener('click', onClick)
       }
@@ -77,12 +113,8 @@ export async function verifyTabEdgeMotion(win: BrowserWindow): Promise<void> {
   }
   await clickTrustedElement(win, first)
   await clickTrustedElement(win, last)
-  await win.webContents.executeJavaScript('new Promise(resolve => setTimeout(resolve, 1000))')
-  const restored = await win.webContents.executeJavaScript(`(() => {
-    const a=document.querySelector('.session-tab-lens').getBoundingClientRect(), b=document.querySelector('.session-tab-shell[data-selected]').getBoundingClientRect()
-    return Math.abs(a.left-b.left)<1 && Math.abs(a.width-b.width)<1
-  })()`)
-  if (!restored) throw new Error('连续切换后的透镜未恢复')
+  const restored = await waitForTabLensSettled(win)
+  if (!restored.ok) throw new Error('连续切换后的透镜未恢复：' + JSON.stringify(restored))
   /* oxlint-enable no-await-in-loop */
 }
 
@@ -116,7 +148,6 @@ export async function verifyMessageActionReveal(
     { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } },
   ].map((event, seq) => ({ ...event, seq, time: 1_700_000_000_000 + seq * 100 }))
   emit({ type: 'session/snapshot', sessionId, events, lastSeq: events.length - 1, hasMore: false })
-  await settle(win)
   await emulateVerificationMedia(win)
   const debug = win.webContents.debugger
   await debug.sendCommand('DOM.enable')
@@ -127,6 +158,7 @@ export async function verifyMessageActionReveal(
       for (const scheme of ['dark', 'light'] as const) {
         win.setSize(width, width === 1280 ? 800 : 1000)
         appearance(scheme)
+        await waitForViewportSettled(win, { scheme })
         win.webContents.sendInputEvent({ type: 'mouseMove', x: 1, y: 1 })
         await win.webContents.executeJavaScript('document.activeElement?.blur()')
         const initial = await waitForCondition<{
@@ -192,12 +224,24 @@ export async function verifyMessageActionReveal(
         await win.webContents.executeJavaScript(
           `document.querySelector('.main-island [aria-label="消息操作"] button').focus()`,
         )
-        const focused = await waitForCondition<boolean>(
-          win,
-          `getComputedStyle(document.activeElement.parentElement).opacity==='1' && document.activeElement.matches(':focus-visible')`,
-          Boolean,
-        )
-        if (!focused) throw new Error('键盘聚焦没有显示消息操作')
+        const focused = await pollRenderer<{
+          ok: boolean
+          opacity: string | null
+          focusVisible: boolean
+          activeTag: string | null
+        }>(win, {
+          probe: `(() => {
+            const active = document.activeElement
+            const opacity = active?.parentElement ? getComputedStyle(active.parentElement).opacity : null
+            const focusVisible = active instanceof HTMLElement ? active.matches(':focus-visible') : false
+            return {
+              ok: opacity === '1' && focusVisible,
+              opacity, focusVisible, activeTag: active?.tagName ?? null,
+            }
+          })()`,
+          condition: 'state.ok === true',
+        })
+        if (!focused.ok) throw new Error('键盘聚焦没有显示消息操作：' + JSON.stringify(focused))
         await win.webContents.executeJavaScript('document.activeElement.blur()')
       }
     /* oxlint-enable no-await-in-loop */
@@ -205,12 +249,19 @@ export async function verifyMessageActionReveal(
       enabled: true,
       maxTouchPoints: 1,
     })
-    const touchReady = await waitForCondition<boolean>(
-      win,
-      `!matchMedia('(hover: hover) and (pointer: fine)').matches && [...document.querySelectorAll('.main-island [aria-label="消息操作"]')].every(row=>getComputedStyle(row).opacity==='1')`,
-      Boolean,
-    )
-    if (!touchReady) throw new Error('触屏模式无法访问消息操作')
+    const touchReady = await pollRenderer<{
+      ok: boolean
+      fineHover: boolean
+      opacities: string[]
+    }>(win, {
+      probe: `(() => {
+        const fineHover = matchMedia('(hover: hover) and (pointer: fine)').matches
+        const opacities = [...document.querySelectorAll('.main-island [aria-label="消息操作"]')].map(row => getComputedStyle(row).opacity)
+        return { ok: !fineHover && opacities.length > 0 && opacities.every(value => value === '1'), fineHover, opacities }
+      })()`,
+      condition: 'state.ok === true',
+    })
+    if (!touchReady.ok) throw new Error('触屏模式无法访问消息操作：' + JSON.stringify(touchReady))
     console.log('desktop-shell-verify-local: message-action-reveal', {
       hover: true,
       keyboard: true,

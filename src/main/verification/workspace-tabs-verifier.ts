@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { session, WebContentsView, type BrowserWindow } from 'electron'
 import type { DesktopSessionFrame } from '../../shared/session-live.ts'
 import { clickTrustedElement, emulateVerificationMedia } from './desktop-verifier.ts'
+import { waitForGuestVisibility } from './workspace-picker-verifier.ts'
+import { pollRenderer, waitForMediaFeature, waitForViewportSettled } from './verification-wait.ts'
 
 const panel = (id: string) => `[data-work-panel=${JSON.stringify(id)}]`
 
@@ -272,15 +274,13 @@ export async function verifyWorkspaceTabs(
   ] as const) {
     win.setSize(width, width === 1280 ? 800 : 1000)
     appearance(scheme)
-    await js('new Promise(r=>setTimeout(r,500))')
-    await js(
-      `(()=>{const view=document.querySelector(${JSON.stringify(panel(sessions[0]!))}).querySelector('[aria-label="会话对话"]');view.scrollTop=view.scrollHeight})()`,
-    )
-    await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
-    const layout = await js(
-      `(()=>{const panes=[...document.querySelectorAll('.work-tab-panel:not([hidden])')].map(node=>node.getBoundingClientRect()).sort((a,b)=>a.left-b.left);const root=getComputedStyle(document.documentElement);return panes.length===2&&panes.every(r=>r.width>300&&r.height>450&&r.bottom<=innerHeight)&&panes[0].right<panes[1].left&&root.getPropertyValue('--window-edge')===root.getPropertyValue('--window-gap')&&document.documentElement.scrollWidth===innerWidth})()`,
-    )
-    if (!layout)
+    await waitForViewportSettled(win, { scheme })
+    const layoutPolled = await pollRenderer<boolean>(win, {
+      probe: `(()=>{const view=document.querySelector(${JSON.stringify(panel(sessions[0]!))})?.querySelector('[aria-label="会话对话"]');if(view)view.scrollTop=view.scrollHeight;const panes=[...document.querySelectorAll('.work-tab-panel:not([hidden])')].map(node=>node.getBoundingClientRect()).sort((a,b)=>a.left-b.left);const root=getComputedStyle(document.documentElement);return panes.length===2&&panes.every(r=>r.width>300&&r.height>450&&r.bottom<=innerHeight)&&panes[0].right<panes[1].left&&root.getPropertyValue('--window-edge')===root.getPropertyValue('--window-gap')&&document.documentElement.scrollWidth===innerWidth})()`,
+      condition: 'state === true',
+      timeoutMs: 3_000,
+    })
+    if (!layoutPolled.ok)
       throw new Error(
         '双窗格尺寸、间距或根滚动验收失败：' +
           JSON.stringify(
@@ -290,25 +290,20 @@ export async function verifyWorkspaceTabs(
           ),
       )
     images.push(await capture(`verify-workbench-${width}-${scheme}.png`))
-    const recoveryLayout = await js(
-      `(()=>{const row=document.querySelector('[data-model-retry]'),s=row&&getComputedStyle(row),r=row?.getBoundingClientRect(),composer=row?.closest('.work-tab-panel')?.querySelector('.composer-card')?.getBoundingClientRect();return {visible:row?.checkVisibility(),count:row?.textContent.includes('3 / 5'),reason:row?.textContent.includes('UND_ERR_SOCKET'),fits:row&&row.scrollWidth<=row.clientWidth+1&&r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=composer.top,border:s&&['Top','Right','Bottom','Left'].every(side=>parseFloat(s['border'+side+'Width'])>0),background:s?.backgroundColor,stop:!!document.querySelector('button[aria-label="停止运行"]'),rect:r?.toJSON()}})()`,
-    )
-    if (
-      !recoveryLayout.visible ||
-      !recoveryLayout.count ||
-      !recoveryLayout.reason ||
-      !recoveryLayout.fits ||
-      !recoveryLayout.border ||
-      recoveryLayout.background === 'rgba(0, 0, 0, 0)' ||
-      !recoveryLayout.stop
-    )
-      throw new Error('恢复提示布局验收失败：' + JSON.stringify(recoveryLayout))
+    const recoveryPolled = await pollRenderer<Record<string, unknown>>(win, {
+      probe: `(()=>{const row=document.querySelector('[data-model-retry]'),s=row&&getComputedStyle(row),r=row?.getBoundingClientRect(),composer=row?.closest('.work-tab-panel')?.querySelector('.composer-card')?.getBoundingClientRect();return {visible:row?.checkVisibility()===true,count:row?.textContent.includes('3 / 5')===true,reason:row?.textContent.includes('UND_ERR_SOCKET')===true,fits:Boolean(row&&r&&composer&&row.scrollWidth<=row.clientWidth+1&&r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=composer.top),border:Boolean(s&&['Top','Right','Bottom','Left'].every(side=>parseFloat(s['border'+side+'Width'])>0)),background:s?.backgroundColor,stop:Boolean(document.querySelector('button[aria-label="停止运行"]')),rect:r?.toJSON()}})()`,
+      condition: `state.visible && state.count && state.reason && state.fits && state.border && state.background !== 'rgba(0, 0, 0, 0)' && state.stop`,
+      timeoutMs: 2_500,
+    })
+    if (!recoveryPolled.ok)
+      throw new Error('恢复提示布局验收失败：' + JSON.stringify(recoveryPolled))
   }
   await emulateVerificationMedia(win, [
     { name: 'forced-colors', value: 'active' },
     { name: 'prefers-reduced-motion', value: 'reduce' },
     { name: 'prefers-reduced-transparency', value: 'reduce' },
   ])
+  await waitForMediaFeature(win, '(forced-colors: active)')
   await wait(`document.querySelector('[data-model-retry]')?.checkVisibility()`)
   images.push(await capture('verify-workbench-retry-accessible.png'))
   await emulateVerificationMedia(win)
@@ -510,8 +505,14 @@ export async function verifyWorkspaceTabs(
   await wait(
     `document.querySelector('.session-tab[aria-selected="true"]')?.dataset.sessionTab===${JSON.stringify(terminalTabs[1])}`,
   )
+  const previousMixedRatio = (await js(
+    `document.querySelector('[aria-label="调整分屏比例"]').getAttribute('aria-valuenow')`,
+  )) as string
   await js(
     `document.querySelector('[aria-label="调整分屏比例"]').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}))`,
+  )
+  await wait(
+    `document.querySelector('[aria-label="调整分屏比例"]')?.getAttribute('aria-valuenow')!==${JSON.stringify(previousMixedRatio)}`,
   )
   const mixedRatio = await js(
     `document.querySelector('[aria-label="调整分屏比例"]').getAttribute('aria-valuenow')`,
@@ -630,8 +631,8 @@ export async function verifyWorkspaceTabs(
       y: browserDrag.y + 120,
     })
     await wait(`document.querySelector('.tab-drag-card[data-preview-kind="browser"]')`)
-    await js('new Promise(r=>setTimeout(r,150))')
-    if (guests.some(guest => guest.getVisible())) throw new Error('原生网页遮挡拖拽预览')
+    if (!(await Promise.all(guests.map(guest => waitForGuestVisibility(guest, false, 2_000)))).every(Boolean))
+      throw new Error('原生网页遮挡拖拽预览')
     images.push(await capture('verify-workbench-browser-drag.png'))
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' })
     win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' })
@@ -642,15 +643,15 @@ export async function verifyWorkspaceTabs(
       clickCount: 1,
     })
     await wait(`!document.querySelector('.tab-drag-card')`)
-    await js('new Promise(r=>setTimeout(r,300))')
-    if (guests.some(guest => !guest.getVisible())) throw new Error('取消拖拽后原生网页没有恢复')
+    if (!(await Promise.all(guests.map(guest => waitForGuestVisibility(guest, true, 2_000)))).every(Boolean))
+      throw new Error('取消拖拽后原生网页没有恢复')
     await click('[aria-label="平铺选择标签"]')
     await wait(`document.querySelector('.tab-overview')?.checkVisibility()`)
-    await js('new Promise(r=>setTimeout(r,250))')
-    if (guests.some(guest => guest.getVisible())) throw new Error('原生网页遮挡平铺窗口')
+    if (!(await Promise.all(guests.map(guest => waitForGuestVisibility(guest, false, 2_000)))).every(Boolean))
+      throw new Error('原生网页遮挡平铺窗口')
     await click('.tab-overview .ant-modal-close')
     await wait(`!document.querySelector('.tab-overview')?.checkVisibility()`)
-    await js('new Promise(r=>setTimeout(r,250))')
+    await Promise.all(guests.map(guest => waitForGuestVisibility(guest, true, 2_000)))
     images.push(await capture('verify-workbench-browsers.png'))
   } finally {
     partition.protocol.unhandle('https')
@@ -720,6 +721,7 @@ export async function verifyWorkspaceTabs(
       `document.querySelector('.tree-row[title='+JSON.stringify(${JSON.stringify(path)})+']').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}))`,
     )
   }
+  await wait(`document.querySelectorAll('[data-work-tab="file"]').length===2`)
   const fileTabs = (await js(
     `[...document.querySelectorAll('[data-work-tab="file"]')].map(node=>node.dataset.sessionTab)`,
   )) as string[]
@@ -742,6 +744,7 @@ export async function verifyWorkspaceTabs(
   await click('.session-group-close')
   await wait(`document.querySelector('.unsaved-dialog[open]')`)
   await click('[aria-label="取消离开文件"]')
+  await wait(`!document.querySelector('.unsaved-dialog[open]')`)
   if (
     !(await js(
       `document.querySelectorAll('.session-tab').length===${beforeClose}&&document.querySelector('[data-file-path="README.md"] .cm-content')?.textContent.includes('未保存的双窗格正文')`,

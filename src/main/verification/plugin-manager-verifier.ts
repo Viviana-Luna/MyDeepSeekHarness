@@ -2,6 +2,11 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { BrowserWindow } from 'electron'
 import { clickTrustedElement, emulateVerificationMedia } from './desktop-verifier.ts'
+import {
+  pollRenderer,
+  waitForMediaFeature,
+  waitForViewportSettled,
+} from './verification-wait.ts'
 
 /** 通过真实 renderer 与安装服务验收，不读取或改动用户的插件目录。 */
 export async function verifyPluginManager(
@@ -62,23 +67,36 @@ export async function verifyPluginManager(
       for (const scheme of ['dark', 'light'] as const) {
         win.setSize(width, width === 1280 ? 800 : 1000)
         appearance(scheme)
-        await win.webContents.executeJavaScript('new Promise(resolve=>setTimeout(resolve,350))')
-        const result = (await win.webContents.executeJavaScript(`(() => {
-        const page=document.querySelector('.plugin-manager--standalone'), bounds=page.getBoundingClientRect();
-        const rows=[...page.querySelectorAll('.plugin-manager__row')], icons=rows.map(row=>row.querySelector('.plugin-manager__icon').getBoundingClientRect());
-        // 内置 5 个（含 ChatGPT 订阅）加验收插件 1 个；“扩展配置”分组的行数取决于已启用插件，不计入。
-        const builtin=page.querySelector('[aria-label="内置插件"]'), cards=[...builtin.querySelectorAll('.plugin-manager__row')], first=cards[0].getBoundingClientRect(), second=cards[1].getBoundingClientRect();
-        return { rows: rows.filter(row=>!row.closest('[aria-label="扩展配置"]')).length===6, grid: Math.abs(first.top-second.top)<1 && second.left>first.right && icons.every(icon=>Math.abs(icon.width-48)<1),
-          visible: bounds.right<=innerWidth && bounds.bottom<=innerHeight && bounds.width>800,
-          noOverflow: page.scrollWidth<=page.clientWidth+1 && document.documentElement.scrollWidth===innerWidth,
-          navigation: document.querySelector('[data-view="plugins"]').getAttribute('aria-current')==='page',
-          // 隐藏的会话工作标签仍保留输入区 DOM，只要求不可见。
-          noComposer: ![...document.querySelectorAll('.main-island .composer-dock')].some(dock=>dock.checkVisibility()),
-          noSelectedChat: !document.querySelector('.session-tab[aria-selected="true"]') }
-      })()`)) as Record<string, boolean>
-        console.log('desktop-shell-verify-local: plugin-manager', { width, scheme, ...result })
-        if (Object.values(result).some(value => value !== true))
-          throw new Error('插件管理布局或导航验收失败')
+        await waitForViewportSettled(win, { scheme })
+        const polled = await pollRenderer<Record<string, boolean>>(win, {
+          probe: `(() => {
+            const page=document.querySelector('.plugin-manager--standalone')
+            if (!page) return { mounted: false }
+            const bounds=page.getBoundingClientRect()
+            const rows=[...page.querySelectorAll('.plugin-manager__row')], icons=rows.map(row=>row.querySelector('.plugin-manager__icon').getBoundingClientRect())
+            // 内置 5 个（含 ChatGPT 订阅）加验收插件 1 个；“扩展配置”分组的行数取决于已启用插件，不计入。
+            const builtin=page.querySelector('[aria-label="内置插件"]'), cards=[...(builtin?.querySelectorAll('.plugin-manager__row') ?? [])]
+            if (cards.length < 2) return { cardsMounted: false }
+            const first=cards[0].getBoundingClientRect(), second=cards[1].getBoundingClientRect()
+            return { rows: rows.filter(row=>!row.closest('[aria-label="扩展配置"]')).length===6, grid: Math.abs(first.top-second.top)<1 && second.left>first.right && icons.every(icon=>Math.abs(icon.width-48)<1),
+              visible: bounds.right<=innerWidth && bounds.bottom<=innerHeight && bounds.width>800,
+              noOverflow: page.scrollWidth<=page.clientWidth+1 && document.documentElement.scrollWidth===innerWidth,
+              navigation: document.querySelector('[data-view="plugins"]').getAttribute('aria-current')==='page',
+              // 隐藏的会话工作标签仍保留输入区 DOM，只要求不可见。
+              noComposer: ![...document.querySelectorAll('.main-island .composer-dock')].some(dock=>dock.checkVisibility()),
+              noSelectedChat: !document.querySelector('.session-tab[aria-selected="true"]') }
+          })()`,
+          condition: 'Object.values(state).every(value => value === true)',
+        })
+        console.log('desktop-shell-verify-local: plugin-manager', {
+          width,
+          scheme,
+          ...polled.value,
+        })
+        if (!polled.ok)
+          throw new Error(
+            '插件管理布局或导航验收失败：' + JSON.stringify({ width, scheme, polled }),
+          )
         await capture(`verify-plugin-manager-${width}-${scheme}.png`)
       }
     /* oxlint-enable no-await-in-loop */
@@ -86,6 +104,7 @@ export async function verifyPluginManager(
       { name: 'forced-colors', value: 'active' },
       { name: 'prefers-reduced-motion', value: 'reduce' },
     ])
+    await waitForMediaFeature(win, '(forced-colors: active)')
     await capture('verify-plugin-manager-accessible.png')
     await emulateVerificationMedia(win, [])
     await click('.plugin-manager__filters button:nth-child(2)')
@@ -186,6 +205,6 @@ export async function verifyPluginManager(
       `(async () => { const plugins=await window.dshDesktop.host.call('mydshPlugins.list',{}); if(plugins.some(plugin=>plugin.id==='verify-plugin-manager')) await window.dshDesktop.host.call('mydshPlugins.uninstall',{id:'verify-plugin-manager'}) })()`,
     )
     win.setSize(1280, 800)
-    await win.webContents.executeJavaScript('new Promise(resolve=>setTimeout(resolve,350))')
+    await waitForViewportSettled(win)
   }
 }

@@ -7,6 +7,12 @@ import {
   verifyWorkspacePickers,
   waitForGuestVisibility,
 } from './workspace-picker-verifier.ts'
+import {
+  pollCondition,
+  pollRenderer,
+  waitForMediaFeature,
+  waitForViewportSettled,
+} from './verification-wait.ts'
 
 const settle = (win: BrowserWindow) =>
   win.webContents.executeJavaScript('new Promise(resolve => setTimeout(resolve, 250))')
@@ -97,7 +103,6 @@ export async function verifyWorkspaceReview(
   add('turn/end', { turn: 1 })
   emit({ type: 'session/snapshot', sessionId, events, lastSeq: events.length - 1, hasMore: false })
   await clickTrustedElement(win, '.conversation-view-tabs [data-view="trajectory"]')
-  await settle(win)
   /* oxlint-disable no-await-in-loop */
   for (const sample of [
     { width: 1280, height: 800, scheme: 'dark' as const },
@@ -107,59 +112,67 @@ export async function verifyWorkspaceReview(
   ]) {
     win.setSize(sample.width, sample.height)
     appearance(sample.scheme)
-    await settle(win)
+    await waitForViewportSettled(win, { scheme: sample.scheme })
+    await pollRenderer<boolean>(win, {
+      probe: `document.querySelector('[aria-label="轨迹记录表"] [data-kind="tool"]') !== null`,
+      condition: 'state === true',
+      timeoutMs: 3_000,
+    })
     await win.webContents.executeJavaScript(
       `document.querySelector('[aria-label="轨迹记录表"] [data-kind="tool"]:last-child')?.click()`,
     )
-    await settle(win)
     // 切换轨迹视图时点击了右侧工具列按钮，离屏低帧率下弹性按压弹簧可能尚未完全回零；
     // 等待按钮回弹落稳后再测量精确的 28px 布局几何。
-    await win.webContents.executeJavaScript(`(async () => {
-      for (let attempt = 0; attempt < 80; attempt += 1) {
-        if (!document.querySelector('.work-tab-panel:not([hidden]) .conversation-tools button[data-press]')) break
-        await new Promise(resolve => setTimeout(resolve, 25))
-      }
-    })()`)
-    const result = (await win.webContents.executeJavaScript(`(() => {
-      const table = document.querySelector('[aria-label="轨迹记录表"]')
-      const inspector = document.querySelector('[aria-label="轨迹记录检查器"]')
-      const rows = [...table.querySelectorAll('[data-record-id]')]
-      const a = table.getBoundingClientRect(), b = inspector?.getBoundingClientRect()
-      const tools = document.querySelector('.work-tab-panel:not([hidden]) .conversation-tools')
-      const rail = tools?.getBoundingClientRect()
-      const tabs = inspector?.querySelector('[role="tablist"]')
-      const sideTools = rail?.width === 28 && b.right <= rail.left && [...tools.querySelectorAll('button')].every(button => button.getBoundingClientRect().height === 28)
-      return { dense: rows.length > 10 && rows.every(row => Math.abs(row.getBoundingClientRect().height - 30) < 1),
-         sideTools,
-         ...(sideTools ? {} : {
-           sideToolsDetails: {
-             rail: rail?.toJSON() ?? null,
-             inspectorRight: b?.right ?? null,
-             buttons: [...(tools?.querySelectorAll('button') ?? [])].map(button => ({
-               label: button.getAttribute('aria-label'),
-               press: button.dataset.press ?? null,
-               height: button.getBoundingClientRect().height,
-             })),
-           },
-         }),
-         noHeader: !document.querySelector('.conversation-header'),
-        virtual: rows.length < 100 && Number(table.getAttribute('aria-rowcount')) > 220,
-        separated: b && b.left >= a.right - 1 && b.right <= innerWidth && b.bottom <= innerHeight,
-        noInlineJson: !table.querySelector('pre, .cm-editor, details'),
-        composer: !!document.querySelector('.main-island .composer-dock')?.checkVisibility(),
-        wrapped: [...inspector.querySelectorAll('.cm-scroller')].every(element => element.scrollWidth <= element.clientWidth + 1),
-        tabs: ['概述','参数','结果','Schema','计时'].every(label => [...inspector.querySelectorAll('[role="tab"]')].some(tab => tab.textContent === label)),
-        tabsFit: tabs && tabs.scrollWidth <= tabs.clientWidth + 1,
-        scroll: inspector.querySelector('[role="tabpanel"]').scrollHeight > inspector.querySelector('[role="tabpanel"]').clientHeight,
-        overflow: document.documentElement.scrollWidth === innerWidth }
-    })()`)) as Record<string, unknown>
-    console.log('desktop-shell-verify-local: trajectory-review', sample, result)
-    if (
-      Object.entries(result)
-        .filter(([key]) => key !== 'sideToolsDetails')
-        .some(([, value]) => value !== true)
-    )
-      throw new Error('轨迹记录表、虚拟列表或独立检查器验收失败')
+    await pollRenderer<boolean>(win, {
+      probe: `!document.querySelector('.work-tab-panel:not([hidden]) .conversation-tools button[data-press]')`,
+      condition: 'state === true',
+      timeoutMs: 2_500,
+    })
+    const polled = await pollRenderer<Record<string, unknown>>(win, {
+      probe: `(() => {
+        const table = document.querySelector('[aria-label="轨迹记录表"]')
+        const inspector = document.querySelector('[aria-label="轨迹记录检查器"]')
+        if (!table || !inspector) return { mounted: false }
+        const rows = [...table.querySelectorAll('[data-record-id]')]
+        const a = table.getBoundingClientRect(), b = inspector.getBoundingClientRect()
+        const tools = document.querySelector('.work-tab-panel:not([hidden]) .conversation-tools')
+        const rail = tools?.getBoundingClientRect()
+        const tabs = inspector.querySelector('[role="tablist"]')
+        const tabPanel = inspector.querySelector('[role="tabpanel"]')
+        const sideTools = Boolean(rail && rail.width === 28 && b.right <= rail.left
+          && [...(tools?.querySelectorAll('button') ?? [])].every(button => button.getBoundingClientRect().height === 28))
+        return { dense: rows.length > 10 && rows.every(row => Math.abs(row.getBoundingClientRect().height - 30) < 1),
+          sideTools,
+          ...(sideTools ? {} : {
+            sideToolsDetails: {
+              rail: rail?.toJSON() ?? null,
+              inspectorRight: b.right,
+              buttons: [...(tools?.querySelectorAll('button') ?? [])].map(button => ({
+                label: button.getAttribute('aria-label'),
+                press: button.dataset.press ?? null,
+                height: button.getBoundingClientRect().height,
+              })),
+            },
+          }),
+          noHeader: !document.querySelector('.conversation-header'),
+          virtual: rows.length < 100 && Number(table.getAttribute('aria-rowcount')) > 220,
+          separated: b.left >= a.right - 1 && b.right <= innerWidth && b.bottom <= innerHeight,
+          noInlineJson: !table.querySelector('pre, .cm-editor, details'),
+          composer: Boolean(document.querySelector('.main-island .composer-dock')?.checkVisibility()),
+          wrapped: [...inspector.querySelectorAll('.cm-scroller')].every(element => element.scrollWidth <= element.clientWidth + 1),
+          tabs: ['概述','参数','结果','Schema','计时'].every(label => [...inspector.querySelectorAll('[role="tab"]')].some(tab => tab.textContent === label)),
+          tabsFit: Boolean(tabs && tabs.scrollWidth <= tabs.clientWidth + 1),
+          scroll: Boolean(tabPanel && tabPanel.scrollHeight > tabPanel.clientHeight),
+          overflow: document.documentElement.scrollWidth === innerWidth }
+      })()`,
+      condition: `Object.entries(state).filter(([key]) => key !== 'sideToolsDetails').every(([, value]) => value === true)`,
+      timeoutMs: 3_000,
+    })
+    console.log('desktop-shell-verify-local: trajectory-review', sample, polled.value)
+    if (!polled.ok)
+      throw new Error(
+        `轨迹记录表、虚拟列表或独立检查器验收失败：${JSON.stringify({ sample, polled })}`,
+      )
     await capture(`verify-trajectory-${sample.width}-${sample.scheme}.png`)
   }
   /* oxlint-enable no-await-in-loop */
@@ -167,26 +180,37 @@ export async function verifyWorkspaceReview(
     { name: 'forced-colors', value: 'active' },
     { name: 'prefers-reduced-motion', value: 'reduce' },
   ])
-  const accessible = await win.webContents.executeJavaScript(`(() => {
-    const overview = document.querySelector('[aria-label="轨迹概览"]')
-    const input = document.querySelector('[aria-label="搜索轨迹"]')
-    const selected = document.querySelector('[aria-label="轨迹记录表"] [aria-selected="true"]')
-    if (!(overview instanceof HTMLElement) || !(input instanceof HTMLInputElement)
-      || !(selected instanceof HTMLElement)) return false
-    input.focus()
-    return matchMedia('(forced-colors: active)').matches
-      && matchMedia('(prefers-reduced-motion: reduce)').matches
-      && parseFloat(getComputedStyle(overview).borderTopWidth) > 0
-      && parseFloat(getComputedStyle(input.parentElement).outlineWidth) > 0
-      && parseFloat(getComputedStyle(selected).outlineWidth) > 0
-  })()`)
-  if (!accessible) throw new Error('轨迹高对比度或键盘焦点降级未生效')
+  await waitForMediaFeature(win, '(forced-colors: active)')
+  const accessible = await pollRenderer<Record<string, unknown>>(win, {
+    probe: `(() => {
+      const overview = document.querySelector('[aria-label="轨迹概览"]')
+      const input = document.querySelector('[aria-label="搜索轨迹"]')
+      const selected = document.querySelector('[aria-label="轨迹记录表"] [aria-selected="true"]')
+      if (!(overview instanceof HTMLElement) || !(input instanceof HTMLInputElement)
+        || !(selected instanceof HTMLElement)) return { ok: false, missing: true }
+      input.focus()
+      const forced = matchMedia('(forced-colors: active)').matches
+      const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
+      const overviewBorder = parseFloat(getComputedStyle(overview).borderTopWidth)
+      const inputOutline = parseFloat(getComputedStyle(input.parentElement).outlineWidth)
+      const selectedOutline = parseFloat(getComputedStyle(selected).outlineWidth)
+      return {
+        ok: forced && reduced && overviewBorder > 0 && inputOutline > 0 && selectedOutline > 0,
+        forced, reduced, overviewBorder, inputOutline, selectedOutline,
+      }
+    })()`,
+    condition: 'state.ok === true',
+    timeoutMs: 1_500,
+  })
+  if (!accessible.ok) {
+    throw new Error(`轨迹高对比度或键盘焦点降级未生效：${JSON.stringify(accessible)}`)
+  }
   await capture('verify-trajectory-accessible.png')
   await emulateVerificationMedia(win, [])
   await clickTrustedElement(win, '.conversation-view-tabs [data-view="conversation"]')
   emit({ type: 'session/snapshot', sessionId, events: [], lastSeq: 0, hasMore: false })
   win.setSize(1440, 900)
-  await settle(win)
+  await waitForViewportSettled(win)
   // 浏览器以顶部工作标签打开（见 docs/renderer.md）；请求必须带上该标签的浏览器标识。
   const browserTabId = await openBrowserTab(win)
   const browserRequest = (fields: string) =>
@@ -204,11 +228,24 @@ export async function verifyWorkspaceReview(
     await win.webContents.executeJavaScript(
       browserRequest(`action:'navigate', url:'https://mydsh-browser-verify.invalid/'`),
     )
-    await settle(win)
-    await settle(win)
-    const guest = win.contentView.children.find(
-      child => child instanceof WebContentsView && child.webContents !== win.webContents,
-    ) as WebContentsView | undefined
+    let guest: WebContentsView | undefined
+    let isolated = false
+    await pollCondition(
+      async () => {
+        guest = win.contentView.children.find(
+          (child): child is WebContentsView =>
+            child instanceof WebContentsView && child.webContents !== win.webContents,
+        )
+        if (!guest || !guest.getVisible()) return false
+        isolated = (await guest.webContents
+          .executeJavaScript(
+            `typeof window.dshDesktop === 'undefined' && typeof require === 'undefined' && document.querySelector('h1')?.textContent === '项目预览'`,
+          )
+          .catch(() => false)) as boolean
+        return isolated
+      },
+      { timeoutMs: 4_000, intervalMs: 40 },
+    )
     if (!guest || !guest.getVisible()) {
       const diagnostic = await win.webContents.executeJavaScript(
         `(async () => ({ state: await ${browserRequest(`action:'read'`)}, viewport: document.querySelector('.browser-viewport')?.getBoundingClientRect().toJSON(), visible: document.querySelector('.browser-panel')?.checkVisibility(), text: document.querySelector('.browser-panel')?.textContent, overlays: [...document.querySelectorAll('[role="dialog"],[role="menu"],.ant-tooltip')].filter(node => node.checkVisibility()).map(node=>node.outerHTML.slice(0,200)) }))()`,
@@ -218,9 +255,6 @@ export async function verifyWorkspaceReview(
           JSON.stringify({ diagnostic, bounds: guest?.getBounds() }),
       )
     }
-    const isolated = (await guest.webContents.executeJavaScript(
-      `typeof window.dshDesktop === 'undefined' && typeof require === 'undefined' && document.querySelector('h1')?.textContent === '项目预览'`,
-    )) as boolean
     if (!isolated) throw new Error('远程网页拥有桌面桥或页面未加载')
     const hostUrl = win.webContents.getURL()
     await win.webContents.executeJavaScript(
@@ -281,11 +315,11 @@ export async function verifyWorkspaceReview(
     if (!(await waitForGuestVisibility(guest, false, 1_500)) || guest.webContents.isDestroyed())
       throw new Error('切换工作标签未正确隐藏并保留网页')
     await clickTrustedElement(win, '[data-work-tab="browser"]')
-    await settle(win)
+    await waitForGuestVisibility(guest, true, 1_500)
     const guestContents = guest.webContents
     await clickTrustedElement(win, '[aria-label="关闭网页"]')
-    await settle(win)
-    if (!guestContents.isDestroyed()) throw new Error('关闭网页未释放网页进程')
+    if (!(await pollCondition(() => guestContents.isDestroyed(), { timeoutMs: 2_000 })))
+      throw new Error('关闭网页未释放网页进程')
     console.log('desktop-shell-verify-local: browser-review', {
       isolated,
       history: true,
@@ -301,7 +335,11 @@ export async function verifyWorkspaceReview(
       const tab = document.querySelector('[data-session-tab=' + JSON.stringify(${JSON.stringify(`browser:${browserTabId}`)}) + ']')
       tab?.closest('.session-tab-shell')?.querySelector('.session-tab-close')?.click()
     })()`)
-    await settle(win)
+    await pollRenderer<boolean>(win, {
+      probe: `document.querySelector('[data-session-tab=' + JSON.stringify(${JSON.stringify(`browser:${browserTabId}`)}) + ']') === null`,
+      condition: 'state === true',
+      timeoutMs: 2_000,
+    })
   }
   await openRight('git-history')
   const gitReady = await win.webContents.executeJavaScript(`(async () => {
@@ -328,5 +366,5 @@ export async function verifyWorkspaceReview(
   })
   win.setSize(1280, 800)
   appearance('dark')
-  await settle(win)
+  await waitForViewportSettled(win, { scheme: 'dark' })
 }

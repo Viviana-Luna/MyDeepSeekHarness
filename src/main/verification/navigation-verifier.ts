@@ -1,5 +1,12 @@
 import type { BrowserWindow } from 'electron'
 
+const NAVIGATION_KEYS = [
+  { key: 'BrowserBack', code: 'BrowserBack', windowsVirtualKeyCode: 166 },
+  { key: 'BrowserForward', code: 'BrowserForward', windowsVirtualKeyCode: 167 },
+  { key: 'ArrowLeft', code: 'ArrowLeft', windowsVirtualKeyCode: 37, modifiers: 1 },
+  { key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, modifiers: 1 },
+] as const
+
 /** 使用真实 Chromium 侧键、浏览快捷键与页面导航验证，草稿和订阅必须保持原实例。 */
 export async function verifyWorkspaceNavigation(
   win: BrowserWindow,
@@ -31,8 +38,10 @@ export async function verifyWorkspaceNavigation(
     const intact =
       await contents.executeJavaScript(`document.documentElement.dataset.navigationProbe==='ready'
       && document.querySelector('.main-island .composer-card textarea')?.value===${JSON.stringify(draft)}`)
-    if (contents.getURL() !== rendererUrl || !intact || !streamsAlive())
-      throw new Error('回退操作破坏工作台、草稿或会话订阅')
+    if (contents.getURL() !== rendererUrl || !intact || !streamsAlive()) {
+      const detail = { url: contents.getURL(), expectedUrl: rendererUrl, intact, alive: streamsAlive() }
+      throw new Error(`回退操作破坏工作台、草稿或会话订阅：${JSON.stringify(detail)}`)
+    }
   }
   try {
     /* oxlint-disable no-await-in-loop -- 连续操作同一窗口并逐次确认页面未跳转。 */
@@ -48,12 +57,7 @@ export async function verifyWorkspaceNavigation(
       }
       await assertStable()
     }
-    for (const key of [
-      { key: 'BrowserBack', code: 'BrowserBack', windowsVirtualKeyCode: 166 },
-      { key: 'BrowserForward', code: 'BrowserForward', windowsVirtualKeyCode: 167 },
-      { key: 'ArrowLeft', code: 'ArrowLeft', windowsVirtualKeyCode: 37, modifiers: 1 },
-      { key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, modifiers: 1 },
-    ]) {
+    for (const key of NAVIGATION_KEYS) {
       await contents.debugger.sendCommand('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...key })
       await contents.debugger.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', ...key })
       await assertStable()
