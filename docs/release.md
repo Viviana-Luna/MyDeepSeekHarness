@@ -36,12 +36,14 @@ out/make/mydsh-macOS-arm64-<package.json version>.dmg
 
 ## GitHub Release
 
-1. 将 `package.json` 版本改为新的语义化版本，例如 `0.1.0-preview.6` 或 `0.1.0`，提交后构建并完成验收。
-2. 使用与构建版本一致的 tag，例如 `v0.1.0-preview.6`，指向生成该安装包的提交。
-3. 在 Release 中填写版本说明；带预览后缀的版本标记为 Pre-release。
-4. 上传对应平台同次构建生成的 `mydsh-macOS-<arch>-<version>.dmg` 或 `mydsh-Windows-x64-<version>.exe`，保留文件名，然后发布 Release。
+仓库内置 [.github/workflows/release.yml](../.github/workflows/release.yml) 双端自动发版工作流，默认生成 **Draft Release** 供维护者复核后手动发布：
 
-只上传对应平台安装包，不生成或上传更新签名文件。构建命令不会创建仓库、推送 Git、上传产物或发布 Release，这些操作需要维护者另行执行。
+1. 将 `package.json` 版本改为新的语义化版本（例如 `0.1.0-preview.6` 或 `0.1.0`），提交并推送到 `main`。
+2. 推送与版本完全一致的标签（例如 `git tag v0.1.0-preview.6 && git push origin v0.1.0-preview.6`），或在 GitHub Actions 页面手动触发「发布安装包」工作流。
+3. 工作流先校验标签与 `package.json` 版本一致，再并行在 `macos-14` 与 `windows-2025` 完成构建、全量检查、打包与安装包验收；双端全部通过后，汇总上传 `mydsh-macOS-arm64-<version>.dmg`、`mydsh-Windows-x64-<version>.exe` 与 `SHA256SUMS.txt`（公开仓库额外生成构建来源证明），并按版本号是否含预览后缀自动标记 Pre-release。
+4. 在 GitHub Releases 页面核对草稿产物、校验和与版本说明，确认无误后点击发布。
+
+如需本地手工发版，也可在对应平台自行运行 `make:mac` / `make:win` 及验收命令后，按上述精确文件名手动上传至对应标签的 Release（不生成或上传更新签名文件）。本地构建脚本本身不会创建仓库、推送 Git、上传产物或发布 Release，这些操作始终由维护者显式触发。
 
 ## 核心与用户扩展的交付
 
