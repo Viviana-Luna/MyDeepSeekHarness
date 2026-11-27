@@ -35,6 +35,11 @@ function applyWindowClipToRoot(value: DesktopWindowState | null): void {
   for (const [key, pixel] of Object.entries(clip)) {
     document.documentElement.style.setProperty(`--window-clip-${key}`, `${String(pixel)}px`)
   }
+  const outlineRadius = clip.radius > 0 ? clip.radius : Math.max(0, value.cornerRadius)
+  document.documentElement.style.setProperty(
+    '--window-outline-radius',
+    `${String(outlineRadius)}px`,
+  )
 }
 
 function startSharedWindowSubscription(): void {
@@ -49,6 +54,9 @@ function startSharedWindowSubscription(): void {
     sharedSnapshot = { state: value, readError: '' }
     document.documentElement.dataset.canvasComposition = value.canvasComposition
     document.documentElement.dataset.windowMaximized = String(value.maximized)
+    document.documentElement.dataset.windowSquare = String(
+      value.maximized || value.cornerRadius <= 0,
+    )
     applyWindowClipToRoot(value)
     notifySnapshotListeners()
   }

@@ -2857,6 +2857,9 @@ async function main(): Promise<void> {
     await verifySessionLogExport(win, {
       installation: supervisor.installed,
       sessionId: presentationSession,
+      emit: frame => {
+        win.webContents.send(HOST_CHANNELS.sessionFrame, frame)
+      },
       cancelPending: () => sessionExportController?.abort(new Error('验收取消会话日志导出')),
     })
     await verifyWorkspaceReview(
@@ -4080,7 +4083,7 @@ async function main(): Promise<void> {
       const groupNavigationExpanded = (await win.webContents.executeJavaScript(
         `document.querySelector('.app-shell').dataset.navigationCollapsed !== 'true'`,
       )) as boolean
-      if (groupNavigationExpanded)
+      if (!groupNavigationExpanded)
         await clickTrustedElement(win, '.panel-divider--navigation .panel-divider__capsule')
       await clickTrustedElement(win, '.session-search-trigger')
       await win.webContents.executeJavaScript(`(async () => {
@@ -4096,6 +4099,7 @@ async function main(): Promise<void> {
         throw new Error('缺少另一个项目的验收会话')
       })()`)
       await clickTrustedElement(win, '#verify-other-group')
+      await clickTrustedElement(win, '.panel-divider--navigation .panel-divider__capsule')
       win.webContents.send(HOST_CHANNELS.hostFrame, {
         type: 'host/session-status',
         sessionId: originalSessionTab,
@@ -4928,7 +4932,6 @@ async function main(): Promise<void> {
     const collapsedHeaderBounds = (await win.webContents.executeJavaScript(`(() => {
       const sidebar = document.querySelector('.sidebar-island').getBoundingClientRect()
       const chrome = document.querySelector('.session-chrome').getBoundingClientRect()
-      const search = document.querySelector('.session-search-trigger').getBoundingClientRect()
       const railElement = document.querySelector('.mode-rail')
       const rail = railElement.getBoundingClientRect()
       const settings = document.querySelector('#open-settings').getBoundingClientRect()
@@ -4938,9 +4941,7 @@ async function main(): Promise<void> {
         sidebarBottom: sidebar.bottom,
         chromeTop: chrome.top,
         chromeBottom: chrome.bottom,
-        searchTop: search.top,
-        searchBottom: search.bottom,
-        searchRight: search.right,
+        searchHidden: document.querySelector('.session-search-trigger') === null,
         chromeRight: chrome.right,
         railTop: rail.top,
         railBottom: rail.bottom,
@@ -4958,9 +4959,7 @@ async function main(): Promise<void> {
       sidebarBottom: number
       chromeTop: number
       chromeBottom: number
-      searchTop: number
-      searchBottom: number
-      searchRight: number
+      searchHidden: boolean
       chromeRight: number
       railTop: number
       railBottom: number
@@ -4985,9 +4984,7 @@ async function main(): Promise<void> {
           ) > 1,
       ) ||
       collapsedHeaderBounds.sidebarTop <= collapsedHeaderBounds.chromeBottom ||
-      collapsedHeaderBounds.searchTop < collapsedHeaderBounds.chromeTop ||
-      collapsedHeaderBounds.searchBottom > collapsedHeaderBounds.chromeBottom ||
-      collapsedHeaderBounds.searchRight > collapsedHeaderBounds.chromeRight ||
+      !collapsedHeaderBounds.searchHidden ||
       !nearPanelValue(collapsedHeaderBounds.railTop, collapsedHeaderBounds.sidebarTop) ||
       !nearPanelValue(collapsedHeaderBounds.railBottom, collapsedHeaderBounds.sidebarBottom) ||
       !nearPanelValue(collapsedHeaderBounds.railWidth, collapsedHeaderBounds.modeRailWidth) ||
@@ -5001,7 +4998,7 @@ async function main(): Promise<void> {
         collapsedHeaderBounds.railLeft + collapsedHeaderBounds.railRight,
       )
     )
-      throw new Error('收起侧栏后红绿灯、菜单宽度、设置位置或栏位材质不正确')
+      throw new Error('收起侧栏后红绿灯、搜索隐藏状态、菜单宽度、设置位置或栏位材质不正确')
     writeFileSync(
       verificationArtifactPath('verify-sidebar-collapsed.png'),
       (await captureVerifiedPage(win)).toPNG(),
@@ -6871,51 +6868,56 @@ async function main(): Promise<void> {
       return null
     })()`)) as string | null
     if (interactionSessionId === null) throw new Error('无法确认待响应交互的验收会话')
-    // 通过真实选择器切换空会话，再恢复标准预设；请求走同一个公开 Remote 接口。
+    // 通过空会话预设胶囊切换再恢复标准预设；请求走同一个公开 Remote 接口，并确认右侧工具列不再保留冗余预设按钮。
+    // 前序 Host Command 验收会在会话视图留下命令结果条目，先清空界面快照以恢复真实空会话引导态。
+    win.webContents.send(HOST_CHANNELS.sessionFrame, {
+      type: 'session/snapshot',
+      sessionId: interactionSessionId,
+      events: [],
+      lastSeq: 0,
+      hasMore: false,
+    })
     await openRightPanel('git-history')
+    const noSidebarPresetButton = (await win.webContents.executeJavaScript(
+      `document.querySelector('.conversation-tools [aria-label="会话预设"]') === null`,
+    )) as boolean
+    if (!noSidebarPresetButton) throw new Error('右侧会话工具列不应再渲染会话预设按钮')
     let sessionPresetReady = true
-    const waitForPresetCardClosed = async (): Promise<void> => {
-      await win.webContents.executeJavaScript(`(async () => {
-        for (let attempt = 0; attempt < 80; attempt += 1) {
-          const card = document.querySelector('.session-preset-card')
-          if (card === null || (card instanceof HTMLElement && !card.checkVisibility())) return
-          await new Promise(resolve => setTimeout(resolve, 25))
-        }
-      })()`)
-    }
     /* oxlint-disable no-await-in-loop -- 依次切换空会话预设再恢复标准预设。 */
     for (const label of ['极简模式', 'ChatGPT', '标准模式']) {
-      await clickTrustedElement(win, '.conversation-tools [aria-label="会话预设"]')
-      await clickTrustedElement(win, '.session-preset-select')
-      const optionId = (await win.webContents.executeJavaScript(`(async () => {
+      const clicked = (await win.webContents.executeJavaScript(`(async () => {
         for (let attempt = 0; attempt < 80; attempt += 1) {
-          const found = [...document.querySelectorAll('.ant-select-dropdown [role="option"]')]
-            .find(option => option.checkVisibility() && option.textContent === ${JSON.stringify(label)})
-          if (found?.id) return found.id
+          const group = [...document.querySelectorAll('[aria-label="Agent 预设"]')]
+            .find(node => node instanceof HTMLElement && node.checkVisibility())
+          const button = [...(group?.querySelectorAll('button') ?? [])]
+            .find(item => item instanceof HTMLButtonElement && item.textContent?.trim() === ${JSON.stringify(label)})
+          if (button && !button.disabled) {
+            button.click()
+            return true
+          }
           await new Promise(resolve => setTimeout(resolve, 25))
         }
-        return undefined
-      })()`)) as string | undefined
-      if (optionId === undefined) throw new Error(`预设选择器未显示选项：${label}`)
-      await clickTrustedElement(win, `[role="option"][id=${JSON.stringify(optionId)}]`)
+        return false
+      })()`)) as boolean
+      if (!clicked) throw new Error(`空会话预设胶囊未显示或不可点击：${label}`)
       const selected = (await win.webContents.executeJavaScript(`(async () => {
         for (let attempt = 0; attempt < 120; attempt += 1) {
-          const input = document.querySelector('.session-preset-select [role="combobox"]')
-          if (document.querySelector('.session-preset-select')?.textContent?.trim() === ${JSON.stringify(label)}
-            && input instanceof HTMLInputElement && !input.disabled
-            && document.querySelector('.session-preset-card [role="alert"]') === null
-            && document.querySelector('.ant-select-dropdown:not(.ant-select-dropdown-hidden)') === null) return true
+          const group = [...document.querySelectorAll('[aria-label="Agent 预设"]')]
+            .find(node => node instanceof HTMLElement && node.checkVisibility())
+          const button = [...(group?.querySelectorAll('button') ?? [])]
+            .find(item => item instanceof HTMLButtonElement && item.textContent?.trim() === ${JSON.stringify(label)})
+          if (button?.getAttribute('aria-pressed') === 'true'
+            && !button.disabled
+            && group?.getAttribute('aria-busy') === 'false'
+            && group.closest('[aria-label="会话预设"]')?.querySelector('[role="alert"]') === null) return true
           await new Promise(resolve => setTimeout(resolve, 25))
         }
         return false
       })()`)) as boolean
       sessionPresetReady = sessionPresetReady && selected
-      win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' })
-      win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' })
-      await waitForPresetCardClosed()
       if (!selected) {
         const state = await win.webContents.executeJavaScript(
-          `document.querySelector('.session-preset-card')?.textContent`,
+          `document.querySelector('[aria-label="会话预设"]')?.textContent`,
         )
         throw new Error(`预设切换未生效：${label}；${String(state)}`)
       }
@@ -6934,32 +6936,21 @@ async function main(): Promise<void> {
       sessionId: interactionSessionId,
       running: false,
     })
-    await clickTrustedElement(win, '.conversation-tools [aria-label="会话预设"]')
     const presetLocked = (await win.webContents.executeJavaScript(`(async () => {
-      let attempted = false
       for (let attempt = 0; attempt < 80; attempt += 1) {
-        const select = document.querySelector('.session-preset-select [role="combobox"]')
-        const lockedHint = [...document.querySelectorAll('.session-preset-card [title]')]
-          .some(node => node.title.startsWith('会话开始后无法更改'))
-        if (select?.disabled && lockedHint) {
-          if (!attempted) {
-            select.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
-            select.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
-            attempted = true
-          } else if (document.querySelector('.ant-select-dropdown:not(.ant-select-dropdown-hidden)') === null) {
-            const { items } = await window.dshDesktop.host.call('listSessions', {})
-            return items.length === ${String(presetSessionCount)}
-              && document.querySelector('.session-row[aria-current="page"]')?.dataset.sessionId === ${JSON.stringify(interactionSessionId)}
-          }
+        const group = [...document.querySelectorAll('[aria-label="Agent 预设"]')]
+          .find(node => node instanceof HTMLElement && node.checkVisibility())
+        const buttons = [...(group?.querySelectorAll('button') ?? [])]
+        if (buttons.length > 0 && buttons.every(button => button instanceof HTMLButtonElement && button.disabled)) {
+          const { items } = await window.dshDesktop.host.call('listSessions', {})
+          return items.length === ${String(presetSessionCount)}
+            && document.querySelector('.session-row[aria-current="page"]')?.dataset.sessionId === ${JSON.stringify(interactionSessionId)}
         }
         await new Promise(resolve => setTimeout(resolve, 25))
       }
       return false
     })()`)) as boolean
     if (!presetLocked) throw new Error('已有对话的 Agent 预设未锁定或意外创建了会话')
-    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' })
-    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' })
-    await waitForPresetCardClosed()
     sessionPresetReady &&= presetLocked
     console.log('desktop-shell-verify-local: session-preset', { sessionPresetReady, presetLocked })
     let sessionInfoReady =

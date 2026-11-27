@@ -49,7 +49,7 @@ export async function verifyWindowControls(
         && style.borderBottomWidth === '0px' && style.backgroundColor !== 'rgba(0, 0, 0, 0)'
       : Math.abs(bounds.top - parentBounds.top - 1) <= 1
         && bounds.right < parentBounds.right && parentBounds.right - bounds.right <= 10
-        && bounds.bottom <= parentBounds.top + 34 && style.borderBottomStyle === 'solid' && capsuleAligned
+        && bounds.bottom <= parentBounds.top + 34 && style.borderBottomWidth === '0px' && capsuleAligned
     const ready = layoutReady && document.querySelectorAll('.windows-chrome').length === 1 && buttons.length === 3
       && getComputedStyle(chrome).getPropertyValue('-webkit-app-region') === 'drag'
       && buttons.every(button => button instanceof HTMLButtonElement && !button.disabled

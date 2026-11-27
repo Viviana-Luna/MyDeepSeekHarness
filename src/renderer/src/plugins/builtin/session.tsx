@@ -4,6 +4,7 @@ import { Info, ListTree, MessageSquare } from 'lucide-react'
 import { memo, useCallback, useDeferredValue, useMemo, useState, useEffect } from 'react'
 import { normalizeSessionEvents } from '../../../../shared/session-projection.ts'
 import { ConversationFrame } from '../../features/conversation/ConversationFrame.tsx'
+import { projectTrace } from '../../features/trajectory/trajectory-model.ts'
 import { TrajectoryView } from '../../features/trajectory/TrajectoryView.tsx'
 import { useWorkspaceSnapshot, useWorkspaceStore } from '../../hooks/useWorkspace.ts'
 import { ChatLeftPanel } from '../../pages/workspace/components/leftpanel/chat-leftpanel/index.tsx'
@@ -70,6 +71,12 @@ export function ConversationMain({ placement, visibility }: IslandPresentationPr
     [store, snapshot.selectedSessionId],
   )
   const session = content.sessions.find(item => item.sessionId === content.selectedSessionId)
+  const hasTrajectoryRecords = useMemo(
+    () =>
+      view === 'trajectory' &&
+      projectTrace(history, session?.running ?? false).some(turn => turn.records.length > 0),
+    [history, session?.running, view],
+  )
   return (
     <ConversationFrame
       width={view === 'conversation' && placement === 'main' ? snapshot.conversationWidth : null}
@@ -84,7 +91,6 @@ export function ConversationMain({ placement, visibility }: IslandPresentationPr
     >
       <ConversationTools
         view={view}
-        visible={visibility === 'foreground'}
         onViewChange={id => {
           setView(id)
           if (!grouped) store.setView(id)
@@ -114,8 +120,8 @@ export function ConversationMain({ placement, visibility }: IslandPresentationPr
         <ChatMainPanel snapshot={content} liveSnapshot={snapshot} history={history} />
       )}
       <ChatComposer
-        collapsible={view === 'trajectory'}
-        collapsed={view === 'trajectory' && trajectoryComposerCollapsed}
+        collapsible={hasTrajectoryRecords}
+        collapsed={hasTrajectoryRecords && trajectoryComposerCollapsed}
         onCollapsedChange={setTrajectoryComposerCollapsed}
       />
     </ConversationFrame>

@@ -10,14 +10,14 @@
   z-index: 9;
   display: flex;
   flex: none;
-  height: 33px;
+  height: 32px;
   padding-inline: 8px;
-  border-bottom: 1px solid var(--line, currentColor);
+  border-bottom: 0;
   justify-content: flex-end;
   -webkit-app-region: drag;
 }
 .info-island > .windows-chrome {
-  margin: -12px -12px 12px;
+  margin: -12px -12px 4px;
 }
 .session-chrome > .windows-chrome {
   height: var(--session-chrome-height);

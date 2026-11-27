@@ -11,9 +11,11 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { pathToFileURL } from 'node:url'
 import { crc32 } from 'node:zlib'
 import { previewDshImport, type SessionImportCatalog } from '../../runtime/import/dsh-import.ts'
+import type { DesktopSessionFrame } from '../../shared/session-live.ts'
 import { collectSessionLogsForExport } from '../session-exports/session-log-discovery.ts'
 import type { InstalledRuntime } from '../runtime/runtime-install.ts'
 import { clickTrustedElement } from './desktop-verifier.ts'
+import { pollRenderer } from './verification-wait.ts'
 
 async function checkArchive(path: string, dataRoot: string, sessionId: string, unpacked: string) {
   const entries = await collectSessionLogsForExport(dataRoot, sessionId)
@@ -107,13 +109,66 @@ async function verifyPendingSelection(
   }
 }
 
+async function verifyEmptyTrajectoryAndSeedRecords(
+  win: BrowserWindow,
+  sessionId: string,
+  emit: (frame: DesktopSessionFrame) => void,
+): Promise<void> {
+  await clickTrustedElement(win, '.conversation-view-tabs [data-view="trajectory"]')
+  const emptyTrajectoryClean = await pollRenderer<boolean>(win, {
+    probe: `Boolean(
+      document.querySelector('#trajectory-view') &&
+      document.querySelector('[aria-label="导出日志"]') === null &&
+      document.querySelector('[aria-label="搜索轨迹"]') === null &&
+      document.querySelector('[aria-label="轨迹概览"]') === null &&
+      document.querySelector('[aria-label="收起输入框"]') === null,
+    )`,
+    condition: 'state === true',
+    timeoutMs: 2_000,
+  })
+  if (!emptyTrajectoryClean.ok) {
+    throw new Error('空轨迹会话仍渲染了无效的控制按钮或工具栏')
+  }
+  const now = Date.now()
+  emit({
+    type: 'session/snapshot',
+    sessionId,
+    events: [
+      { seq: 0, time: now, type: 'turn/start', data: { turn: 1 } },
+      {
+        seq: 1,
+        time: now + 5,
+        type: 'user/message',
+        data: {
+          content: [{ type: 'text', text: '触发轨迹记录用于导出验收' }],
+          source: { kind: 'user' },
+        },
+      },
+      { seq: 2, time: now + 10, type: 'turn/end', data: { turn: 1 } },
+    ],
+    lastSeq: 2,
+    hasMore: false,
+  })
+  const exportReady = await pollRenderer<boolean>(win, {
+    probe: `document.querySelector('[aria-label="导出日志"]') !== null`,
+    condition: 'state === true',
+    timeoutMs: 2_000,
+  })
+  if (!exportReady.ok) throw new Error('有轨迹记录后未出现导出日志按钮')
+}
+
 /**
  * 从当前隔离会话的轨迹按钮触发导出，校验原生对话框参数、结果提示、内容与取消路径。
  * 保存路径由验收临时返回，操作系统保存面板本身仍需人工交互验收。
  */
 export async function verifySessionLogExport(
   win: BrowserWindow,
-  options: { installation: InstalledRuntime; sessionId: string; cancelPending: () => void },
+  options: {
+    installation: InstalledRuntime
+    sessionId: string
+    emit: (frame: DesktopSessionFrame) => void
+    cancelPending: () => void
+  },
 ): Promise<void> {
   // 空会话可能尚未物化到磁盘；用真实改名事件产生可导出的日志，不把界面投影夹具当成持久记录。
   await win.webContents.executeJavaScript(`(async () => {
@@ -136,7 +191,7 @@ export async function verifySessionLogExport(
     return { canceled: cancel, filePath: cancel ? undefined : destination }
   }) as typeof dialog.showSaveDialog
   try {
-    await clickTrustedElement(win, '.conversation-view-tabs [data-view="trajectory"]')
+    await verifyEmptyTrajectoryAndSeedRecords(win, options.sessionId, options.emit)
     await clickTrustedElement(win, '[aria-label="导出日志"]')
     const completed = await win.webContents.executeJavaScript(`(async () => {
       for (let attempt = 0; attempt < 200; attempt++) {
@@ -163,6 +218,7 @@ export async function verifySessionLogExport(
     if ((await readdir(directory)).some(name => name.endsWith('.part')))
       throw new Error('会话导出取消后留下了半成品')
     console.log('desktop-shell-verify-local: session-export', {
+      emptyTrajectoryClean: true,
       button: true,
       ipc: true,
       archive: true,
@@ -172,7 +228,15 @@ export async function verifySessionLogExport(
   } finally {
     dialog.showSaveDialog = originalDialog
     await rm(directory, { recursive: true, force: true })
-    if (!win.isDestroyed())
+    if (!win.isDestroyed()) {
+      options.emit({
+        type: 'session/snapshot',
+        sessionId: options.sessionId,
+        events: [],
+        lastSeq: 0,
+        hasMore: false,
+      })
       await clickTrustedElement(win, '.conversation-view-tabs [data-view="conversation"]')
+    }
   }
 }

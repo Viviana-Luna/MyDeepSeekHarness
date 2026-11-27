@@ -87,6 +87,13 @@ interface ProjectWorkspaceState {
   selectSessionTab(sessionId: string): void
   closeSessionTab(sessionId: string): void
   createSession(projectId?: string, agentPreset?: string): void
+  switchDraftWorkspace(
+    projectId: string,
+    options?: {
+      readonly sessionId?: string | null
+      readonly onSwitched?: (targetSessionId: string) => void
+    },
+  ): void
   createWorkspace(): void
   buildFileIndex(force?: boolean): Promise<void>
   queryFiles(query: string): Promise<FileIndexQueryResult>
@@ -1217,6 +1224,32 @@ export function ProjectWorkspaceProvider({ children }: { children: ReactNode }) 
     [hasDirtyDocuments, fileDirty, projectId, queueUnsavedAction, store],
   )
 
+  const switchDraftWorkspace = useCallback(
+    (
+      targetProjectId: string,
+      options?: {
+        readonly sessionId?: string | null
+        readonly onSwitched?: (targetSessionId: string) => void
+      },
+    ) => {
+      const execute = async () => {
+        const switched = await store.switchDraftWorkspace(targetProjectId, options?.sessionId)
+        const nextSessionId = store.getSnapshot().selectedSessionId
+        if (switched && nextSessionId !== null) options?.onSwitched?.(nextSessionId)
+      }
+      if (!hasDirtyDocuments || targetProjectId === projectId) {
+        void execute()
+        return
+      }
+      queueUnsavedAction({
+        kind: 'navigation',
+        reason: '切换当前空会话的工作区',
+        run: execute,
+      })
+    },
+    [hasDirtyDocuments, projectId, queueUnsavedAction, store],
+  )
+
   const createWorkspace = useCallback(() => {
     const run = async () => {
       setError(null)
@@ -1395,6 +1428,7 @@ export function ProjectWorkspaceProvider({ children }: { children: ReactNode }) 
       selectSessionTab,
       closeSessionTab,
       createSession,
+      switchDraftWorkspace,
       createWorkspace,
       buildFileIndex,
       queryFiles,
@@ -1449,6 +1483,7 @@ export function ProjectWorkspaceProvider({ children }: { children: ReactNode }) 
       selectSessionTab,
       closeSessionTab,
       createSession,
+      switchDraftWorkspace,
       createWorkspace,
       buildFileIndex,
       queryFiles,
@@ -1465,6 +1500,11 @@ export function useProjectWorkspace(): ProjectWorkspaceState {
   const value = useContext(ProjectWorkspaceContext)
   if (value === null) throw new Error('ProjectWorkspaceProvider 尚未挂载')
   return value
+}
+
+/** 可选读取文件工作区上下文；在脱离工作区 Provider 的单元测试中安全返回 null。 */
+export function useOptionalProjectWorkspace(): ProjectWorkspaceState | null {
+  return useContext(ProjectWorkspaceContext)
 }
 
 /** 两个文件视图读取各自文档，动作继续由同一个文件工作区拥有。 */

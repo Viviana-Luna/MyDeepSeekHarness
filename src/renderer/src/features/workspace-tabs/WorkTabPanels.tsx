@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { SessionScope, useWorkspaceSnapshot } from '../../hooks/useWorkspace.ts'
+import { SessionScope, useWorkspaceSnapshot, useWorkspaceStore } from '../../hooks/useWorkspace.ts'
 import { ConversationMain } from '../../plugins/builtin/session.tsx'
 import { BrowserPanel } from '../browser/BrowserPanel.tsx'
 import { FileViewer } from '../files/FileViewer.tsx'
@@ -16,6 +16,7 @@ export function WorkTabPanels({ showWindowControls = false }: { showWindowContro
   const state = useWorkspaceTabs()
   const source = useOptionalSourceControl()
   const snapshot = useWorkspaceSnapshot()
+  const store = useWorkspaceStore()
   const surface = useRef<HTMLDivElement>(null)
   const [narrow, setNarrow] = useState(false)
   const [surfaceWidth, setSurfaceWidth] = useState(1000)
@@ -33,25 +34,56 @@ export function WorkTabPanels({ showWindowControls = false }: { showWindowContro
       group.tabs.every(id => tabs.some(tab => tab.id === id)),
   )
   const split = activeGroup?.tabs ?? null
-  const rawActiveId = tabs.find(tab => tab.rawActive ?? tab.active)?.id ?? null
+  const rawActiveTab = tabs.find(tab => tab.rawActive ?? tab.active)
+  const rawActiveId = rawActiveTab?.id ?? null
   const navigation = `${snapshot.activeView}:${rawActiveId ?? ''}`
   const previousNavigation = useRef<{
     navigation: string
     rawId: string | null
+    rawKind: WorkTab['kind'] | null
+    rawProjectId: string | null
     group: readonly [string, string] | null
-  }>({ navigation: '', rawId: null, group: null })
+  }>({ navigation: '', rawId: null, rawKind: null, rawProjectId: null, group: null })
   useLayoutEffect(() => {
     const before = previousNavigation.current
     const removedRaw = before.rawId !== null && !tabs.some(tab => tab.id === before.rawId)
     const survivor =
       removedRaw && before.group ? tabs.find(tab => before.group!.includes(tab.id)) : undefined
-    previousNavigation.current = { navigation, rawId: rawActiveId, group: split }
+    previousNavigation.current = {
+      navigation,
+      rawId: rawActiveId,
+      rawKind: rawActiveTab?.kind ?? null,
+      rawProjectId: rawActiveTab?.projectId ?? null,
+      group: split,
+    }
     for (const group of state?.splitGroups ?? []) {
       for (const id of group.tabs) if (!tabs.some(tab => tab.id === id)) state?.removeTab(id)
     }
     if (survivor) {
       survivor.navigate?.()
       state?.focus(survivor.id)
+      return
+    }
+    // 关闭当前分组最后一个浏览器或终端标签时，不滞留在空浏览器/空终端占位页：
+    // 优先切回同组剩余标签，若该组已无标签则回到首页欢迎的新聊天界面。
+    if (
+      removedRaw &&
+      rawActiveId === null &&
+      (before.rawKind === 'browser' || before.rawKind === 'terminal') &&
+      (snapshot.activeView === 'browser' || snapshot.activeView === 'terminal')
+    ) {
+      const sameGroupTab = tabs.findLast(tab => tab.projectId === before.rawProjectId)
+      const fallbackTab =
+        sameGroupTab ??
+        (before.rawProjectId === 'unassigned' && snapshot.selectedProjectId === null
+          ? tabs.findLast(tab => tab.kind !== 'ssh')
+          : undefined)
+      if (fallbackTab !== undefined) {
+        fallbackTab.select()
+      } else {
+        store.enterNewSessionWelcome(before.rawProjectId)
+      }
+      state?.focus(null)
       return
     }
     if (

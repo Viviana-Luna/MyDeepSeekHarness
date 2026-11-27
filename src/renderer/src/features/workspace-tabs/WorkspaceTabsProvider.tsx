@@ -86,6 +86,7 @@ interface WorkspaceTabsState {
   swapSplit(id: string, side: 'left' | 'right'): boolean
   merge(id?: string): void
   removeTab(id: string): void
+  replaceSplitTab(fromId: string, toId: string): boolean
   openBrowser(projectId: string): void
   ensureBrowserTab(
     id: string,
@@ -199,6 +200,33 @@ export function WorkspaceTabsProvider({ children }: { children: ReactNode }) {
     },
     [focus, updateGroups],
   )
+  const replaceSplitTab = useCallback(
+    (fromId: string, toId: string): boolean => {
+      if (fromId === toId) return false
+      const currentGroups = splitGroupsRef.current
+      if (!currentGroups.some(group => group.tabs.includes(fromId))) return false
+      const isOccupiedElsewhere = currentGroups.some(
+        group => !group.tabs.includes(fromId) && group.tabs.includes(toId),
+      )
+      if (isOccupiedElsewhere) {
+        removeTab(fromId)
+        return false
+      }
+      updateGroups(current =>
+        current.flatMap(group => {
+          if (!group.tabs.includes(fromId)) return [group]
+          const beside = group.tabs[0] === fromId ? group.tabs[1] : group.tabs[0]
+          if (beside === toId) return []
+          const nextTabs: readonly [string, string] =
+            group.tabs[0] === fromId ? [toId, group.tabs[1]] : [group.tabs[0], toId]
+          return [{ ...group, tabs: nextTabs }]
+        }),
+      )
+      if (focusedTabIdRef.current === fromId) focus(toId)
+      return true
+    },
+    [focus, removeTab, updateGroups],
+  )
   const openBrowser = useCallback((projectId: string) => {
     const id = crypto.randomUUID()
     const next = [...browserTabsRef.current, { id, projectId, title: '新网页' }]
@@ -235,11 +263,13 @@ export function WorkspaceTabsProvider({ children }: { children: ReactNode }) {
   )
   const removeBrowserTab = useCallback(
     (id: string) => {
-      if (!browserTabsRef.current.some(tab => tab.id === id)) return
+      const closing = browserTabsRef.current.find(tab => tab.id === id)
+      if (closing === undefined) return
       const remaining = browserTabsRef.current.filter(tab => tab.id !== id)
       browserTabsRef.current = remaining
       setBrowserTabs(remaining)
-      selectBrowser(current => (current === id ? (remaining.at(-1)?.id ?? null) : current))
+      const nextInProject = remaining.findLast(tab => tab.projectId === closing.projectId)
+      selectBrowser(current => (current === id ? (nextInProject?.id ?? null) : current))
       removeTab(`browser:${id}`)
     },
     [removeTab],
@@ -336,10 +366,15 @@ export function WorkspaceTabsProvider({ children }: { children: ReactNode }) {
         )
         return
       }
+      const closing = browserTabsRef.current.find(tab => tab.id === id)
       const remaining = browserTabsRef.current.filter(tab => tab.id !== id)
       browserTabsRef.current = remaining
       setBrowserTabs(remaining)
-      selectBrowser(current => (current === id ? (remaining.at(-1)?.id ?? null) : current))
+      const nextInProject =
+        closing === undefined
+          ? undefined
+          : remaining.findLast(tab => tab.projectId === closing.projectId)
+      selectBrowser(current => (current === id ? (nextInProject?.id ?? null) : current))
       removeTab(`browser:${id}`)
     },
     [removeTab],
@@ -382,6 +417,7 @@ export function WorkspaceTabsProvider({ children }: { children: ReactNode }) {
       swapSplit,
       merge,
       removeTab,
+      replaceSplitTab,
       openBrowser,
       ensureBrowserTab,
       removeBrowserTab,
@@ -409,6 +445,7 @@ export function WorkspaceTabsProvider({ children }: { children: ReactNode }) {
       swapSplit,
       merge,
       removeTab,
+      replaceSplitTab,
       openBrowser,
       ensureBrowserTab,
       removeBrowserTab,

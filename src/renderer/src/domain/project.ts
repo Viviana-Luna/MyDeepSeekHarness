@@ -199,3 +199,32 @@ export function sessionsForProject(
     project.cwd === undefined ? session.cwd === undefined : session.cwd === project.cwd,
   )
 }
+
+/**
+ * 解析空会话或新会话草稿当前归属的可切换工作区项目。
+ * 若会话归属于「无项目对话」分组则返回 undefined，允许用户从菜单切换到同目录的持久化工作区。
+ */
+export function resolveDraftProject(options: {
+  readonly projects: readonly ProjectSummary[]
+  readonly sessions: readonly SessionSummary[]
+  readonly session: SessionSummary | undefined
+  readonly newSessionProjectId: string | null
+  readonly selectedProjectId: string | null
+}): ProjectSummary | undefined {
+  const { projects, sessions, session, newSessionProjectId, selectedProjectId } = options
+  if (session !== undefined) {
+    const owner = projects.find(project =>
+      sessionsForProject(sessions, project).some(item => item.sessionId === session.sessionId),
+    )
+    if (owner !== undefined) {
+      return owner.id === UNGROUPED_PROJECT_ID ? undefined : owner
+    }
+    if (session.cwd !== undefined) {
+      return projects.find(project => project.cwd === session.cwd)
+    }
+    return undefined
+  }
+  const preferredId = newSessionProjectId ?? selectedProjectId
+  if (preferredId === null || preferredId === UNGROUPED_PROJECT_ID) return undefined
+  return projects.find(project => project.id === preferredId)
+}

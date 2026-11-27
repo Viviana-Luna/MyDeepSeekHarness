@@ -12,14 +12,15 @@
   gap: 2px;
   padding: 6px 0;
 }
+/* 竖向浮动胶囊高度 66px 会向下延伸到网页视口行；原生 WebContentsView 位于 DOM 之上，需在整个面板右侧预留 56px 轨道避免遮挡胶囊。 */
 .app-shell[data-tab-actions-floating='true']:not([data-workspace-split])
   .main-island
-  .browser-toolbar,
+  .browser-panel,
 .app-shell[data-tab-actions-floating='true'][data-workspace-split]
   .main-island
   .work-tab-panel[data-split-pane='right']
-  .browser-toolbar {
-  padding-right: 92px;
+  .browser-panel {
+  padding-right: 56px;
 }
 .browser-toolbar button,
 .browser-caption button {

@@ -1,0 +1,223 @@
+/* 输入框上方的工作区与分支胶囊条：提供紧凑圆角胶囊与浮层菜单，兼顾明暗主题和无障碍降级。 */
+.bar {
+  display: flex;
+  flex: none;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding-inline: 2px;
+}
+
+.pill {
+  display: inline-flex;
+  min-width: 0;
+  max-width: min(280px, 100%);
+  height: 28px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 11px;
+  border: 1px solid light-dark(rgb(15 23 42 / 0.11), rgb(255 255 255 / 0.14));
+  border-radius: 999px;
+  background: light-dark(
+    color-mix(in srgb, #ffffff 88%, var(--surface-raised)),
+    color-mix(in srgb, var(--surface-raised) 86%, var(--island-face))
+  );
+  box-shadow:
+    light-dark(0 2px 8px rgb(15 23 42 / 0.06), 0 4px 12px rgb(0 0 0 / 0.24)),
+    inset 0 1px 0 light-dark(rgb(255 255 255 / 0.9), rgb(255 255 255 / 0.09));
+  color: var(--text);
+  font-size: var(--text-control);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+  -webkit-app-region: no-drag;
+}
+
+button.pill {
+  cursor: pointer;
+}
+
+button.pill:hover:not(:disabled),
+button.pill[aria-expanded='true'] {
+  border-color: color-mix(in srgb, var(--accent) 44%, var(--line-strong));
+  background: light-dark(#ffffff, color-mix(in srgb, var(--surface-raised) 96%, white 4%));
+}
+
+button.pill:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.pill > svg {
+  flex: none;
+  color: var(--muted);
+}
+
+button.pill:hover:not(:disabled) > svg,
+button.pill[aria-expanded='true'] > svg {
+  color: var(--text);
+}
+
+.branchPill {
+  max-width: min(190px, 100%);
+  color: var(--muted);
+  font-weight: var(--weight-regular);
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  transition: transform 140ms ease;
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+.menu {
+  position: fixed;
+  z-index: 170;
+  display: grid;
+  width: min(300px, calc(100vw - 24px));
+  max-height: min(320px, calc(100vh - 80px));
+  padding: 5px;
+  overflow: hidden auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 13px;
+  background: var(--surface);
+  box-shadow:
+    inset 0 1px var(--island-rim),
+    0 18px 48px rgb(0 0 0 / 0.34);
+  backdrop-filter: blur(18px);
+  color: var(--text);
+}
+
+.option,
+.createAction {
+  display: grid;
+  width: 100%;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.option {
+  grid-template-columns: 18px minmax(0, 1fr);
+}
+
+.createAction {
+  grid-template-columns: 18px minmax(0, 1fr);
+  font-size: var(--text-control);
+  color: var(--muted);
+}
+
+.option:is(:hover, :focus-visible),
+.createAction:is(:hover, :focus-visible) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.option[aria-checked='true'] {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-hover));
+}
+
+.mark {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  color: var(--accent);
+}
+
+.createAction > svg {
+  justify-self: center;
+}
+
+.optionText {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.optionText strong,
+.optionText small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.optionText strong {
+  font-size: var(--text-control);
+  font-weight: var(--weight-semibold);
+}
+
+.optionText small {
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+
+.divider {
+  width: calc(100% - 10px);
+  height: 1px;
+  margin: 4px 5px;
+  border: 0;
+  background: var(--line);
+}
+
+.empty {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pill,
+  .chevron,
+  .option,
+  .createAction {
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .pill,
+  .menu {
+    border-color: var(--line-strong);
+    background: var(--surface-raised);
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .pill,
+  .menu {
+    border-color: ButtonText;
+    background: ButtonFace;
+    color: ButtonText;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+  .option[aria-checked='true'] {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+}

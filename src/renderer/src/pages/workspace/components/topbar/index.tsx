@@ -25,7 +25,6 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
-  type ReactNode,
   type RefObject,
 } from 'react'
 import { useWorkspaceSnapshot, useWorkspaceStore } from '../../../../hooks/useWorkspace.ts'
@@ -110,11 +109,9 @@ function FloatingTabActions({
 export function Topbar({
   visible,
   floatingActions,
-  searchTrigger,
 }: {
   visible: boolean
   floatingActions?: boolean
-  searchTrigger: ReactNode
 }) {
   const showFloatingActions =
     floatingActions ?? (!visible || document.documentElement.dataset.platform === 'win32')
@@ -657,7 +654,11 @@ export function Topbar({
       group?.create?.()
       store.setView('terminal')
     } else {
-      terminalTabs?.openBrowser(project?.id ?? 'unassigned')
+      const browserProjectId =
+        activeGroup?.id !== undefined && activeGroup.id !== 'unassigned'
+          ? activeGroup.id
+          : (project?.id ?? 'unassigned')
+      terminalTabs?.openBrowser(browserProjectId)
       store.setView('browser')
     }
   }
@@ -1015,7 +1016,6 @@ export function Topbar({
             <ChevronRight size={16} aria-hidden="true" />
           </button>
         </div>
-        {searchTrigger}
         {visible && (
           <>
             {!showFloatingActions && (

@@ -1,5 +1,5 @@
 /* renderer 会话右侧的轻量光学胶囊工具列；布局盒严格保持 28px 宽，通过伪元素承载唯一一块 36px 完整玻璃外衣。
-   单标签隐藏顶栏且未分屏时，外衣向上无缝延伸包裹顶部「新建 / 平铺面板」，形成一整根 5 钮竖向胶囊。 */
+   单标签隐藏顶栏且未分屏时，外衣向上无缝延伸包裹顶部「新建 / 平铺面板」，形成一整根 4 钮竖向胶囊。 */
 .conversation-tools {
   position: absolute;
   z-index: 6;
@@ -41,13 +41,18 @@
 }
 /* 浮动标签胶囊启用且未分屏时，工具列紧接上方 66px 竖排浮动按钮（10px + 66px = 76px）与 5px 分隔区，
    扣除主岛 1px 内边后 top: 80px、right: 12px；唯一玻璃外衣向上扩至 top: -71px，从主岛内容区顶缘 10px 一气呵成包到底。
-   当 Windows 窗口控制条落入主岛首行时，.work-tab-panel / .workspace-island-content 本身已顺移 33px，无需再重复叠加高度。 */
+   当 Windows 窗口控制条占主岛首行时内容已顺移 32px；而在对话/空会话视图中窗口控制条透明叠加于顶缘，内容不顺移，故工具列自行下移 32px 对齐。 */
 .app-shell[data-tab-actions-floating='true']:not([data-workspace-split])
   .main-island
   .conversation-tools {
   top: 80px;
   right: 12px;
   transition: none;
+}
+.app-shell[data-tab-actions-floating='true']:not([data-workspace-split])
+  .main-island:has(> .windows-chrome):has([data-composer-overlay])
+  .conversation-tools {
+  top: calc(80px + var(--window-controls-height, 32px));
 }
 .app-shell[data-tab-actions-floating='true']:not([data-workspace-split])
   .main-island
@@ -59,12 +64,13 @@
   .conversation-tools::after {
   top: -70px;
 }
-/* Windows 多标签分屏时，右上角独立横向胶囊位于右侧窗格上方，仅右侧窗格会话工具列下移避让。 */
+/* 分屏时右上角独立竖向胶囊（66px 高）位于右侧窗格上方，仅右侧窗格会话工具列下移避让并保持右缘同轴对齐。 */
 .app-shell[data-tab-actions-floating='true'][data-workspace-split]
   .main-island
   .work-tab-panel[data-split-pane='right']
   .conversation-tools {
-  top: 56px;
+  top: 88px;
+  right: 12px;
 }
 @media (prefers-reduced-motion: reduce) {
   .conversation-tools,
@@ -78,18 +84,6 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-}
-/* 用短促居中的细刻度分隔视图切换与预设入口，与上方「新建 / 平铺」分隔线保持相同 14px 宽度与 4px 上下留白。 */
-.conversation-view-tabs::after {
-  position: absolute;
-  left: 7px;
-  right: 7px;
-  bottom: -5px;
-  height: 1px;
-  border-radius: 999px;
-  background: var(--line-strong);
-  content: '';
-  pointer-events: none;
 }
 .conversation-tools > .view-tool-button,
 .conversation-view-tabs > .view-tool-button {
@@ -121,30 +115,6 @@
 .conversation-tools[data-view='trajectory'] ~ .workspace-view {
   margin-right: 56px;
 }
-.conversation-preset-panel {
-  z-index: 120;
-  display: grid;
-  gap: 10px;
-  padding: 12px 14px;
-  border: 1px solid var(--line-strong);
-  border-radius: 15px;
-  background: var(--surface);
-  box-shadow:
-    inset 0 1px var(--island-rim),
-    0 18px 56px rgb(0 0 0 / 0.34);
-  backdrop-filter: blur(18px);
-  color: var(--text);
-}
-.conversation-preset-panel__header strong {
-  font-size: var(--text-title);
-}
-.conversation-preset-panel .session-preset-card {
-  width: 240px;
-  max-width: calc(100vw - 64px);
-}
-.conversation-preset-panel .session-preset-select {
-  font-size: var(--text-control);
-}
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   .conversation-tools::before {
     border-color: var(--line-strong);
@@ -166,17 +136,11 @@
   .conversation-tools::after {
     display: none;
   }
-  .conversation-view-tabs::after {
-    background: ButtonText;
-  }
   .conversation-tools
     .view-tool-button:is([aria-selected='true'], [aria-pressed='true'], [aria-expanded='true']) {
     border-color: Highlight;
     background: Highlight;
     color: HighlightText;
     box-shadow: none;
-  }
-  .conversation-preset-panel {
-    border-color: CanvasText;
   }
 }

@@ -8,6 +8,7 @@ import { ConversationView } from '../../../../../features/conversation/Conversat
 import { EmptyConversation } from '../../../../../features/conversation/EmptyConversation.tsx'
 import { Composer } from '../../../../../features/composer/Composer.tsx'
 import { ComposerTodos } from '../../../../../features/composer/ComposerTodos.tsx'
+import { ComposerWorkspaceBar } from '../../../../../features/composer/ComposerWorkspaceBar.tsx'
 import { parseHubTodos } from '../../../../../domain/session-hub.ts'
 import { PendingInteractionPanel } from '../../../../../features/composer/PendingInteractionPanel.tsx'
 import { ElasticPress } from '../../../../../shared/ui/ElasticPress.tsx'
@@ -34,14 +35,21 @@ export const ChatMainPanel = memo(function ChatMainPanel({
     [openFileFromConversation],
   )
   const session = snapshot.sessions.find(item => item.sessionId === snapshot.selectedSessionId)
-  const project = snapshot.projects.find(item => item.id === snapshot.selectedProjectId)
-  const newSessionDraftActive = project !== undefined && snapshot.newSessionProjectId === project.id
+  const newSessionProject =
+    snapshot.newSessionProjectId === null
+      ? undefined
+      : snapshot.projects.find(item => item.id === snapshot.newSessionProjectId)
+  const newSessionDraftActive =
+    newSessionProject !== undefined &&
+    (snapshot.selectedProjectId === null || snapshot.selectedProjectId === newSessionProject.id)
   if (session === undefined) {
     if (newSessionDraftActive && liveSnapshot.sendingNewSession)
       return <ConversationView history={[]} pendingSend />
     return (
       <EmptyConversation
-        title={newSessionDraftActive ? `在 ${project.name} 中开始新会话` : '从一个项目聊天开始'}
+        title={
+          newSessionDraftActive ? `在 ${newSessionProject.name} 中开始新会话` : '从一个项目聊天开始'
+        }
         description={
           newSessionDraftActive
             ? '输入并发送第一条消息后才会创建会话。'
@@ -56,7 +64,7 @@ export const ChatMainPanel = memo(function ChatMainPanel({
         <EmptyConversation
           title="这个对话还没有消息"
           description="在下方输入任务，开始这段对话。"
-          preset={<SessionPresetPicker variant="pills" />}
+          preset={<SessionPresetPicker />}
         />
       }
       onOpenPlan={(id, text) => {
@@ -165,6 +173,8 @@ export function ChatComposer({
   const showReadings = dockFitsReadings
   const session = snapshot.sessions.find(item => item.sessionId === snapshot.selectedSessionId)
   const todos = parseHubTodos(session?.projections?.values?.todos)
+  const showWorkspaceBar =
+    pendingInteraction === undefined && (session === undefined || session.blank === true)
   const effectiveCollapsed = collapsible && collapsed && pendingInteraction === undefined
   const toggle = () => {
     const next = !effectiveCollapsed
@@ -186,16 +196,19 @@ export function ChatComposer({
       )}
       {!effectiveCollapsed && (
         <>
+          {showWorkspaceBar && <ComposerWorkspaceBar />}
           {todos.length > 0 && <ComposerTodos key={session?.sessionId} todos={todos} />}
           {pendingInteraction === undefined ? (
-            <Composer showReadings={showReadings} />
+            <div className="composer-dock__body">
+              <Composer showReadings={showReadings} />
+              <ComposerDivider />
+            </div>
           ) : (
             <PendingInteractionPanel
               interaction={pendingInteraction}
               key={`${snapshot.selectedSessionId}:${pendingInteraction.key}`}
             />
           )}
-          {pendingInteraction === undefined && <ComposerDivider />}
         </>
       )}
     </div>

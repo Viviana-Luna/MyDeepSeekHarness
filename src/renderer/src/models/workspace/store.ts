@@ -63,6 +63,7 @@ import {
   deriveWorkspaceProjects,
   parseDesktopProjects,
   projectIdForCwd,
+  resolveDraftProject,
   sessionsForProject,
   type ProjectSummary,
 } from '../../domain/project.ts'
@@ -1184,7 +1185,7 @@ export class WorkspaceStore {
         selectedProjectId === null ? sessions : sessionsForProject(sessions, project)
       const newSessionProjectId =
         this.snapshot.newSessionProjectId !== null &&
-        this.snapshot.newSessionProjectId === selectedProjectId &&
+        (selectedProjectId === null || this.snapshot.newSessionProjectId === selectedProjectId) &&
         projects.some(item => item.id === this.snapshot.newSessionProjectId)
           ? this.snapshot.newSessionProjectId
           : null
@@ -1534,6 +1535,58 @@ export class WorkspaceStore {
     this.set({
       openedSessionIds,
       selectedSessionId: null,
+      sendingMessage: false,
+      sessionCommandDirectory: EMPTY_COMMAND_DIRECTORY_STATE,
+      sessionCommandExecution: null,
+      sessionQueue: EMPTY_DESKTOP_QUEUE_SNAPSHOT,
+      pendingInteractions: [],
+      history: null,
+      liveEvents: [],
+      sessionModels: null,
+      sessionPermission: null,
+      loadingSessionModels: false,
+      selectingSessionModel: false,
+      switchingPermissionPreset: false,
+      sessionModelsError: null,
+      loadingHistory: false,
+      loadingOlderHistory: false,
+      historyHasMore: false,
+      historyError: null,
+      ...this.viewTransitionPatch(this.sessionHomeModeId),
+      ...this.rightLayoutPatch(null),
+      error: null,
+    })
+  }
+
+  /**
+   * 关闭最后一个浏览器或终端标签后返回欢迎新聊天界面，不向顶栏追加新的会话标签；
+   * 若存在持久化工作区，则直接进入该工作区的新会话草稿态，方便用户立即输入并开启新会话。
+   */
+  enterNewSessionWelcome(preferredProjectId?: string | null): void {
+    const preferred =
+      preferredProjectId !== undefined && preferredProjectId !== null && preferredProjectId !== ''
+        ? this.snapshot.projects.find(
+            item => item.id === preferredProjectId && item.source === 'workspace',
+          )
+        : undefined
+    const selected =
+      this.snapshot.selectedProjectId === null
+        ? undefined
+        : this.snapshot.projects.find(
+            item => item.id === this.snapshot.selectedProjectId && item.source === 'workspace',
+          )
+    const fallback = this.snapshot.projects.find(item => item.source === 'workspace')
+    const targetProject = preferred ?? selected ?? fallback
+    const newSessionProjectId = targetProject?.id ?? null
+    const preservedDraft =
+      newSessionProjectId !== null && newSessionProjectId === this.snapshot.newSessionProjectId
+        ? this.snapshot.newSessionDraft
+        : ''
+    this.historyGeneration += 1
+    this.set({
+      selectedSessionId: null,
+      newSessionProjectId,
+      newSessionDraft: preservedDraft,
       sendingMessage: false,
       sessionCommandDirectory: EMPTY_COMMAND_DIRECTORY_STATE,
       sessionCommandExecution: null,
@@ -2331,6 +2384,141 @@ export class WorkspaceStore {
     }
   }
 
+  /**
+   * 在空会话或新会话草稿态切换目标工作区：优先复用目标工作区的现有空会话，否则新建空会话，
+   * 并将当前尚未发送的文字草稿与图片附件迁移到目标会话；「全部项目」视图下保持不收窄左侧筛选。
+   */
+  async switchDraftWorkspace(projectId: string, sourceSessionId?: string | null): Promise<boolean> {
+    if (this.snapshot.creatingSession) return false
+    const project = this.snapshot.projects.find(item => item.id === projectId)
+    if (project === undefined) return false
+    const currentSession =
+      sourceSessionId === undefined
+        ? this.selectedSession()
+        : sourceSessionId === null
+          ? undefined
+          : this.snapshot.sessions.find(item => item.sessionId === sourceSessionId)
+    if (typeof sourceSessionId === 'string' && currentSession === undefined) return false
+    const currentSessionId = currentSession?.sessionId ?? null
+    const currentIsBlank = currentSession?.blank === true
+    if (currentSession !== undefined && !currentIsBlank) return false
+    if (
+      currentSessionId !== null &&
+      (this.snapshot.sessionFiles[currentSessionId]?.length ?? 0) > 0
+    ) {
+      this.set({ error: '当前会话包含已关联的文件附件；请先移除文件附件后再切换工作区' })
+      return false
+    }
+    const currentProject = resolveDraftProject({
+      projects: this.snapshot.projects,
+      sessions: this.snapshot.sessions,
+      session: currentSession,
+      newSessionProjectId: this.snapshot.newSessionProjectId,
+      selectedProjectId: this.snapshot.selectedProjectId,
+    })
+    if (
+      currentProject?.id === project.id &&
+      (currentIsBlank || this.snapshot.newSessionProjectId === project.id)
+    ) {
+      return true
+    }
+    const carriedDraft =
+      currentSessionId !== null
+        ? (this.snapshot.sessionDrafts[currentSessionId] ?? '')
+        : this.snapshot.newSessionDraft
+    const carriedAttachments =
+      currentSessionId !== null ? (this.snapshot.sessionAttachments[currentSessionId] ?? []) : []
+    const hasCarriedContent = carriedDraft !== '' || carriedAttachments.length > 0
+    const nextSelectedProjectId = this.snapshot.selectedProjectId === null ? null : project.id
+    const applySwitchToTarget = (targetSession: SessionSummary): void => {
+      const targetId = targetSession.sessionId
+      let nextDrafts = this.snapshot.sessionDrafts
+      let draftTransferred = carriedDraft === ''
+      if (carriedDraft !== '' && (nextDrafts[targetId] ?? '') === '') {
+        const updatedDrafts = { ...nextDrafts, [targetId]: carriedDraft }
+        if (currentSessionId !== null && currentSessionId !== targetId) {
+          delete updatedDrafts[currentSessionId]
+        }
+        nextDrafts = updatedDrafts
+        draftTransferred = true
+      }
+      let nextAttachments = this.snapshot.sessionAttachments
+      let attachmentsTransferred = carriedAttachments.length === 0
+      if (carriedAttachments.length > 0 && (nextAttachments[targetId]?.length ?? 0) === 0) {
+        const updatedAttachments = { ...nextAttachments, [targetId]: carriedAttachments }
+        if (currentSessionId !== null && currentSessionId !== targetId) {
+          delete updatedAttachments[currentSessionId]
+        }
+        nextAttachments = updatedAttachments
+        attachmentsTransferred = true
+      }
+      if (
+        nextDrafts !== this.snapshot.sessionDrafts ||
+        nextAttachments !== this.snapshot.sessionAttachments
+      ) {
+        this.set({ sessionDrafts: nextDrafts, sessionAttachments: nextAttachments })
+      }
+      const canRetireCurrentTab =
+        currentSessionId !== null &&
+        currentSessionId !== targetId &&
+        draftTransferred &&
+        attachmentsTransferred
+      const nextOpenedSessionIds = canRetireCurrentTab
+        ? this.snapshot.openedSessionIds.includes(targetId)
+          ? this.snapshot.openedSessionIds.filter(id => id !== currentSessionId)
+          : this.snapshot.openedSessionIds.map(id => (id === currentSessionId ? targetId : id))
+        : undefined
+      this.selectSessionWithConversation(targetSession, nextSelectedProjectId, nextOpenedSessionIds)
+    }
+    const blankSession = sessionsForProject(this.snapshot.sessions, project).find(session => {
+      if (!session.blank) return false
+      if (!hasCarriedContent) return true
+      return (
+        (this.snapshot.sessionDrafts[session.sessionId] ?? '') === '' &&
+        (this.snapshot.sessionAttachments[session.sessionId]?.length ?? 0) === 0 &&
+        (this.snapshot.sessionFiles[session.sessionId]?.length ?? 0) === 0
+      )
+    })
+    if (blankSession !== undefined) {
+      applySwitchToTarget(blankSession)
+      return true
+    }
+    const previousProjectId = this.snapshot.selectedProjectId
+    const previousSelectedSessionId = this.snapshot.selectedSessionId
+    const previousNewSessionProjectId = this.snapshot.newSessionProjectId
+    this.set({ creatingSession: true, error: null })
+    try {
+      const value =
+        project.source === 'workspace'
+          ? await this.bridge.host.call('createSessionForWorkspace', {
+              workspaceId: project.workspaceId,
+            })
+          : await this.bridge.host.call('createSession', project.cwd ? { cwd: project.cwd } : {})
+      const sessionId = createdSessionId(value)
+      if (sessionId === undefined) throw new Error('运行核心创建新会话后没有返回有效标识')
+      await this.refreshSessions()
+      const sourceStillValid =
+        currentSessionId === null
+          ? this.snapshot.selectedSessionId === null &&
+            this.snapshot.newSessionProjectId === previousNewSessionProjectId
+          : this.snapshot.sessions.some(
+              item => item.sessionId === currentSessionId && item.blank === true,
+            ) &&
+            (sourceSessionId !== undefined ||
+              this.snapshot.selectedSessionId === previousSelectedSessionId)
+      if (this.snapshot.selectedProjectId !== previousProjectId || !sourceStillValid) return false
+      const created = this.snapshot.sessions.find(session => session.sessionId === sessionId)
+      if (created === undefined) throw new Error('新会话已创建，但尚未出现在会话列表中')
+      applySwitchToTarget(created)
+      return true
+    } catch (error) {
+      this.set({ error: errorMessage(error) })
+      return false
+    } finally {
+      this.set({ creatingSession: false })
+    }
+  }
+
   /** 将当前输入草稿实体化为会话但不发送消息，供授权等首轮前操作使用。 */
   async ensureComposerSession(): Promise<string | null> {
     if (this.snapshot.selectedSessionId !== null) return this.snapshot.selectedSessionId
@@ -2347,7 +2535,8 @@ export class WorkspaceStore {
       await this.refreshSessions()
       if (
         this.snapshot.newSessionProjectId !== projectId ||
-        this.snapshot.selectedProjectId !== projectId ||
+        (this.snapshot.selectedProjectId !== null &&
+          this.snapshot.selectedProjectId !== projectId) ||
         this.snapshot.selectedSessionId !== null
       )
         return null
@@ -3318,7 +3507,7 @@ export class WorkspaceStore {
     const projectId = this.snapshot.newSessionProjectId
     if (
       projectId === null ||
-      projectId !== this.snapshot.selectedProjectId ||
+      (this.snapshot.selectedProjectId !== null && projectId !== this.snapshot.selectedProjectId) ||
       this.snapshot.creatingSession ||
       textInput.trim() === ''
     )
@@ -3342,7 +3531,8 @@ export class WorkspaceStore {
         throw new Error('新会话已创建，但尚未出现在会话列表中')
       }
       if (
-        this.snapshot.selectedProjectId !== projectId ||
+        (this.snapshot.selectedProjectId !== null &&
+          this.snapshot.selectedProjectId !== projectId) ||
         this.snapshot.newSessionProjectId !== projectId
       )
         return false
@@ -3913,10 +4103,15 @@ export class WorkspaceStore {
   selectedProject(): ProjectSummary | undefined {
     const focusedProject = this.focusedProject()
     if (this.snapshot.selectedProjectId !== null) return focusedProject
-    const cwd = this.selectedSession()?.cwd
-    return cwd === undefined
+    const session = this.selectedSession()
+    if (session === undefined) {
+      return this.snapshot.newSessionProjectId === null
+        ? undefined
+        : this.snapshot.projects.find(project => project.id === this.snapshot.newSessionProjectId)
+    }
+    return session.cwd === undefined
       ? undefined
-      : this.snapshot.projects.find(project => project.cwd === cwd)
+      : this.snapshot.projects.find(project => project.cwd === session.cwd)
   }
 
   focusedProject(): ProjectSummary | undefined {

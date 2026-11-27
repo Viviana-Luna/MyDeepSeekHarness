@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -91,6 +92,8 @@ export function useConversationScroll({
   const sessionRef = useRef<string | null | typeof UNINITIALIZED_SESSION>(UNINITIALIZED_SESSION)
   const tailVersionRef = useRef<unknown>(tailVersion)
   const atBottomRef = useRef(true)
+  const lastScrollTopRef = useRef(0)
+  const lastBottomOffsetRef = useRef(0)
   const pendingPrependRef = useRef<PendingPrependAnchor | null>(null)
   const readingAnchorRef = useRef<{ element: HTMLElement; top: number; width: number } | null>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
@@ -100,7 +103,10 @@ export function useConversationScroll({
     const element = scrollRef.current
     if (element === null) return
     pendingPrependRef.current = null
-    element.scrollTop = bottomOffset(element)
+    const bottom = bottomOffset(element)
+    element.scrollTop = bottom
+    lastScrollTopRef.current = element.scrollTop
+    lastBottomOffsetRef.current = bottom
     atBottomRef.current = true
     setIsAtBottom(true)
     setHasUnread(false)
@@ -175,7 +181,19 @@ export function useConversationScroll({
         scrollTop: element.scrollTop,
       }
     }
-    const nextAtBottom = nearBottom(element, threshold)
+    // 侧栏展开等连续宽度动画会在异步 scroll 事件到达前拉高 scrollHeight；
+    // 只要此前已在可滚动底部且 scrollTop 未向上回退，保持吸底并交由 ResizeObserver 继续贴底。
+    const currentBottom = bottomOffset(element)
+    const previousBottom = lastBottomOffsetRef.current
+    const previousScrollTop = lastScrollTopRef.current
+    lastBottomOffsetRef.current = currentBottom
+    lastScrollTopRef.current = element.scrollTop
+    const stillFollowingExpandingBottom =
+      atBottomRef.current &&
+      previousBottom > 0 &&
+      currentBottom > previousBottom &&
+      element.scrollTop >= previousScrollTop - 2
+    const nextAtBottom = nearBottom(element, threshold) || stillFollowingExpandingBottom
     atBottomRef.current = nextAtBottom
     setIsAtBottom(nextAtBottom)
     if (nextAtBottom) setHasUnread(false)
@@ -188,6 +206,8 @@ export function useConversationScroll({
       if (port === null || !port.contains(target)) return
       pendingPrependRef.current = null
       port.scrollTop += relativeTop(target, port) - 28
+      lastScrollTopRef.current = port.scrollTop
+      lastBottomOffsetRef.current = bottomOffset(port)
       const nextAtBottom = nearBottom(port, threshold)
       atBottomRef.current = nextAtBottom
       setIsAtBottom(nextAtBottom)
@@ -198,36 +218,59 @@ export function useConversationScroll({
   )
 
   // 宽度变化会重新排版整段历史；离底时保留可见消息的位置，吸底时继续跟随最新。
-  useLayoutEffect(() => {
-    const port = scrollRef.current
-    if (port === null || typeof ResizeObserver === 'undefined') return
-    rememberReadingAnchor()
-    const observer = new ResizeObserver(() => {
-      if (pendingPrependRef.current !== null) return
-      const anchor = readingAnchorRef.current
-      if (atBottomRef.current) scrollToBottom()
-      else if (
-        anchor &&
-        port.contains(anchor.element) &&
-        anchor.width !== port.querySelector('ol')?.getBoundingClientRect().width
-      ) {
-        port.scrollTop += relativeTop(anchor.element, port) - anchor.top
-      }
-      rememberReadingAnchor()
-    })
-    observer.observe(port)
-    const list = port.querySelector('ol')
-    if (list) observer.observe(list)
-    return () => {
-      observer.disconnect()
-    }
-  }, [sessionKey, headVersion, scrollToBottom, rememberReadingAnchor])
+  // loading 或空状态占位切换会让滚动节点晚于 headVersion 挂载，每次提交核对实际 DOM 引用以免漏绑观察器。
+  const observerRef = useRef<ResizeObserver | null>(null)
+  const observedPortRef = useRef<HTMLElement | null>(null)
+  const observedListRef = useRef<HTMLElement | null>(null)
+  useEffect(
+    () => () => {
+      observerRef.current?.disconnect()
+      observerRef.current = null
+      observedPortRef.current = null
+      observedListRef.current = null
+    },
+    [],
+  )
 
   // 每次提交后核对版本，而不是依赖某个加载布尔值；这样 loading 占位导致滚动节点
   // 重新挂载时，首次可用的真实节点仍会执行会话吸底。
   useLayoutEffect(() => {
     const scrollport = scrollRef.current
-    if (scrollport === null) return
+    if (scrollport === null) {
+      if (observedPortRef.current !== null) {
+        observerRef.current?.disconnect()
+        observedPortRef.current = null
+        observedListRef.current = null
+      }
+      return
+    }
+    const list = scrollport.querySelector<HTMLElement>('ol')
+    if (
+      typeof ResizeObserver !== 'undefined' &&
+      (observedPortRef.current !== scrollport || observedListRef.current !== list)
+    ) {
+      observerRef.current?.disconnect()
+      const observer = new ResizeObserver(() => {
+        const port = scrollRef.current
+        if (port === null || pendingPrependRef.current !== null) return
+        const anchor = readingAnchorRef.current
+        if (atBottomRef.current) scrollToBottom()
+        else if (
+          anchor &&
+          port.contains(anchor.element) &&
+          anchor.width !== port.querySelector('ol')?.getBoundingClientRect().width
+        ) {
+          port.scrollTop += relativeTop(anchor.element, port) - anchor.top
+        }
+        rememberReadingAnchor()
+      })
+      observer.observe(scrollport)
+      if (list !== null) observer.observe(list)
+      observerRef.current = observer
+      observedPortRef.current = scrollport
+      observedListRef.current = list
+      rememberReadingAnchor()
+    }
 
     const scrollportChanged = mountedScrollportRef.current !== scrollport
     const firstMount = sessionRef.current === UNINITIALIZED_SESSION
@@ -245,6 +288,8 @@ export function useConversationScroll({
         ].find(element => element.dataset.conversationSeq === saved.anchorSeq)
         if (anchor !== undefined)
           scrollport.scrollTop += relativeTop(anchor, scrollport) - saved.anchorTop
+        lastScrollTopRef.current = scrollport.scrollTop
+        lastBottomOffsetRef.current = bottomOffset(scrollport)
         atBottomRef.current = false
         setIsAtBottom(false)
         setHasUnread(false)
@@ -266,6 +311,8 @@ export function useConversationScroll({
         scrollport.scrollTop = pending.scrollTop + (scrollport.scrollHeight - pending.scrollHeight)
       }
       pendingPrependRef.current = null
+      lastScrollTopRef.current = scrollport.scrollTop
+      lastBottomOffsetRef.current = bottomOffset(scrollport)
       const nextAtBottom = nearBottom(scrollport, threshold)
       atBottomRef.current = nextAtBottom
       setIsAtBottom(nextAtBottom)

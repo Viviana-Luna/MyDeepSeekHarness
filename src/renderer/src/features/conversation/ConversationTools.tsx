@@ -1,8 +1,5 @@
-/** renderer 对话侧边工具列；只拥有预设浮层的显隐，切换视图仍交给会话宿主。 */
-import { ListTree, MessageSquare, SlidersHorizontal } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { SessionPresetPicker } from '../../pages/workspace/components/rightpanel/chat-rightpanel/SessionPresetPicker.tsx'
-import { AnchoredPanel } from '../../shared/ui/AnchoredPanel.tsx'
+/** renderer 对话侧边工具列；提供对话与轨迹视图的纵向切换，切换状态由会话宿主持有。 */
+import { ListTree, MessageSquare } from 'lucide-react'
 import './conversation-tools.css'
 
 type SessionView = 'conversation' | 'trajectory'
@@ -11,24 +8,14 @@ const views = [
   { id: 'trajectory', label: '轨迹', icon: ListTree },
 ] as const
 
-/** 在正文右侧提供紧凑视图切换与预设入口，隐藏会话时释放浮层及键盘监听。 */
+/** 在正文右侧提供紧凑的对话／轨迹视图切换入口，支持方向键、Home 与 End 键盘导航。 */
 export function ConversationTools({
   view,
-  visible,
   onViewChange,
 }: {
   view: SessionView
-  visible: boolean
   onViewChange: (view: SessionView) => void
 }) {
-  const [open, setOpen] = useState(false)
-  const presetButton = useRef<HTMLButtonElement>(null)
-  const dismiss = useCallback(() => {
-    setOpen(false)
-  }, [])
-  useEffect(() => {
-    setOpen(false)
-  }, [view, visible])
   return (
     <aside className="conversation-tools" data-view={view} aria-label="会话工具">
       <div
@@ -69,36 +56,6 @@ export function ConversationTools({
           </button>
         ))}
       </div>
-      <button
-        ref={presetButton}
-        type="button"
-        className="view-tool-button"
-        aria-label="会话预设"
-        aria-haspopup="dialog"
-        aria-expanded={open && visible}
-        title="会话预设"
-        onClick={() => {
-          if (visible) setOpen(value => !value)
-        }}
-      >
-        <SlidersHorizontal size={14} aria-hidden="true" />
-      </button>
-      <AnchoredPanel
-        open={open && visible}
-        anchor={presetButton.current}
-        side="bottom"
-        align="end"
-        motion="morph"
-        focusOnOpen
-        className="conversation-preset-panel"
-        label="会话预设"
-        onDismiss={dismiss}
-      >
-        <header className="conversation-preset-panel__header">
-          <strong>会话预设</strong>
-        </header>
-        <SessionPresetPicker />
-      </AnchoredPanel>
     </aside>
   )
 }

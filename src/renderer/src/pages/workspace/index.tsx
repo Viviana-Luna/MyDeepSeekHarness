@@ -219,11 +219,7 @@ function DesktopWorkspace() {
         data-panel-capsules-persistent={snapshot.panelCapsulesPersistent || undefined}
       >
         <div className="window-drag-region" aria-hidden="true" />
-        <Topbar
-          visible={sessionTabsVisible}
-          floatingActions={floatingTabActions}
-          searchTrigger={snapshot.navigationCollapsed ? searchTrigger : null}
-        />
+        <Topbar visible={sessionTabsVisible} floatingActions={floatingTabActions} />
         <LeftPanel searchTrigger={snapshot.navigationCollapsed ? null : searchTrigger} />
         <MainPanel windowControlsInTopbar={sessionTabsVisible} />
         <PanelDividers />

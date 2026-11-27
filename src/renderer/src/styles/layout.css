@@ -39,12 +39,12 @@
   --session-chrome-reveal: 1;
   --panel-motion-duration: 420ms;
   --panel-motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  /* 左侧导航浮岛较中央主画布微沉半档，拉出前景与侧栏的自然层次，避免全屏同色依赖粗边线硬切。 */
-  --island-face: light-dark(#fafbfe, #171a21);
-  --sidebar-face: light-dark(#f2f4f9, #13161c);
-  --island-outline: light-dark(rgb(15 23 42 / 0.095), rgb(255 255 255 / 0.085));
-  --relief-light: light-dark(rgb(255 255 255 / 0.68), rgb(226 234 248 / 0.065));
-  --relief-dark: light-dark(rgb(15 23 42 / 0.12), rgb(0 0 0 / 0.34));
+  /* 左侧导航浮岛较中央主画布微沉半档，拉出前景与侧栏的自然层次，暗色下保留足够清晰的轮廓描边。 */
+  --island-face: light-dark(#fafbfe, #1b1f29);
+  --sidebar-face: light-dark(#f2f4f9, #151922);
+  --island-outline: light-dark(rgb(15 23 42 / 0.095), rgb(222 232 252 / 0.16));
+  --relief-light: light-dark(rgb(255 255 255 / 0.68), rgb(226 234 248 / 0.11));
+  --relief-dark: light-dark(rgb(15 23 42 / 0.12), rgb(0 0 0 / 0.36));
   --relief-raised: inset 0 1px 0 var(--relief-light), 0 2px 6px var(--relief-dark);
   --relief-recessed: inset 0 1px 2px var(--relief-dark), inset 0 -1px 0 var(--relief-light);
   /* 阴影随间隙收窄，给两块浮岛之间的画布留出可见空间。 */
@@ -70,6 +70,7 @@
   --composer-readings-size: 24px;
   --composer-readings-extra: 0px;
   --composer-todos-extra: 0px;
+  --composer-workspace-extra: 0px;
   --composer-bottom-inset: var(--composer-inset);
   --composer-block-size: clamp(
     104px,
@@ -77,7 +78,7 @@
     calc(
       100vh - var(--window-controls-height, 0px) - var(--window-edge) * 2 - var(--composer-inset) -
         var(--composer-bottom-inset) - 222px - var(--composer-readings-extra) -
-        var(--composer-todos-extra)
+        var(--composer-todos-extra) - var(--composer-workspace-extra)
     )
   );
   /* 外壳钉在视口上：根链一旦被程序化滚动（见 base.css 与 app.tsx），
@@ -107,7 +108,10 @@
   --composer-bottom-inset: 6px;
 }
 
-/* 为待办预留高度，拖高输入框后展开清单也不会把正文和操作挤出窗口。 */
+/* 为待办与空会话工作区条预留高度，拖高输入框后也不会把正文和操作挤出窗口。 */
+.app-shell:has(.composer-dock .composer-workspace-bar) {
+  --composer-workspace-extra: 34px;
+}
 .app-shell:has(.composer-dock .todo-card) {
   --composer-todos-extra: 44px;
 }
@@ -127,7 +131,8 @@
       calc(
         100vh - var(--window-controls-height, 0px) - var(--window-edge) * 2 -
           var(--composer-inset) - var(--composer-bottom-inset) - 222px -
-          var(--composer-readings-extra) - var(--composer-todos-extra)
+          var(--composer-readings-extra) - var(--composer-todos-extra) -
+          var(--composer-workspace-extra)
       )
     )
   );
@@ -307,10 +312,17 @@
   flex: 0 0 auto;
   min-height: 0;
   flex-direction: column;
-  gap: var(--composer-readings-gap);
   width: var(--conversation-width);
   max-width: calc(100% - var(--composer-inset) * 2);
   margin: 8px var(--composer-inset) var(--composer-bottom-inset);
+}
+/* 输入卡片与读数条的锚定容器，确保高度拖动条始终贴合输入卡片顶边，不受上方工作区条或待办卡片影响。 */
+.composer-dock__body {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--composer-readings-gap);
 }
 .composer-card {
   position: relative;
@@ -322,7 +334,7 @@
   /* 允许边缘按钮（如右下角发送键）弹性拉伸时略微越出卡片边线而不被裁切 */
   overflow: visible;
   padding: 11px 13px 10px;
-  border: 1px solid light-dark(rgb(15 23 42 / 0.11), rgb(255 255 255 / 0.11));
+  border: 1px solid light-dark(rgb(15 23 42 / 0.11), rgb(222 232 252 / 0.16));
   border-radius: 18px;
   background: light-dark(
     linear-gradient(180deg, #ffffff 0%, #f7f9fc 100%),
@@ -360,7 +372,7 @@
   margin: 0 0 4px;
 }
 
-.composer-dock:has(.composer-attachments, .composer-file-attachments) > .composer-card {
+.composer-dock:has(.composer-attachments, .composer-file-attachments) .composer-card {
   flex-basis: auto;
   min-height: max(164px, var(--composer-block-size));
 }
@@ -815,12 +827,37 @@
   }
 }
 
-/* Windows 自绘顶部按钮；原生背景合成不可用时保留实色画布。 */
+/* Windows 自绘顶部按钮与无边框外轮廓；原生背景合成不可用时保留实色画布。 */
 :root[data-platform='win32'] {
   background-color: var(--canvas-bg);
 }
 :root[data-platform='win32'][data-canvas-composition='acrylic'] {
   background-color: transparent;
+}
+/* Windows 无厚边框圆角窗口叠在其他黑色窗口上方时，贴合裁剪圆弧内侧绘制 1px 连续外轮廓；最大化或全屏矩形窗口隐藏。 */
+:root[data-platform='win32']:not([data-window-maximized='true']):not([data-window-square='true'])
+  .app-shell::after {
+  position: fixed;
+  inset: 0 var(--window-clip-right, 0px) var(--window-clip-bottom, 0px) 0;
+  z-index: 9999;
+  border-radius: var(--window-outline-radius, var(--window-outer-radius, 18px));
+  box-shadow:
+    inset 0 0 0 1px light-dark(rgb(15 23 42 / 0.14), rgb(222 232 255 / 0.28)),
+    inset 0 1px 0 light-dark(rgb(255 255 255 / 0.55), rgb(255 255 255 / 0.16));
+  pointer-events: none;
+  content: '';
+}
+@media (prefers-contrast: more) {
+  :root[data-platform='win32']:not([data-window-maximized='true']):not([data-window-square='true'])
+    .app-shell::after {
+    box-shadow: inset 0 0 0 1px light-dark(rgb(15 23 42 / 0.42), rgb(255 255 255 / 0.48));
+  }
+}
+@media (forced-colors: active) {
+  :root[data-platform='win32']:not([data-window-maximized='true']):not([data-window-square='true'])
+    .app-shell::after {
+    box-shadow: inset 0 0 0 1px CanvasText;
+  }
 }
 :root[data-platform='win32'] .sidebar-island > .project-focus {
   padding-left: 6px;
@@ -856,6 +893,27 @@
 .workbench-surface:has(> .windows-chrome) > .work-tab-panel,
 .workbench-surface:has(> .windows-chrome) > .workbench-divider {
   grid-row: 2;
+}
+/* 单窗格对话与空会话顶缘无横向工具栏，窗口控制条透明叠加于顶缘，让像素工坊背景与对话滚出区无缝延伸到顶。 */
+.workbench-surface:not([data-workbench-split]):has(
+    > .work-tab-panel:not([hidden]) [data-composer-overlay]
+  ) {
+  grid-template-rows: minmax(0, 1fr);
+}
+.workbench-surface:not([data-workbench-split]):has(
+    > .work-tab-panel:not([hidden]) [data-composer-overlay]
+  )
+  > .windows-chrome,
+.main-island:not(.workbench-surface):has(.workspace-island-content [data-composer-overlay])
+  > .windows-chrome {
+  position: absolute;
+  inset: 0 0 auto 0;
+}
+.workbench-surface:not([data-workbench-split]):has(
+    > .work-tab-panel:not([hidden]) [data-composer-overlay]
+  )
+  > .work-tab-panel {
+  grid-row: 1;
 }
 .work-tab-panel {
   display: flex;

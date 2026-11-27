@@ -31,25 +31,6 @@
 .project-focus {
   border-bottom: 1px solid var(--line);
 }
-.session-preset-select {
-  width: 100%;
-}
-.session-preset-select .ant-select-selector {
-  border-color: var(--mode-lens-border) !important;
-  border-radius: 10px !important;
-  background: var(--mode-lens) !important;
-  box-shadow: var(--mode-lens-shadow);
-}
-.session-preset-card > small {
-  display: block;
-  margin-top: 6px;
-  color: var(--muted);
-  font-size: var(--text-caption);
-}
-.session-preset-card > [role='alert'] {
-  color: var(--negative);
-  overflow-wrap: anywhere;
-}
 .project-selector {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;

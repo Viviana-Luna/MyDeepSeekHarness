@@ -185,6 +185,26 @@ export function TrajectoryView({
         正在读取轨迹…
       </div>
     )
+  const isEmptyTrace = records.length === 0 && !hasMore
+  if (isEmptyTrace) {
+    return (
+      <section
+        id="trajectory-view"
+        className={`workspace-view ${styles.view} ${styles.emptyView}`}
+        aria-label="会话轨迹"
+      >
+        {(notice || error) && (
+          <p className={styles.notice} role={error ? 'alert' : 'status'}>
+            {error ? `无法读取轨迹：${error}` : notice}
+          </p>
+        )}
+        <div className={`${styles.state} ${styles.emptyStage}`} role="status">
+          <strong>这个对话还没有轨迹</strong>
+          <span>开始对话后，这里会按轮次记录输入、模型与工具。</span>
+        </div>
+      </section>
+    )
+  }
   return (
     <section id="trajectory-view" className={`workspace-view ${styles.view}`} aria-label="会话轨迹">
       <header className={styles.toolbar}>

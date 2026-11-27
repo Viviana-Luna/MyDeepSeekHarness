@@ -120,8 +120,15 @@
 .app-shell[data-tab-actions-floating='true'][data-workspace-split]
   .main-island
   .work-tab-panel[data-split-pane='right']
-  .connections-heading {
-  padding-right: 92px;
+  .connections-heading,
+.app-shell[data-tab-actions-floating='true']:not([data-workspace-split])
+  .main-island
+  .connections-terminal,
+.app-shell[data-tab-actions-floating='true'][data-workspace-split]
+  .main-island
+  .work-tab-panel[data-split-pane='right']
+  .connections-terminal {
+  padding-right: 56px;
 }
 .connections-actions {
   display: flex;

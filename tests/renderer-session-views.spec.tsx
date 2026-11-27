@@ -1928,6 +1928,17 @@ describe('轨迹视图', () => {
     })
     expect(screen.getByText('没有匹配的轨迹')).toBeTruthy()
   })
+
+  it('空会话轨迹视图不渲染顶部控制按钮、搜索框与空时间轴轨道', () => {
+    render(<TrajectoryView history={[]} canExport />)
+
+    expect(screen.getByText('这个对话还没有轨迹')).toBeTruthy()
+    expect(screen.queryByRole('searchbox', { name: '搜索轨迹' })).toBeNull()
+    expect(screen.queryByRole('toolbar', { name: '轨迹控制' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '按真实时长显示' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '导出日志' })).toBeNull()
+    expect(screen.queryByLabelText('轨迹概览')).toBeNull()
+  })
 })
 
 describe('会话搜索', () => {

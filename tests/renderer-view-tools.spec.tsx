@@ -1,28 +1,12 @@
 // @vitest-environment jsdom
-/** 验证 renderer 的会话侧边入口、浮层清理和 Git 底部操作，几何与主题由 Electron 验收。 */
+/** 验证 renderer 的会话侧边入口与 Git 底部操作，几何与主题由 Electron 验收。 */
 import { readFileSync } from 'node:fs'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ConfigProvider } from 'antd'
 import { ConversationTools } from '../src/renderer/src/features/conversation/ConversationTools.tsx'
 import { SourceControlView } from '../src/renderer/src/features/source-control/SourceControlView.tsx'
 import type { GitDiff } from '../src/renderer/src/features/source-control/source-control-types.ts'
 
-const mocks = vi.hoisted(() => ({
-  store: {
-    callHost: vi.fn(async () => {
-      throw new Error('预设目录暂时不可用')
-    }),
-  },
-}))
-vi.mock('../src/renderer/src/hooks/useWorkspace.ts', () => ({
-  useWorkspaceStore: () => mocks.store,
-  useWorkspaceSnapshot: () => ({
-    sessions: [],
-    selectedSessionId: null,
-    hostStatus: { kind: 'ready' },
-  }),
-}))
 vi.mock('../src/renderer/src/features/source-control/SourceControlProvider.tsx', () => ({
   useSourceControl: () => ({ gitSummary: null, selectedDiff: null, selectedCommit: null }),
 }))
@@ -46,53 +30,24 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function renderTools(visible: boolean) {
-  return (
-    <ConfigProvider theme={{ token: { motion: false } }}>
-      <ConversationTools visible={visible} view="conversation" onViewChange={vi.fn()} />
-    </ConfigProvider>
-  )
-}
-
 describe('紧凑视图工具', () => {
-  it('会话视图使用纵向键盘切换，并保留可访问名称与焦点', () => {
+  it('会话视图使用纵向键盘切换，并保留可访问名称与焦点，不再渲染重复的会话预设入口', () => {
     const onViewChange = vi.fn()
-    const view = render(
-      <ConversationTools visible view="conversation" onViewChange={onViewChange} />,
-    )
+    const view = render(<ConversationTools view="conversation" onViewChange={onViewChange} />)
     expect(screen.getByRole('tablist', { name: '会话视图' }).getAttribute('aria-orientation')).toBe(
       'vertical',
     )
+    expect(screen.queryByRole('button', { name: '会话预设' })).toBeNull()
     const conversation = screen.getByRole('tab', { name: '对话' })
     const trajectory = screen.getByRole('tab', { name: '轨迹' })
     fireEvent.keyDown(conversation, { key: 'ArrowDown' })
     expect(onViewChange).toHaveBeenLastCalledWith('trajectory')
     expect(document.activeElement).toBe(trajectory)
-    view.rerender(<ConversationTools visible view="trajectory" onViewChange={onViewChange} />)
+    view.rerender(<ConversationTools view="trajectory" onViewChange={onViewChange} />)
     expect(trajectory.getAttribute('aria-selected')).toBe('true')
     fireEvent.keyDown(trajectory, { key: 'Home' })
     expect(onViewChange).toHaveBeenLastCalledWith('conversation')
     expect(document.activeElement).toBe(conversation)
-  })
-
-  it('预设目录失败保留提示，Escape 归还焦点，隐藏会话后浮层不残留', async () => {
-    const view = render(renderTools(true))
-    const trigger = screen.getByRole('button', { name: '会话预设' })
-    expect(screen.queryByRole('combobox')).toBeNull()
-    fireEvent.click(trigger)
-    expect(await screen.findByRole('dialog', { name: '会话预设' })).toBeTruthy()
-    expect(await screen.findByRole('alert')).toHaveProperty('textContent', '预设目录暂时不可用')
-    fireEvent.keyDown(document, { key: 'Escape' })
-    expect(trigger.getAttribute('aria-expanded')).toBe('false')
-    expect(document.activeElement).toBe(trigger)
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '会话预设' })).toBeNull())
-    fireEvent.click(trigger)
-    await screen.findByRole('dialog', { name: '会话预设' })
-    view.rerender(renderTools(false))
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '会话预设' })).toBeNull())
-    view.rerender(renderTools(true))
-    expect(trigger.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByRole('combobox')).toBeNull()
   })
 
   it('Git 布局入口在滚动正文之后，切换不丢失代码和截断提示', () => {

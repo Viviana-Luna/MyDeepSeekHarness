@@ -534,6 +534,13 @@
 .state strong {
   color: var(--text);
 }
+.emptyView {
+  background: transparent;
+}
+.emptyStage {
+  flex: 1;
+  min-height: 0;
+}
 @container trajectory (max-width: 780px) {
   .metrics {
     display: none;

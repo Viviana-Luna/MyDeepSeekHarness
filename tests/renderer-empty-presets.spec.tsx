@@ -112,7 +112,7 @@ function mockPresetGeometry(group: HTMLElement) {
 
 describe('空会话预设', () => {
   it('选择真实清单中的预设，损坏项和已开始的会话不可切换', async () => {
-    const view = render(<SessionPresetPicker variant="pills" />)
+    const view = render(<SessionPresetPicker />)
     const standard = await screen.findByRole('button', { name: '标准模式' })
     expect(standard.getAttribute('aria-pressed')).toBe('true')
     expect((screen.getByRole('button', { name: '不可用' }) as HTMLButtonElement).disabled).toBe(
@@ -127,7 +127,7 @@ describe('空会话预设', () => {
     )
     await waitFor(() => expect(mocked.refreshSessions).toHaveBeenCalled())
     mocked.snapshot.sessions[0]!.blank = false
-    view.rerender(<SessionPresetPicker variant="pills" />)
+    view.rerender(<SessionPresetPicker />)
     expect((screen.getByRole('button', { name: '编码' }) as HTMLButtonElement).disabled).toBe(true)
     mocked.snapshot.sessions[0]!.blank = true
   })
@@ -145,7 +145,7 @@ describe('空会话预设', () => {
     })
     const session = mocked.snapshot.sessions[0]!
     session.agentPreset = 'preset-1'
-    const view = render(<SessionPresetPicker variant="pills" />)
+    const view = render(<SessionPresetPicker />)
     const more = await screen.findByRole('button', { name: '更多预设' })
     const group = screen.getByRole('group', { name: 'Agent 预设' })
     expect(within(group).getAllByRole('button')).toHaveLength(5)
@@ -174,7 +174,7 @@ describe('空会话预设', () => {
     session.agentPreset = 'preset-7'
     finish({})
     await waitFor(() => expect(group.getAttribute('aria-busy')).toBe('false'))
-    view.rerender(<SessionPresetPicker variant="pills" />)
+    view.rerender(<SessionPresetPicker />)
     expect(more.getAttribute('aria-pressed')).toBe('true')
     fireEvent.click(more)
     expect(screen.getByRole('menuitemradio', { name: '预设 7' }).getAttribute('aria-checked')).toBe(

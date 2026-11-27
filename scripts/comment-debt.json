@@ -174,7 +174,6 @@
     "src/renderer/src/pages/workspace/components/leftpanel/index.tsx",
     "src/renderer/src/pages/workspace/components/mainpanel/chat-mainpanel/index.tsx",
     "src/renderer/src/pages/workspace/components/mainpanel/index.tsx",
-    "src/renderer/src/pages/workspace/components/rightpanel/chat-rightpanel/SessionPresetPicker.tsx",
     "src/renderer/src/pages/workspace/components/rightpanel/chat-rightpanel/index.tsx",
     "src/renderer/src/pages/workspace/components/rightpanel/index.tsx",
     "src/renderer/src/pages/workspace/components/topbar/useSessionTabGlass.ts",

@@ -18,6 +18,7 @@ import {
 import {
   reconcileOpenedDiffs,
   resolveRefreshedDiff,
+  resolveSourceControlTarget,
   type SourceControlState,
 } from './source-control-refresh.ts'
 import {
@@ -55,19 +56,15 @@ function message(error: unknown): string {
 export function SourceControlProvider({ children }: { children: ReactNode }) {
   const store = useWorkspaceStore()
   const snapshot = useWorkspaceSnapshot()
-  const selectedSession = snapshot.sessions.find(
-    session => session.sessionId === snapshot.selectedSessionId,
-  )
-  const projectId =
-    snapshot.selectedProjectId ??
-    snapshot.projects.find(project => project.cwd === selectedSession?.cwd)?.id ??
-    null
-  const projectAccessId =
-    snapshot.projects.find(project => project.id === projectId)?.projectAccessId ?? null
+  const { projectId, projectAccessId } = resolveSourceControlTarget(snapshot)
   const projectIdRef = useRef(projectId)
   projectIdRef.current = projectId
   const sourceControlRequestGeneration = useRef(0)
-  const [gitSummary, setGitSummary] = useState<GitSummary | null>(null)
+  const [summaryByProject, setSummaryByProject] = useState<[string | null, GitSummary | null]>([
+    null,
+    null,
+  ])
+  const gitSummary = summaryByProject[0] === projectId ? summaryByProject[1] : null
   const [gitGraph, setGitGraph] = useState<GitCommit[]>([])
   const [gitRevision, setGitRevision] = useState(0)
   const [selectedCommit, setSelectedCommit] = useState<GitCommitDetail | null>(null)
@@ -121,7 +118,7 @@ export function SourceControlProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const requestGeneration = ++sourceControlRequestGeneration.current
     cancelAutoRefreshRef.current()
-    setGitSummary(null)
+    setSummaryByProject([null, null])
     setGitGraph([])
     setGitRevision(0)
     setOpenedDiffs([])
@@ -144,7 +141,7 @@ export function SourceControlProvider({ children }: { children: ReactNode }) {
           projectIdRef.current !== projectId
         )
           return
-        setGitSummary(summary)
+        setSummaryByProject([projectId, summary])
         setGitGraph(graph)
       })
       .catch((caught: unknown) => {
@@ -196,7 +193,7 @@ export function SourceControlProvider({ children }: { children: ReactNode }) {
         projectIdRef.current !== requestProjectId
       )
         return
-      setGitSummary(summary)
+      setSummaryByProject([requestProjectId, summary])
       setGitGraph(graph)
       setOpenedDiffs(current => reconcileOpenedDiffs(current, summary, nextDiff, diffKey))
       setSelectedDiff(current => (current === currentDiff ? nextDiff : current))
@@ -229,7 +226,7 @@ export function SourceControlProvider({ children }: { children: ReactNode }) {
   })
 
   const applySilentUpdate = useCallback((patch: SilentGitRefreshPatch) => {
-    if (patch.summary !== undefined) setGitSummary(patch.summary)
+    if (patch.summary !== undefined) setSummaryByProject([projectIdRef.current, patch.summary])
     if (patch.graph !== undefined) setGitGraph(patch.graph)
     setOpenedDiffs(current =>
       reconcileOpenedDiffs(current, patch.summaryForDiffs, patch.nextDiff, diffKey),
@@ -407,7 +404,7 @@ export function SourceControlProvider({ children }: { children: ReactNode }) {
           sourceControlRequestGeneration.current === requestGeneration &&
           projectIdRef.current === requestProjectId
         )
-          setGitSummary(summary)
+          setSummaryByProject([requestProjectId, summary])
       } catch {
         // 保留原始写操作错误；刷新失败不应覆盖更有用的原因。
       }
@@ -434,7 +431,7 @@ export function SourceControlProvider({ children }: { children: ReactNode }) {
           projectIdRef.current !== requestProjectId
         )
           return false
-        setGitSummary(summary)
+        setSummaryByProject([requestProjectId, summary])
         setSelectedDiff(null)
         setError(null)
         return true
@@ -481,7 +478,7 @@ export function SourceControlProvider({ children }: { children: ReactNode }) {
           projectIdRef.current !== requestProjectId
         )
           return false
-        setGitSummary(summary)
+        setSummaryByProject([requestProjectId, summary])
         setSelectedDiff(null)
         setError(null)
         return true
@@ -523,7 +520,7 @@ export function SourceControlProvider({ children }: { children: ReactNode }) {
           projectIdRef.current !== requestProjectId
         )
           return false
-        setGitSummary(result.summary)
+        setSummaryByProject([requestProjectId, result.summary])
         setGitGraph(result.graph)
         setSelectedDiff(null)
         setSelectedCommit(null)
@@ -560,6 +557,7 @@ export function SourceControlProvider({ children }: { children: ReactNode }) {
       closeDiff,
       closeDiffs,
       gitSummary,
+      gitSummaryProjectId: gitSummary === null ? null : projectId,
       gitGraph,
       gitRevision,
       selectedCommit,
@@ -585,6 +583,7 @@ export function SourceControlProvider({ children }: { children: ReactNode }) {
       closeDiff,
       closeDiffs,
       gitSummary,
+      projectId,
       gitGraph,
       gitRevision,
       selectedCommit,

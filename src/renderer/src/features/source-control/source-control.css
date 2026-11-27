@@ -656,7 +656,7 @@
   .main-island
   .work-tab-panel[data-split-pane='right']
   .diff-path-bar {
-  padding-right: 92px;
+  padding-right: 56px;
 }
 .diff-path-bar > svg {
   flex: none;

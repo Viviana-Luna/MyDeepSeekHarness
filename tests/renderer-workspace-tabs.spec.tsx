@@ -16,6 +16,7 @@ import { Topbar } from '../src/renderer/src/pages/workspace/components/topbar/in
 const mocks = vi.hoisted(() => ({
   view: 'files',
   unassigned: false,
+  allProjectsMode: false,
   navigationCollapsed: false,
   drag: null as
     | null
@@ -25,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   selectFile: vi.fn(),
   closeFile: vi.fn(),
   pin: vi.fn(),
+  setView: vi.fn(),
 }))
 vi.mock('../src/renderer/src/hooks/useWorkspace.ts', () => ({
   useWorkspaceSnapshot: () => ({
@@ -40,12 +42,13 @@ vi.mock('../src/renderer/src/hooks/useWorkspace.ts', () => ({
       { id: 'project', name: '项目', cwd: '/project', source: 'legacy', sessionIds: ['chat'] },
     ],
     unreadSessionIds: [],
-    selectedProjectId: 'project',
+    selectedProjectId: mocks.allProjectsMode ? null : 'project',
     hostStatus: { kind: 'ready' },
   }),
   useWorkspaceStore: () => ({
-    selectedProject: () => ({ id: 'project' }),
+    selectedProject: () => (mocks.allProjectsMode ? undefined : { id: 'project' }),
     moveSessionTab: vi.fn(),
+    setView: mocks.setView,
   }),
 }))
 vi.mock('../src/renderer/src/features/project-workspace/ProjectWorkspaceProvider.tsx', () => ({
@@ -86,6 +89,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.view = 'files'
   mocks.unassigned = false
+  mocks.allProjectsMode = false
   mocks.navigationCollapsed = false
 })
 afterEach(cleanup)
@@ -104,17 +108,19 @@ function makeWorkTab(
 }
 
 describe('统一工作标签导航', () => {
-  it('侧栏展开时不重复显示标签组选择，收起后恢复入口且保留标签状态', () => {
-    const view = render(<Topbar visible searchTrigger={null} />)
+  it('侧栏展开时不重复显示标签组选择，收起后恢复入口、保留标签状态且顶栏不显示搜索按钮', () => {
+    const view = render(<Topbar visible />)
     const file = screen.getByRole('tab', { name: 'demo.ts' })
     expect(screen.queryByRole('button', { name: /切换标签组/u })).toBeNull()
+    expect(document.querySelector('.session-search-trigger')).toBeNull()
     expect(file.getAttribute('aria-selected')).toBe('true')
     mocks.navigationCollapsed = true
-    view.rerender(<Topbar visible searchTrigger={null} />)
+    view.rerender(<Topbar visible />)
     expect(screen.getByRole('button', { name: '切换标签组：项目' })).toBeTruthy()
+    expect(document.querySelector('.session-search-trigger')).toBeNull()
     expect(screen.getByRole('tab', { name: 'demo.ts' })).toBe(file)
     mocks.navigationCollapsed = false
-    view.rerender(<Topbar visible searchTrigger={null} />)
+    view.rerender(<Topbar visible />)
     expect(screen.queryByRole('button', { name: /切换标签组/u })).toBeNull()
     expect(screen.getByRole('tab', { name: 'demo.ts' })).toBe(file)
     expect(mocks.selectFile).not.toHaveBeenCalled()
@@ -123,15 +129,15 @@ describe('统一工作标签导航', () => {
 
   it('展开侧栏时卸载已打开的标签组菜单，再收起不自动重开', () => {
     mocks.navigationCollapsed = true
-    const view = render(<Topbar visible searchTrigger={null} />)
+    const view = render(<Topbar visible />)
     fireEvent.click(screen.getByRole('button', { name: '切换标签组：项目' }))
     expect(screen.getByRole('menu', { name: '切换标签组' })).toBeTruthy()
     mocks.navigationCollapsed = false
-    view.rerender(<Topbar visible searchTrigger={null} />)
+    view.rerender(<Topbar visible />)
     expect(screen.queryByRole('menu', { name: '切换标签组' })).toBeNull()
     expect(screen.queryByRole('button', { name: /切换标签组/u })).toBeNull()
     mocks.navigationCollapsed = true
-    view.rerender(<Topbar visible searchTrigger={null} />)
+    view.rerender(<Topbar visible />)
     expect(
       screen.getByRole('button', { name: '切换标签组：项目' }).getAttribute('aria-expanded'),
     ).toBe('false')
@@ -143,7 +149,7 @@ describe('统一工作标签导航', () => {
   it('无项目聊天即使使用相同工作目录，也按会话归属切换顶部组', () => {
     mocks.unassigned = true
     mocks.view = 'conversation'
-    render(<Topbar visible searchTrigger={null} />)
+    render(<Topbar visible />)
     expect(screen.getByRole('tab', { name: '无项目聊天' }).getAttribute('aria-selected')).toBe(
       'true',
     )
@@ -154,7 +160,7 @@ describe('统一工作标签导航', () => {
     let workspaceTabs!: NonNullable<ReturnType<typeof useWorkspaceTabs>>
     function TabHarness() {
       workspaceTabs = useWorkspaceTabs()!
-      return <Topbar visible searchTrigger={null} />
+      return <Topbar visible />
     }
     const view = render(
       <WorkspaceTabsProvider>
@@ -242,7 +248,7 @@ describe('统一工作标签导航', () => {
   it('文件动作保留领域保护，拖动展示已有正文快照，取消后不改变标签', () => {
     const view = render(
       <>
-        <Topbar visible searchTrigger={null} />
+        <Topbar visible />
         <section data-work-panel="file:project:src/demo.ts">
           <div data-preview-scroll>
             <p>预览中的真实文件内容</p>
@@ -293,7 +299,7 @@ describe('统一工作标签导航', () => {
   })
 
   it('键盘删除只关闭当前聚焦的资源，不误关闭后台聊天', () => {
-    render(<Topbar visible searchTrigger={null} />)
+    render(<Topbar visible />)
     fireEvent.keyDown(screen.getByRole('tab', { name: 'demo.ts' }), { key: 'Delete' })
     expect(mocks.closeFile).toHaveBeenCalledWith('src/demo.ts')
     expect(mocks.closeSession).not.toHaveBeenCalled()
@@ -332,7 +338,7 @@ describe('统一工作标签导航', () => {
   })
 
   it('顶栏隐藏时渲染唯一 Liquid Glass 浮动操作胶囊，且打开平铺选择与新建菜单互不重复', () => {
-    const view = render(<Topbar visible={false} searchTrigger={null} />)
+    const view = render(<Topbar visible={false} />)
     const floating = document.querySelector<HTMLElement>('[data-floating-tab-actions="true"]')
     const header = document.querySelector<HTMLElement>('.session-chrome')
     expect(floating).not.toBeNull()
@@ -351,7 +357,7 @@ describe('统一工作标签导航', () => {
     fireEvent.click(screen.getByRole('button', { name: '平铺选择标签' }))
     expect(screen.getByRole('textbox', { name: '搜索工作标签' })).toBeTruthy()
 
-    view.rerender(<Topbar visible searchTrigger={null} />)
+    view.rerender(<Topbar visible />)
     expect(document.querySelector('[data-floating-tab-actions="true"]')).toBeNull()
     expect(header?.querySelector('[aria-label="平铺选择标签"]')).not.toBeNull()
     expect(header?.querySelector('[aria-label="新建工作标签"]')).not.toBeNull()
@@ -363,13 +369,13 @@ describe('统一工作标签导航', () => {
     const previousPlatform = document.documentElement.dataset.platform
     document.documentElement.dataset.platform = 'win32'
     try {
-      const view = render(<Topbar visible={false} searchTrigger={null} />)
+      const view = render(<Topbar visible={false} />)
       const header = document.querySelector<HTMLElement>('.session-chrome')
       expect(document.querySelector('[data-floating-tab-actions="true"]')).not.toBeNull()
       expect(header?.querySelector('[aria-label="平铺选择标签"]')).toBeNull()
       expect(header?.querySelector('[aria-label="新建工作标签"]')).toBeNull()
 
-      view.rerender(<Topbar visible searchTrigger={null} />)
+      view.rerender(<Topbar visible />)
       const floating = document.querySelector<HTMLElement>('[data-floating-tab-actions="true"]')
       expect(floating).not.toBeNull()
       expect(header?.getAttribute('aria-hidden')).toBe('false')
@@ -402,5 +408,32 @@ describe('统一工作标签导航', () => {
       </ConversationFrame>,
     )
     expect(document.querySelector('[data-top-progressive-blur="true"]')).toBeNull()
+  })
+
+  it('全部项目模式下新建浏览器归入当前活跃项目分组，且 replaceSplitTab 支持原位替换分屏成员', () => {
+    mocks.allProjectsMode = true
+    mocks.view = 'conversation'
+    let workspaceTabs!: NonNullable<ReturnType<typeof useWorkspaceTabs>>
+    function Harness() {
+      workspaceTabs = useWorkspaceTabs()!
+      return <Topbar visible />
+    }
+    render(
+      <WorkspaceTabsProvider>
+        <Harness />
+      </WorkspaceTabsProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '新建工作标签' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '新浏览器' }))
+    expect(workspaceTabs.browserTabs).toHaveLength(1)
+    expect(workspaceTabs.browserTabs[0]?.projectId).toBe('project')
+
+    act(() => {
+      expect(workspaceTabs.splitTab('session-b', 'session-a', 'right')).toBe(true)
+      expect(workspaceTabs.replaceSplitTab('session-b', 'session-c')).toBe(true)
+    })
+    expect(workspaceTabs.splitGroups[0]?.tabs).toEqual(['session-a', 'session-c'])
+    expect(workspaceTabs.focusedTabId).toBe('session-c')
   })
 })

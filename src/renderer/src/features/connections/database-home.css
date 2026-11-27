@@ -34,7 +34,7 @@
   .work-tab-panel[data-split-pane='right']
   .database-home__panel:first-child
   .database-home__header {
-  padding-right: 92px;
+  padding-right: 56px;
 }
 .database-home__heading {
   display: flex;

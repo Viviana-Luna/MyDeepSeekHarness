@@ -20,6 +20,7 @@ export interface SourceControlState {
   closeDiff(id: string): void
   closeDiffs(): void
   gitSummary: GitSummary | null
+  gitSummaryProjectId?: string | null
   gitGraph: readonly GitCommit[]
   gitRevision: number
   selectedCommit: GitCommitDetail | null
@@ -172,4 +173,29 @@ export function reconcileOpenedDiffs(
     next.push(item)
   }
   return changed ? next : opened
+}
+
+/** 解析当前工作台快照下源代码管理应绑定的目标项目标识与受信任项目访问标识。 */
+export function resolveSourceControlTarget(snapshot: {
+  readonly selectedProjectId: string | null
+  readonly selectedSessionId: string | null
+  readonly newSessionProjectId: string | null
+  readonly sessions: readonly { readonly sessionId: string; readonly cwd?: string | undefined }[]
+  readonly projects: readonly {
+    readonly id: string
+    readonly cwd?: string | undefined
+    readonly projectAccessId?: string | undefined
+  }[]
+}): { readonly projectId: string | null; readonly projectAccessId: string | null } {
+  const selectedSession = snapshot.sessions.find(
+    session => session.sessionId === snapshot.selectedSessionId,
+  )
+  const projectId =
+    snapshot.selectedProjectId ??
+    (selectedSession === undefined ? snapshot.newSessionProjectId : null) ??
+    snapshot.projects.find(project => project.cwd === selectedSession?.cwd)?.id ??
+    null
+  const projectAccessId =
+    snapshot.projects.find(project => project.id === projectId)?.projectAccessId ?? null
+  return { projectId, projectAccessId }
 }

@@ -119,7 +119,7 @@ describe('内置浏览器自动化标签同步', () => {
       return (
         <>
           <BrowserAutomationTabSync />
-          <Topbar visible searchTrigger={null} />
+          <Topbar visible />
         </>
       )
     }
@@ -196,7 +196,7 @@ describe('内置浏览器自动化标签同步', () => {
       return (
         <>
           <BrowserAutomationTabSync />
-          <Topbar visible searchTrigger={null} />
+          <Topbar visible />
         </>
       )
     }
@@ -248,7 +248,7 @@ describe('内置浏览器自动化标签同步', () => {
       return (
         <>
           <BrowserAutomationTabSync />
-          <Topbar visible searchTrigger={null} />
+          <Topbar visible />
         </>
       )
     }

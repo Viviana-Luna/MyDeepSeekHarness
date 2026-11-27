@@ -1,4 +1,7 @@
-import { Select } from 'antd'
+/**
+ * 空会话 Agent 预设选择器：从运行时读取真实预设目录，并在空会话阶段通过液态玻璃胶囊切换会话预设。
+ * 运行在 renderer；仅维护异步请求代次，避免过期响应覆写当前会话状态。
+ */
 import { useEffect, useRef, useState } from 'react'
 import { useWorkspaceSnapshot, useWorkspaceStore } from '../../../../../hooks/useWorkspace.ts'
 import {
@@ -8,7 +11,10 @@ import {
 import styles from './SessionPresetPicker.module.css'
 import { SessionPresetPills } from './SessionPresetPills.tsx'
 
-export function SessionPresetPicker({ variant = 'select' }: { variant?: 'select' | 'pills' }) {
+/**
+ * 渲染当前空会话的 Agent 预设分段胶囊；会话开始后自动遵循核心锁定规则禁用切换。
+ */
+export function SessionPresetPicker() {
   const store = useWorkspaceStore()
   const snapshot = useWorkspaceSnapshot()
   const session = snapshot.sessions.find(item => item.sessionId === snapshot.selectedSessionId)
@@ -53,7 +59,6 @@ export function SessionPresetPicker({ variant = 'select' }: { variant?: 'select'
   const projected = session?.projections?.values?.agentPreset
   const selected = typeof projected === 'string' ? projected : session?.agentPreset
   const currentPreset = selected ?? roster?.presets.find(preset => preset.isDefault)?.id
-  const locked = session !== undefined && !session.blank
   const disabled =
     !ready ||
     roster === null ||
@@ -91,54 +96,19 @@ export function SessionPresetPicker({ variant = 'select' }: { variant?: 'select'
     }
   }
 
-  if (variant === 'pills') {
-    return (
-      <section className={styles.preset} aria-label="会话预设">
-        {roster !== null && (
-          <SessionPresetPills
-            roster={roster}
-            selected={currentPreset}
-            disabled={disabled}
-            saving={saving}
-            onSelect={id => {
-              void select(id)
-            }}
-          />
-        )}
-        {error !== null && <p role="alert">{error}</p>}
-      </section>
-    )
-  }
-
   return (
-    <section className="session-preset-card" aria-label="会话预设">
-      <Select<string>
-        size="small"
-        className="session-preset-select"
-        aria-label="Agent 预设"
-        value={currentPreset ?? null}
-        placeholder={ready ? '正在读取预设…' : '运行核心未就绪'}
-        title={locked ? '会话开始后无法更改，请新建会话选择其他预设。' : '选择 Agent 预设'}
-        disabled={disabled || saving}
-        {...(disabled || saving ? { open: false } : {})}
-        loading={saving}
-        virtual={false}
-        showSearch={false}
-        options={
-          roster?.presets.map(preset => ({
-            value: preset.id,
-            label: preset.name ?? preset.id,
-            disabled: preset.broken !== undefined,
-            title: preset.broken ?? preset.description ?? preset.name ?? preset.id,
-          })) ?? []
-        }
-        onChange={value => {
-          void select(value)
-        }}
-      />
-      <small>
-        {locked ? '会话开始后预设已固定，新建会话可选择其他预设。' : '选择本次会话的 Agent 预设。'}
-      </small>
+    <section className={styles.preset} aria-label="会话预设">
+      {roster !== null && (
+        <SessionPresetPills
+          roster={roster}
+          selected={currentPreset}
+          disabled={disabled}
+          saving={saving}
+          onSelect={id => {
+            void select(id)
+          }}
+        />
+      )}
       {error !== null && <p role="alert">{error}</p>}
     </section>
   )

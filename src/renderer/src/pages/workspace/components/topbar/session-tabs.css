@@ -24,10 +24,6 @@
   grid-column: 1 / -1;
   padding-left: 80px;
 }
-.app-shell[data-navigation-collapsed='true'] .session-chrome .session-search-trigger {
-  width: 32px;
-  height: 32px;
-}
 .session-chrome[aria-hidden='true'] {
   visibility: hidden;
   pointer-events: none;
@@ -818,7 +814,7 @@ body[data-workbench-dragging] * {
   }
 }
 
-/* 单标签自动收起顶栏时的轻液态玻璃浮动操作胶囊，与下方会话工具列共用同一光学表面与 27px 右侧按钮轴线。 */
+/* 轻液态玻璃竖向浮动操作胶囊：在会话、浏览器、终端等所有视图下保持统一 36px 竖排形态与 27px 右侧按钮轴线。 */
 .floating-tab-actions {
   position: relative;
   grid-column: 2;
@@ -828,7 +824,8 @@ body[data-workbench-dragging] * {
   margin: 10px 9px 0 0;
   z-index: 12;
   display: inline-flex;
-  height: 36px;
+  width: 36px;
+  flex-direction: column;
   align-items: center;
   gap: 2px;
   padding: 3px;
@@ -843,20 +840,17 @@ body[data-workbench-dragging] * {
   animation: floating-tab-actions-enter 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Windows 窗口按钮（33px 含 1px 底边）落入主浮岛时避让其精确高度，与下方会话工具列玻璃外衣 0px 对齐。 */
+/* Windows 窗口按钮（32px 高、无底边）落入主浮岛时避让其精确高度，与下方会话工具列玻璃外衣 0px 对齐。 */
 .app-shell:has(.main-island:not([hidden]) > .windows-chrome) .floating-tab-actions {
-  margin-top: calc(var(--window-controls-height, 32px) + 11px);
+  margin-top: calc(var(--window-controls-height, 32px) + 10px);
 }
 
-/* 对话/轨迹单窗格视图下启用浮动胶囊时，转为竖排并与下方会话工具列共用同一块完整玻璃外衣，消除两段拼缝。 */
+/* 对话/轨迹单窗格视图下启用浮动胶囊时，与下方会话工具列共用同一块完整玻璃外衣，消除两段拼缝。 */
 .app-shell[data-tab-actions-floating='true']:not([data-workspace-split]):has(
     .main-island:not([hidden]) > .work-tab-panel:not([hidden]) .conversation-tools,
     .main-island:not([hidden]):not(.workbench-surface) .conversation-tools
   )
   .floating-tab-actions {
-  width: 36px;
-  height: auto;
-  flex-direction: column;
   border-color: transparent;
   background: transparent;
   box-shadow: none;
@@ -899,7 +893,7 @@ body[data-workbench-dragging] * {
 
 .floating-tab-actions__glass::before {
   position: absolute;
-  inset: 0 11px auto;
+  inset: 0 9px auto;
   height: 1px;
   border-radius: 999px;
   content: '';

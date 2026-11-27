@@ -362,7 +362,7 @@
   .main-island
   .work-tab-panel[data-split-pane='right']
   .ssh-recent__heading {
-  padding-right: 92px;
+  padding-right: 56px;
 }
 .ssh-terminal-heading > span:first-child {
   min-width: 0;
