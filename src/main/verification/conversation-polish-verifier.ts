@@ -109,21 +109,48 @@ async function verifyActivityMotion(win: BrowserWindow) {
 }
 
 async function verifyToolEntrance(win: BrowserWindow) {
-  const result = await win.webContents.executeJavaScript(`(async () => {
+  const result = (await win.webContents.executeJavaScript(`(async () => {
+    let row = null;
     for (let attempt = 0; attempt < 120; attempt += 1) {
-      const row = document.querySelector('[data-tool-disclosure][data-state="running"]')?.parentElement;
-      const animation = row?.getAnimations().find(item => item.animationName?.includes('conversation-enter'));
-      if (row && animation) {
-        const first = Number(animation.currentTime);
-        const before = getComputedStyle(row).transform;
-        await new Promise(resolve => setTimeout(resolve, 40));
-        return Number(animation.currentTime) > first && getComputedStyle(row).transform !== before;
-      }
-      await new Promise(resolve => setTimeout(resolve, 10));
+      row = document.querySelector('[data-tool-disclosure][data-state="running"]')?.parentElement ?? null;
+      if (row) break;
+      await new Promise(resolve => setTimeout(resolve, 15));
     }
-    return false;
-  })()`)
-  if (!result) throw new Error('工具调用出现时没有实际入场动画')
+    if (!(row instanceof HTMLElement)) return { ok: false, reason: 'missing-row' };
+    const style = getComputedStyle(row);
+    const duration = Number.parseFloat(style.animationDuration);
+    if (!style.animationName.includes('conversation-enter') || !(duration > 0)) {
+      return { ok: false, reason: 'missing-rule', animationName: style.animationName, duration };
+    }
+    const findAnimation = () =>
+      row.getAnimations().find(item => item.animationName?.includes('conversation-enter'));
+    // 220ms 一次性入场动画在 CI 调度或 GPU 重启后可能已播完并移出 getAnimations()；
+    // 确认真实 CSS 规则生效后按需重播一次，消除采样时序竞态。
+    let animation = findAnimation();
+    if (!animation) {
+      row.style.animation = 'none';
+      void row.offsetWidth;
+      row.style.animation = '';
+      animation = findAnimation();
+    }
+    if (!animation) return { ok: false, reason: 'missing-animation' };
+    animation.currentTime = 0;
+    const before = getComputedStyle(row).transform;
+    for (let attempt = 0; attempt < 16; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 15));
+      const current = Number(animation.currentTime);
+      const after = getComputedStyle(row).transform;
+      if (current > 0 && after !== before) return { ok: true };
+    }
+    return {
+      ok: false,
+      reason: 'no-transform-change',
+      currentTime: animation.currentTime,
+      before,
+      after: getComputedStyle(row).transform,
+    };
+  })()`)) as { ok: boolean }
+  if (!result.ok) throw new Error(`工具调用出现时没有实际入场动画：${JSON.stringify(result)}`)
   await emulateVerificationMedia(win, [{ name: 'prefers-reduced-motion', value: 'reduce' }])
   const reduced = await win.webContents.executeJavaScript(`(() => {
     const row = document.querySelector('[data-tool-disclosure][data-state="running"]')?.parentElement;

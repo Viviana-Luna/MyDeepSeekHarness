@@ -91,20 +91,41 @@ export async function verifyToolOutputReveal(
       },
     },
   })
-  const revealed = await win.webContents.executeJavaScript(`(async () => {
+  const revealed = (await win.webContents.executeJavaScript(`(async () => {
+    let output = null;
     for (let attempt = 0; attempt < 120; attempt += 1) {
-      const output = document.querySelector('[data-tool-result]');
-      const animation = output?.getAnimations().find(item => item.animationName?.includes('tool-result-reveal'));
-      if (output && animation && output.textContent.includes('工具返回的真实内容')) {
-        const first = getComputedStyle(output).clipPath;
-        await new Promise(resolve => setTimeout(resolve, 45));
-        return first !== getComputedStyle(output).clipPath;
+      const candidate = document.querySelector('[data-tool-result]');
+      if (candidate instanceof HTMLElement && candidate.textContent.includes('工具返回的真实内容')) {
+        output = candidate;
+        break;
       }
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise(resolve => setTimeout(resolve, 15));
     }
-    return false;
-  })()`)
-  if (!revealed) throw new Error('工具返回数据没有逐步显现')
+    if (!(output instanceof HTMLElement)) return { ok: false, reason: 'missing-output' };
+    const style = getComputedStyle(output);
+    const duration = Number.parseFloat(style.animationDuration);
+    if (!style.animationName.includes('tool-result-reveal') || !(duration > 0)) {
+      return { ok: false, reason: 'missing-rule', animationName: style.animationName, duration };
+    }
+    const findAnimation = () =>
+      output.getAnimations().find(item => item.animationName?.includes('tool-result-reveal'));
+    let animation = findAnimation();
+    if (!animation) {
+      output.style.animation = 'none';
+      void output.offsetWidth;
+      output.style.animation = '';
+      animation = findAnimation();
+    }
+    if (!animation) return { ok: false, reason: 'missing-animation' };
+    animation.currentTime = 0;
+    const first = getComputedStyle(output).clipPath;
+    for (let attempt = 0; attempt < 16; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 15));
+      if (getComputedStyle(output).clipPath !== first) return { ok: true };
+    }
+    return { ok: false, reason: 'no-clip-change', first, after: getComputedStyle(output).clipPath };
+  })()`)) as { ok: boolean }
+  if (!revealed.ok) throw new Error(`工具返回数据没有逐步显现：${JSON.stringify(revealed)}`)
   await emulateVerificationMedia(win, [{ name: 'prefers-reduced-motion', value: 'reduce' }])
   const reduced = await win.webContents.executeJavaScript(`(() => {
     const output = document.querySelector('[data-tool-result]');

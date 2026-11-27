@@ -108,6 +108,14 @@ export async function verifyWorkspaceReview(
       `document.querySelector('[aria-label="轨迹记录表"] [data-kind="tool"]:last-child')?.click()`,
     )
     await settle(win)
+    // 切换轨迹视图时点击了右侧工具列按钮，离屏低帧率下弹性按压弹簧可能尚未完全回零；
+    // 等待按钮回弹落稳后再测量精确的 28px 布局几何。
+    await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        if (!document.querySelector('.work-tab-panel:not([hidden]) .conversation-tools button[data-press]')) break
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+    })()`)
     const result = (await win.webContents.executeJavaScript(`(() => {
       const table = document.querySelector('[aria-label="轨迹记录表"]')
       const inspector = document.querySelector('[aria-label="轨迹记录检查器"]')
@@ -116,8 +124,20 @@ export async function verifyWorkspaceReview(
       const tools = document.querySelector('.work-tab-panel:not([hidden]) .conversation-tools')
       const rail = tools?.getBoundingClientRect()
       const tabs = inspector?.querySelector('[role="tablist"]')
+      const sideTools = rail?.width === 28 && b.right <= rail.left && [...tools.querySelectorAll('button')].every(button => button.getBoundingClientRect().height === 28)
       return { dense: rows.length > 10 && rows.every(row => Math.abs(row.getBoundingClientRect().height - 30) < 1),
-         sideTools: rail?.width === 28 && b.right <= rail.left && [...tools.querySelectorAll('button')].every(button => button.getBoundingClientRect().height === 28),
+         sideTools,
+         ...(sideTools ? {} : {
+           sideToolsDetails: {
+             rail: rail?.toJSON() ?? null,
+             inspectorRight: b?.right ?? null,
+             buttons: [...(tools?.querySelectorAll('button') ?? [])].map(button => ({
+               label: button.getAttribute('aria-label'),
+               press: button.dataset.press ?? null,
+               height: button.getBoundingClientRect().height,
+             })),
+           },
+         }),
          noHeader: !document.querySelector('.conversation-header'),
         virtual: rows.length < 100 && Number(table.getAttribute('aria-rowcount')) > 220,
         separated: b && b.left >= a.right - 1 && b.right <= innerWidth && b.bottom <= innerHeight,
@@ -128,9 +148,13 @@ export async function verifyWorkspaceReview(
         tabsFit: tabs && tabs.scrollWidth <= tabs.clientWidth + 1,
         scroll: inspector.querySelector('[role="tabpanel"]').scrollHeight > inspector.querySelector('[role="tabpanel"]').clientHeight,
         overflow: document.documentElement.scrollWidth === innerWidth }
-    })()`)) as Record<string, boolean>
+    })()`)) as Record<string, unknown>
     console.log('desktop-shell-verify-local: trajectory-review', sample, result)
-    if (Object.values(result).some(value => value !== true))
+    if (
+      Object.entries(result)
+        .filter(([key]) => key !== 'sideToolsDetails')
+        .some(([, value]) => value !== true)
+    )
       throw new Error('轨迹记录表、虚拟列表或独立检查器验收失败')
     await capture(`verify-trajectory-${sample.width}-${sample.scheme}.png`)
   }
