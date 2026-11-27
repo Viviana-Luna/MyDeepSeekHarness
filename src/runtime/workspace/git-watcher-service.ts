@@ -87,6 +87,7 @@ interface ProjectWatchState {
   pendingScope: DesktopProjectGitChangeScope | null
   pendingReason: DesktopProjectGitChangeReason
   debounceTimer: ReturnType<typeof setTimeout> | null
+  scheduleGeneration: number
   lockRetries: number
   disposed: boolean
 }
@@ -286,6 +287,7 @@ export class GitWatcherService {
       pendingScope: null,
       pendingReason: 'watcher',
       debounceTimer: null,
+      scheduleGeneration: 0,
       lockRetries: 0,
       disposed: false,
     }
@@ -293,6 +295,7 @@ export class GitWatcherService {
 
   private disposeEntry(entry: ProjectWatchState): void {
     entry.disposed = true
+    entry.scheduleGeneration += 1
     // 立即中止在途 git rev-parse 探测子进程，避免 Windows 退出清理目录时撞上 EBUSY。
     entry.abortController.abort()
     if (entry.debounceTimer !== null) {
@@ -386,25 +389,36 @@ export class GitWatcherService {
     entry.pendingScope = mergeGitChangeScope(entry.pendingScope, scope)
     if (reason !== 'watcher' || entry.pendingReason === 'watcher') entry.pendingReason = reason
     entry.lockRetries = 0
+    // 递增调度代次，让正在异步检查 index.lock 的旧 flush 退出，避免破坏新防抖窗口或覆盖定时器。
+    entry.scheduleGeneration += 1
+    const generation = entry.scheduleGeneration
     if (entry.debounceTimer !== null) clearTimeout(entry.debounceTimer)
     entry.debounceTimer = setTimeout(() => {
       entry.debounceTimer = null
-      void this.flush(entry)
+      void this.flush(entry, generation)
     }, this.debounceMs)
     entry.debounceTimer.unref()
   }
 
-  private async flush(entry: ProjectWatchState): Promise<void> {
-    if (entry.disposed || this.disposed || entry.pendingScope === null) return
+  private async flush(entry: ProjectWatchState, generation: number): Promise<void> {
+    if (
+      entry.disposed ||
+      this.disposed ||
+      entry.pendingScope === null ||
+      entry.scheduleGeneration !== generation
+    ) {
+      return
+    }
     // 检测到外部 Git 进程正在持有 index.lock 时短暂退避，避免与外部提交或变基并发碰撞。
     if (entry.gitDir !== null && entry.lockRetries < MAX_LOCK_RETRIES) {
       const locked = await pathExists(join(entry.gitDir, 'index.lock'))
-      if (entry.disposed || this.disposed) return
+      if (entry.disposed || this.disposed || entry.scheduleGeneration !== generation) return
       if (locked) {
         entry.lockRetries += 1
+        if (entry.debounceTimer !== null) clearTimeout(entry.debounceTimer)
         entry.debounceTimer = setTimeout(() => {
           entry.debounceTimer = null
-          void this.flush(entry)
+          void this.flush(entry, generation)
         }, this.lockBackoffMs)
         entry.debounceTimer.unref()
         return

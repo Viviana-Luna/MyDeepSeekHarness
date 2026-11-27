@@ -102,7 +102,22 @@ describe('AI 提交后台服务', () => {
     const result = await analyze(),
       head = git('rev-parse', 'HEAD')
     const hook = join(root, '.git/hooks/pre-commit')
-    writeFileSync(hook, '#!/bin/sh\necho $$ > "$GIT_WORK_TREE/.git/hook-pid"\nsleep 60\n')
+    writeFileSync(
+      hook,
+      [
+        '#!/bin/sh',
+        // Windows Git Bash 的 $$ 为 MSYS2 虚拟 PID，须优先读取真实 Win32 PID，再经临时文件原子落盘。
+        'PID=$$',
+        'if [ -r "/proc/$$/winpid" ]; then',
+        '  read WINPID < "/proc/$$/winpid"',
+        '  if [ -n "$WINPID" ]; then PID=$WINPID; fi',
+        'fi',
+        'printf \'%s\\n\' "$PID" > "$GIT_WORK_TREE/.git/hook-pid.tmp"',
+        'mv "$GIT_WORK_TREE/.git/hook-pid.tmp" "$GIT_WORK_TREE/.git/hook-pid"',
+        'sleep 60',
+        '',
+      ].join('\n'),
+    )
     chmodSync(hook, 0o755)
     const controller = new AbortController()
     const executing = service.call(
@@ -116,7 +131,10 @@ describe('AI 提交后台服务', () => {
     while (!existsSync(join(root, '.git/hook-pid'))) {
       await run({ cwd: root, args: ['rev-parse', 'HEAD'], signal: deadline })
     }
-    const pid = Number(readFileSync(join(root, '.git/hook-pid'), 'utf8'))
+    const pid = Number(readFileSync(join(root, '.git/hook-pid'), 'utf8').trim())
+    expect(Number.isInteger(pid) && pid > 0).toBe(true)
+    // 取消前确认读取到的是当前仍在运行的真实 hook 进程，避免误测虚拟 PID 或空文件。
+    expect(() => process.kill(pid, 0)).not.toThrow()
     if (cancellation === '释放方案')
       await service.call(project.id, 'gitAiRelease', { id: result.id })
     else controller.abort()

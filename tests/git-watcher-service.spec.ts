@@ -46,6 +46,28 @@ async function waitForEvent(
   throw new Error(`在 ${String(timeoutMs)}ms 内未收到预期 Git 变更事件`)
 }
 
+async function waitForQuiet(
+  events: DesktopProjectEvent[],
+  quietMs = 150,
+  timeoutMs = 2_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  let lastCount = events.length
+  let quietSince = Date.now()
+  while (Date.now() < deadline) {
+    if (events.length !== lastCount) {
+      lastCount = events.length
+      quietSince = Date.now()
+    } else if (Date.now() - quietSince >= quietMs) {
+      return
+    }
+    // 等待前一步骤残留的文件系统防抖通知全部落静，避免跨步骤串入后续断言。
+    // oxlint-disable-next-line no-await-in-loop
+    await new Promise(resolve => setTimeout(resolve, 25))
+  }
+  throw new Error(`在 ${String(timeoutMs)}ms 内事件流未静默（累计 ${String(events.length)} 条）`)
+}
+
 describe('Git 监听器路径分类与事件契约校验', () => {
   it('准确区分 .git 元数据级别并忽略锁文件与无关构建目录', () => {
     expect(mergeGitChangeScope(null, 'working')).toBe('working')
@@ -135,7 +157,7 @@ describe('GitWatcherService 真实仓库监听', () => {
       )
       expect(commitEvent.reason).toBe('watcher')
 
-      // 3. Git worktree 中发生外部提交同样能收到 refs 事件。
+      // 3. Git worktree 中发生外部提交同样能收到 refs 事件；提交写入共享 refs，需等两方去抖落静后再测锁退避。
       events.length = 0
       await writeFile(join(worktree, 'wt.txt'), 'from-worktree\n')
       runGit(worktree, ['add', 'wt.txt'])
@@ -145,14 +167,16 @@ describe('GitWatcherService 真实仓库监听', () => {
         event => event.projectId === 'proj-wt' && event.scope === 'refs',
       )
       expect(wtEvent.scope).toBe('refs')
+      await waitForEvent(events, event => event.projectId === 'proj-main' && event.scope === 'refs')
+      await waitForQuiet(events)
 
-      // 4. index.lock 存在期间推迟广播，释放后立刻送达。
-      events.length = 0
+      // 4. index.lock 存在期间推迟 proj-main 广播，释放后立刻送达；先落锁再清队列，防止异步写锁间隙串入旧事件。
       const lockPath = join(repo, '.git', 'index.lock')
       await writeFile(lockPath, 'locked\n')
+      events.length = 0
       watcher.notifyWorkingChange('proj-main')
       await new Promise(resolve => setTimeout(resolve, 140))
-      expect(events).toHaveLength(0)
+      expect(events.filter(event => event.projectId === 'proj-main')).toHaveLength(0)
       await rm(lockPath, { force: true })
       const afterUnlock = await waitForEvent(
         events,
@@ -175,6 +199,57 @@ describe('GitWatcherService 真实仓库监听', () => {
       watcher.notifyWorkingChange('proj-main')
       await new Promise(resolve => setTimeout(resolve, 120))
       expect(events).toHaveLength(0)
+    } finally {
+      watcher.dispose()
+      await rm(rawRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('index.lock 退避期间再次调度会作废旧 flush 代次，解锁后只广播一次合并事件', async () => {
+    const rawRoot = await mkdtemp(join(tmpdir(), 'mydsh-git-watcher-gen-'))
+    const root = await realpath(rawRoot)
+    const repo = join(root, 'repo')
+    const watcher = new GitWatcherService({ debounceMs: 50, lockBackoffMs: 80 })
+    const events: DesktopProjectEvent[] = []
+    watcher.onEvent(event => {
+      events.push(event)
+    })
+
+    try {
+      runGit(root, ['init', 'repo'])
+      await writeFile(join(repo, 'README.md'), 'initial\n')
+      runGit(repo, ['add', 'README.md'])
+      runGit(repo, ['commit', '-m', 'init'])
+
+      watcher.syncProjects([{ id: 'proj-main', cwd: repo }])
+      await new Promise(resolve => setTimeout(resolve, 200))
+      await writeFile(join(repo, 'README.md'), 'ready\n')
+      await waitForEvent(
+        events,
+        event => event.projectId === 'proj-main' && event.reason === 'watcher',
+      )
+      await waitForQuiet(events)
+
+      const lockPath = join(repo, '.git', 'index.lock')
+      await writeFile(lockPath, 'locked\n')
+      events.length = 0
+      watcher.notifyWorkingChange('proj-main')
+      // 在首次防抖触发并进入 index.lock 检查/退避窗口后再次调度，验证旧代次不会残留重复定时器。
+      await new Promise(resolve => setTimeout(resolve, 65))
+      watcher.notifyWorkingChange('proj-main')
+      await new Promise(resolve => setTimeout(resolve, 110))
+      expect(events.filter(event => event.projectId === 'proj-main')).toHaveLength(0)
+
+      await rm(lockPath, { force: true })
+      const delivered = await waitForEvent(
+        events,
+        event => event.projectId === 'proj-main' && event.reason === 'editor-save',
+      )
+      expect(delivered.scope).toBe('working')
+      await waitForQuiet(events)
+      expect(
+        events.filter(event => event.projectId === 'proj-main' && event.reason === 'editor-save'),
+      ).toHaveLength(1)
     } finally {
       watcher.dispose()
       await rm(rawRoot, { recursive: true, force: true })
