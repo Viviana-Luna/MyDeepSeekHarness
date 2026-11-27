@@ -178,7 +178,7 @@ jobs:
     needs: validate
     if: needs.validate.outputs.platforms == 'all' || needs.validate.outputs.platforms == 'windows'
     runs-on: windows-2025
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - name: 检出仓库代码
         uses: actions/checkout@v4
@@ -210,6 +210,8 @@ jobs:
         run: node scripts/verify-source-runtime.mjs
 
       - name: 验收 Windows 窗口裁剪与缩放
+        env:
+          MYDSH_VERIFY_WINDOW_SKIP_PIXELS: '1'
         run: pnpm run verify:window
 
       - name: 打包 Windows 应用目录

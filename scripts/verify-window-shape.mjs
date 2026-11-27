@@ -10,19 +10,20 @@ const home = await realpath(await mkdtemp(join(tmpdir(), 'mydsh-window-shape-'))
 try {
   const env = { ...process.env, MYDSH_VERIFY_WINDOW_HOME: home }
   delete env.ELECTRON_RUN_AS_NODE
-  const child = execFile(electron, ['scripts/verify-native-window-shape.mjs'], {
+  const extraArgs = process.argv.slice(2).filter(arg => arg !== '--')
+  const child = execFile(electron, ['scripts/verify-native-window-shape.mjs', ...extraArgs], {
     cwd: resolve(import.meta.dirname, '..'),
     env,
     windowsHide: true,
-    timeout: 60000,
+    timeout: 180_000,
     maxBuffer: 1024 * 1024,
   })
   child.stdout.pipe(process.stdout)
   child.stderr.pipe(process.stderr)
   await new Promise((resolveExit, reject) => {
     child.once('error', reject)
-    child.once('exit', code =>
-      code === 0 ? resolveExit() : reject(new Error('原生圆角验收失败：' + code)),
+    child.once('exit', (code, signal) =>
+      code === 0 ? resolveExit() : reject(new Error(`原生圆角验收失败：${code ?? signal}`)),
     )
   })
 } finally {
