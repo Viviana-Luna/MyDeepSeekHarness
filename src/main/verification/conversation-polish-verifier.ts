@@ -329,11 +329,16 @@ async function verifyMarkdownTable(win: BrowserWindow) {
     const quote = message?.querySelector('blockquote')
     if (!table || !wide || !quote) return null
     const shortCells = [...table.querySelectorAll('tr > :nth-child(-n+2)')]
-    const shortLabelsFit = shortCells.length === 6 && shortCells.every(cell => {
+    const shortCellDetails = shortCells.map(cell => {
       const range = document.createRange()
       range.selectNodeContents(cell)
-      return range.getClientRects().length === 1
+      return {
+        text: cell.textContent,
+        rects: range.getClientRects().length,
+        width: Math.round(cell.getBoundingClientRect().width * 10) / 10,
+      }
     })
+    const shortLabelsFit = shortCellDetails.length === 6 && shortCellDetails.every(item => item.rects === 1)
     const viewport = wide.parentElement
     viewport.scrollLeft = viewport.scrollWidth
     const scrolls = viewport.scrollLeft > 0 && viewport.scrollWidth > viewport.clientWidth
@@ -350,9 +355,13 @@ async function verifyMarkdownTable(win: BrowserWindow) {
     const quoteStyle = getComputedStyle(quote)
     const quoteBorder = quoteStyle.borderWidth === '1px' && quoteStyle.borderColor === quoteStyle.borderTopColor
     return { shortLabelsFit, scrolls, localSurface, userRaised, sendRecessed, quoteBorder,
-      fitsWindow: document.documentElement.scrollWidth === innerWidth }
+      fitsWindow: document.documentElement.scrollWidth === innerWidth,
+      ...(shortLabelsFit ? {} : { shortCellDetails }) }
   })()`)
-  if (!layout || Object.values(layout).some(value => value !== true))
+  if (
+    !layout ||
+    Object.entries(layout).some(([key, value]) => key !== 'shortCellDetails' && value !== true)
+  )
     throw new Error(`对话表格列宽、滚动或内容块层次异常：${JSON.stringify(layout)}`)
 }
 

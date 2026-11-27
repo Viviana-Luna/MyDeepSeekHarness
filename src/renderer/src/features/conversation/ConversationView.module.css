@@ -1098,9 +1098,9 @@
   border-spacing: 0;
 }
 .tableScroll :is(th, td) {
-  /* 最小宽度只计算内容，给「右上」「已确认」这类短标签留出空间。 */
+  /* 最小宽度只计算内容并留出 1 字字体度量余量，避免 macOS/Windows 下「右上」「已确认」这类短标签折行。 */
   box-sizing: content-box;
-  min-inline-size: 3ic;
+  min-inline-size: 4ic;
   padding: 7px 12px;
   text-align: left;
   vertical-align: top;

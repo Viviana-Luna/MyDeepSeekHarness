@@ -83,20 +83,21 @@ async function verifyCodingModes(ctx, workspace) {
         return result.value
       }
       if (preset !== 'gpt-coding') {
-        await call('write', { path: 'pi-mode.txt', content: 'before\r\nsecond\r\n' })
-        await call('read', { path: 'pi-mode.txt' })
+        const modeFile = `${preset}-mode.txt`
+        await call('write', { path: modeFile, content: 'before\r\nsecond\r\n' })
+        await call('read', { path: modeFile })
         await call('edit', {
-          path: 'pi-mode.txt',
+          path: modeFile,
           edits: [
             { oldText: 'before', newText: 'after' },
             { oldText: 'second', newText: 'checked' },
           ],
         })
-        if ((await readFile(join(workspace, 'pi-mode.txt'), 'utf8')) !== 'after\r\nchecked\r\n')
+        if ((await readFile(join(workspace, modeFile), 'utf8')) !== 'after\r\nchecked\r\n')
           throw new Error('精确批量编辑丢失换行或内容')
         await call(
           'edit',
-          { path: 'pi-mode.txt', edits: [{ oldText: 'missing', newText: 'unsafe' }] },
+          { path: modeFile, edits: [{ oldText: 'missing', newText: 'unsafe' }] },
           true,
         )
         const command = await call('powershell', {
