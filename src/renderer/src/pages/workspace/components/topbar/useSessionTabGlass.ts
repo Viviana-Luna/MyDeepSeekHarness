@@ -165,8 +165,13 @@ export function useSessionTabGlass(
       const dt = previous === 0 ? 1 / 60 : Math.min((time - previous) / 1000, 0.025)
       previous = time
       if (pointer < 0) {
-        velocity += (220 * (target - x) - 23 * velocity) * dt
-        x += velocity * dt
+        // 低帧率或软件渲染下单个大步长欧拉积分会引入过阻尼并吞掉边缘回弹，按 <=1/120s 细分保持各刷新率一致。
+        const steps = Math.max(1, Math.ceil(dt * 120))
+        const subStep = dt / steps
+        for (let step = 0; step < steps; step += 1) {
+          velocity += (220 * (target - x) - 23 * velocity) * subStep
+          x += velocity * subStep
+        }
       }
       pressure += (pressureTarget - pressure) * (1 - Math.exp(-22 * dt))
       const bulgeTarget = reduced.matches ? 0 : Math.min(1, Math.abs(velocity) / (width * 4))

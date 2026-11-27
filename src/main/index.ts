@@ -2426,15 +2426,22 @@ async function main(): Promise<void> {
       focusPrimaryWindow(win)
     }
     win.webContents.focus()
-    // 上一步的 mouseMove 会将 Chromium 切回指针模式；需先发键盘事件再聚焦手柄，才能稳定触发 :focus-visible。
+    // 上一步的 mouseMove 会将 Chromium 切回指针模式；先等待 Tab 真正落到页面再聚焦手柄，
+    // 避免迟到的 Tab 在 handle.focus() 之后切走焦点而让随后的 Right 键失效。
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' })
     win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' })
-    await new Promise(resolve => {
-      setTimeout(resolve, 50)
-    })
-    await win.webContents.executeJavaScript(
-      `document.querySelector('[aria-label="调整对话内容宽度（右侧）"]').focus()`,
-    )
+    await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 40 && document.activeElement === document.body; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      const handle = document.querySelector('[aria-label="调整对话内容宽度（右侧）"]')
+      if (handle instanceof HTMLElement) handle.focus()
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        if (handle instanceof HTMLElement && document.activeElement === handle) break
+        if (handle instanceof HTMLElement) handle.focus()
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+    })()`)
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Right' })
     win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Right' })
     // 手柄伪元素存在 180ms 透明度过渡；离屏或 CI 高负载下轮询等待宽度与显影稳定，避免固定 200ms 竞态。
@@ -6942,7 +6949,8 @@ async function main(): Promise<void> {
             && capsulesSwitch instanceof HTMLButtonElement && capsulesSwitch.classList.contains('ant-switch')
             && automaticLayoutReady
             && accents.length === 6 && accentShapesReady && accentValuePill instanceof HTMLElement
-            && navOrderReady) return {
+            && navOrderReady
+            && (focusInside || attempt >= 75)) return {
               open: true,
               focusInside,
               panelFits,
@@ -7308,14 +7316,16 @@ async function main(): Promise<void> {
 
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'ESC' })
     win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'ESC' })
-    await new Promise(resolve => {
-      setTimeout(resolve, 350)
-    })
-    const settingsFocusRestored = (await win.webContents.executeJavaScript(`(() => {
-      const dialog = document.querySelector('.settings-dialog[role="dialog"]')
-      return (dialog === null || (dialog instanceof HTMLElement && !dialog.checkVisibility()))
-        && document.activeElement instanceof HTMLElement
-        && document.activeElement.id === 'open-settings'
+    const settingsFocusRestored = (await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const dialog = document.querySelector('.settings-dialog[role="dialog"]')
+        const closed = dialog === null || (dialog instanceof HTMLElement && !dialog.checkVisibility())
+        if (closed && document.activeElement instanceof HTMLElement && document.activeElement.id === 'open-settings') {
+          return true
+        }
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      return false
     })()`)) as boolean
 
     // 设置中心已移除「内置插件」与「ChatGPT 订阅」分类，改为在独立插件管理页验证内置配置卡片与 Host 设置实时刷新事件。
