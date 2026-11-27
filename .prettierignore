@@ -1,6 +1,7 @@
 # Prettier 只排版 MyDSH 自有代码；规则见 docs/code-style.md。
 
 # 构建产物、依赖与 Umi 生成文件
+.build/
 lib/
 out/
 node_modules/

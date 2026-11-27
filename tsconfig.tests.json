@@ -3,6 +3,7 @@
   "compilerOptions": {
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "rewriteRelativeImportExtensions": false,
     "noEmit": true,
     "rootDir": ".",
     "jsx": "react-jsx",

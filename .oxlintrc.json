@@ -9,6 +9,7 @@
     "reportUnusedDisableDirectives": "error"
   },
   "ignorePatterns": [
+    ".build/**",
     "lib/**",
     "node_modules/**",
     "coverage/**",
@@ -232,7 +233,6 @@
         "packages/preset/agent-presets/patch-format.js",
         "scripts/core-smoke-windows.mjs",
         "scripts/core/import-dsh.mjs",
-        "src/main/index.ts",
         "src/main/verification/compaction-verifier.ts",
         "src/main/verification/plan-review-verifier.ts",
         "src/renderer/src/features/trajectory/trajectory-model.ts",
@@ -271,7 +271,6 @@
         "packages/preset/agent-presets/patch-format.js",
         "packages/runtime/entry.mjs",
         "packages/runtime/plugin-tools.mjs",
-        "scripts/core/build-runtime.mjs",
         "scripts/core/import-dsh.mjs",
         "scripts/verify-connections.mjs",
         "scripts/verify-packaged-runtime.mjs",

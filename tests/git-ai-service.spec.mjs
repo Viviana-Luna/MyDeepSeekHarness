@@ -4,6 +4,7 @@ import { LocalSubprocessRuntime } from '@deepseek-ai/dsh-subprocess-local'
 import { execFileSync } from 'node:child_process'
 import {
   chmodSync,
+  cpSync,
   existsSync,
   mkdtempSync,
   readFileSync,
@@ -13,34 +14,62 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ProjectAccessRegistry } from '../src/runtime/workspace/project-service.ts'
-import { createGitAiRunner } from '../src/runtime/workspace/git-ai-process.ts'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { GitAiService } from '../packages/desktop-services/src/git-ai-service.ts'
+import { createGitAiRunner } from '../src/runtime/workspace/git-ai-process.ts'
+import { ProjectAccessRegistry } from '../src/runtime/workspace/project-service.ts'
 
-const cleanup = []
-afterEach(async () => {
-  for (const dispose of cleanup.splice(0).toReversed()) await dispose()
-})
+let templateRepo = ''
+let sharedContext
 
-async function fixture(wrapRun = run => run) {
-  const root = mkdtempSync(join(tmpdir(), 'mydsh-ai-service-'))
-  cleanup.push(() => rmSync(root, { recursive: true, force: true }))
-  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' })
+beforeAll(async () => {
+  templateRepo = mkdtempSync(join(tmpdir(), 'mydsh-ai-template-'))
+  const git = (...args) => execFileSync('git', args, { cwd: templateRepo, encoding: 'utf8' })
   git('init', '-qb', 'main')
   git('config', 'user.name', '测试')
   git('config', 'user.email', 'test@example.invalid')
-  writeFileSync(join(root, 'a.txt'), '基线\n')
+  writeFileSync(join(templateRepo, 'a.txt'), '基线\n')
   git('add', '.')
   git('commit', '-qm', '初始提交')
-  writeFileSync(join(root, 'a.txt'), '暂存\n')
+  writeFileSync(join(templateRepo, 'a.txt'), '暂存\n')
   git('add', '.')
-  writeFileSync(join(root, 'a.txt'), '未暂存\n')
+  writeFileSync(join(templateRepo, 'a.txt'), '未暂存\n')
+  sharedContext = new Context()
+  await sharedContext.plugin(LocalSubprocessRuntime).await()
+})
+
+afterAll(async () => {
+  await sharedContext?.fiber.dispose()
+  if (templateRepo !== '') {
+    rmSync(templateRepo, { recursive: true, force: true })
+  }
+})
+
+const cleanup = []
+afterEach(async () => {
+  /* oxlint-disable no-await-in-loop -- 清理栈按逆序释放各自工作区与服务。 */
+  for (const dispose of cleanup.splice(0).toReversed()) await dispose()
+  /* oxlint-enable no-await-in-loop */
+})
+
+async function waitForFile(filePath, signal) {
+  /* oxlint-disable no-await-in-loop -- 轮询真实 hook 原子落盘文件，避免狂刷 git 子进程抢占句柄。 */
+  while (!existsSync(filePath)) {
+    signal.throwIfAborted()
+    await new Promise(resolve => {
+      setTimeout(resolve, 20)
+    })
+  }
+  /* oxlint-enable no-await-in-loop */
+}
+
+async function fixture(wrapRun = run => run) {
+  const root = mkdtempSync(join(tmpdir(), 'mydsh-ai-service-'))
+  cpSync(templateRepo, root, { recursive: true })
+  cleanup.push(() => rmSync(root, { recursive: true, force: true }))
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' })
   const registry = new ProjectAccessRegistry()
   const project = (await registry.replaceFromSessionList({ items: [{ cwd: root }] }))[0]
-  const ctx = new Context()
-  await ctx.plugin(LocalSubprocessRuntime).await()
-  cleanup.push(() => ctx.fiber.dispose())
   const llm = {
     async *stream(options) {
       const input = JSON.parse(options.messages[0].content[0].text)
@@ -55,7 +84,7 @@ async function fixture(wrapRun = run => run) {
       yield { type: 'finish', reason: { kind: 'stop' } }
     },
   }
-  const run = wrapRun(createGitAiRunner(ctx.subprocess))
+  const run = wrapRun(createGitAiRunner(sharedContext.subprocess))
   const service = new GitAiService({ registry, run, llm: () => llm })
   cleanup.push(() => service.dispose())
   const analyze = () =>
@@ -98,7 +127,7 @@ describe('AI 提交后台服务', () => {
   })
 
   it.each(['释放方案', '取消调用'])('%s 时等待运行中的 hook 退出并清理锁', async cancellation => {
-    const { root, git, service, analyze, project, run } = await fixture()
+    const { root, git, service, analyze, project } = await fixture()
     const result = await analyze(),
       head = git('rev-parse', 'HEAD')
     const hook = join(root, '.git/hooks/pre-commit')
@@ -126,11 +155,8 @@ describe('AI 提交后台服务', () => {
       { id: result.id, plan: result.plan, confirmed: true, wholeFileIds: [result.items[0].id] },
       controller.signal,
     )
-    // 通过真实子进程等待就绪信号，测试超时会进入 finally 清理，不靠固定睡眠碰时序。
     const deadline = AbortSignal.timeout(10_000)
-    while (!existsSync(join(root, '.git/hook-pid'))) {
-      await run({ cwd: root, args: ['rev-parse', 'HEAD'], signal: deadline })
-    }
+    await waitForFile(join(root, '.git/hook-pid'), deadline)
     const pid = Number(readFileSync(join(root, '.git/hook-pid'), 'utf8').trim())
     expect(Number.isInteger(pid) && pid > 0).toBe(true)
     // 取消前确认读取到的是当前仍在运行的真实 hook 进程，避免误测虚拟 PID 或空文件。
@@ -256,5 +282,13 @@ describe('AI 提交后台服务', () => {
     writeFileSync(join(root, '.git/MERGE_HEAD'), git('rev-parse', 'HEAD'))
     await expect(analyze()).rejects.toThrow('仓库正在合并、变基或拣选')
     expect(stream).not.toHaveBeenCalled()
+  })
+
+  it('方案归属于单个已授权项目，跨项目请求立即拒绝', async () => {
+    const { analyze, service } = await fixture()
+    const result = await analyze()
+    await expect(service.call('other-project', 'gitAiValidate', { id: result.id })).rejects.toThrow(
+      '项目不在当前 MyDSH 工作区范围内',
+    )
   })
 })

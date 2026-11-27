@@ -1,6 +1,15 @@
 /** 使用 Windows SDK 和稳定 Node-API 构建背景裁剪与窗口缩放；不需要 Electron ABI 重建。 */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import headers from 'node-api-headers'
@@ -11,6 +20,22 @@ const versions = directory =>
 if (process.platform === 'win32') {
   if (process.arch !== 'x64') throw new Error('原生 Windows 背景只支持 x64')
   const root = resolve(import.meta.dirname, '..')
+  const output = join(root, 'lib', 'main', 'window-background.node')
+  const cacheFile = join(root, '.build', 'native-window-background-cache.json')
+  const hash = createHash('sha256')
+  hash.update(readFileSync(join(root, 'native', 'window-background.cc')))
+  hash.update(readFileSync(join(root, 'scripts', 'build-window-background.mjs')))
+  hash.update(readFileSync(join(root, 'package.json')))
+  const fingerprint = hash.digest('hex')
+  if (!process.argv.includes('--force') && existsSync(output) && existsSync(cacheFile)) {
+    try {
+      if (JSON.parse(readFileSync(cacheFile, 'utf8')).fingerprint === fingerprint) {
+        process.exit(0)
+      }
+    } catch {
+      /* 缓存文件损坏时回退重新编译。 */
+    }
+  }
   const programs = process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)'
   const locator = join(programs, 'Microsoft Visual Studio', 'Installer', 'vswhere.exe')
   if (!existsSync(locator))
@@ -44,7 +69,6 @@ if (process.platform === 'win32') {
   )
   if (!sdkVersion) throw new Error('Windows SDK 缺少 WinRT 合成头文件或 x64 库')
   const temporary = mkdtempSync(join(tmpdir(), 'mydsh-window-background-build-'))
-  const output = join(root, 'lib', 'main', 'window-background.node')
   mkdirSync(join(root, 'lib', 'main'), { recursive: true })
   try {
     execFileSync(
@@ -81,6 +105,8 @@ if (process.platform === 'win32') {
       ],
       { stdio: 'inherit', windowsHide: true },
     )
+    mkdirSync(join(root, '.build'), { recursive: true })
+    writeFileSync(cacheFile, `${JSON.stringify({ fingerprint }, null, 2)}\n`)
   } finally {
     rmSync(temporary, { recursive: true, force: true })
   }

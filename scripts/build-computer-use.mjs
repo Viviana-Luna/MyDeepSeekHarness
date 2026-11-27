@@ -1,12 +1,33 @@
 /** 双端构建系统级 Computer Use 原生模块：macOS 使用 xcrun clang，Windows 使用 MSVC + node-api-headers。 */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import headers from 'node-api-headers'
 
 const root = resolve(import.meta.dirname, '..')
 const output = join(root, 'lib', 'main', 'computer-use.node')
+const cacheFile = join(root, '.build', 'native-computer-use-cache.json')
+
+function computeComputerUseFingerprint() {
+  const hash = createHash('sha256')
+  hash.update(`${process.platform}:${process.arch}\0`)
+  hash.update(readFileSync(join(root, 'package.json')))
+  hash.update(readFileSync(join(root, 'scripts', 'build-computer-use.mjs')))
+  const sourceName = process.platform === 'darwin' ? 'computer-use-mac.m' : 'computer-use-win.cc'
+  const sourcePath = join(root, 'native', sourceName)
+  if (existsSync(sourcePath)) hash.update(readFileSync(sourcePath))
+  return hash.digest('hex')
+}
 
 function versionsDesc(directory) {
   return readdirSync(directory).toSorted((a, b) => b.localeCompare(a, 'en', { numeric: true }))
@@ -134,5 +155,24 @@ function buildWindows() {
   }
 }
 
-if (process.platform === 'darwin') buildMac()
-else if (process.platform === 'win32') buildWindows()
+const fingerprint = computeComputerUseFingerprint()
+const skipNativeBuild =
+  !process.argv.includes('--force') &&
+  existsSync(output) &&
+  existsSync(cacheFile) &&
+  (() => {
+    try {
+      return JSON.parse(readFileSync(cacheFile, 'utf8')).fingerprint === fingerprint
+    } catch {
+      return false
+    }
+  })()
+
+if (!skipNativeBuild) {
+  if (process.platform === 'darwin') buildMac()
+  else if (process.platform === 'win32') buildWindows()
+  if (process.platform === 'darwin' || process.platform === 'win32') {
+    mkdirSync(join(root, '.build'), { recursive: true })
+    writeFileSync(cacheFile, `${JSON.stringify({ fingerprint }, null, 2)}\n`)
+  }
+}

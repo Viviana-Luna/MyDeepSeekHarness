@@ -89,10 +89,12 @@ pnpm run dev
 
 | 命令 | 说明 |
 | --- | --- |
-| `pnpm run dev` | 完整构建并启动 Electron 桌面端 |
-| `pnpm run build` | 依次构建离线核心运行时、主进程与前端资源 |
-| `pnpm run check` | 运行类型检查、格式校验、Lint、注释检查、单元测试与独立性门禁 |
-| `pnpm run verify` | 在隔离临时目录中启动真实 Electron 窗口，验收核心安装、布局、主题与退出清理 |
+| `pnpm run dev` | 增量构建并启动 Electron 桌面端 |
+| `pnpm run build` | 按输入摘要增量构建离线核心运行时、主进程与前端资源（全量冷重编可用 `pnpm run build:clean`） |
+| `pnpm run check` | 运行并行增量类型检查、格式校验、Lint、注释检查、单元测试与独立性门禁 |
+| `pnpm run test:unit` | 仅运行纯内存与前端组件快速单元测试（跳过重型子进程集成测试） |
+| `pnpm run verify:smoke` | 快速启动真实 Electron 验收核心安装、启动页、窗口与基础浮岛（也可通过 `node scripts/verify-source-runtime.mjs --suite=<套件>` 定向验收） |
+| `pnpm run verify` | 在隔离临时目录中运行全量真实 Electron 窗口验收 |
 | `pnpm run eval:harness` | 运行 Harness Schema 预算与二级 CLI 闭环评测 |
 | `pnpm run make:mac` | 构建并打包 macOS Apple Silicon `.app` 与 `.dmg` |
 | `pnpm run make:win` | 构建并打包 Windows 11 x64 应用目录与安装程序 |
