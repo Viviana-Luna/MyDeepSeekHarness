@@ -1,7 +1,7 @@
 blank_issues_enabled: true
 contact_links:
   - name: 文档中心
-    url: https://github.com/Viviana-Luna/MyDeepSeekHarness/blob/master/docs/README.md
+    url: https://github.com/Viviana-Luna/MyDeepSeekHarness/blob/main/docs/README.md
     about: 查阅架构设计、编码模式、插件开发与常见故障排查
   - name: 安全漏洞私密反馈
     url: https://github.com/Viviana-Luna/MyDeepSeekHarness/security/advisories/new

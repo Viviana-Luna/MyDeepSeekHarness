@@ -114,7 +114,13 @@
   flex: none;
   padding-bottom: 12px;
 }
-.app-shell[data-session-tabs-visible='false'] .main-island .connections-heading {
+.app-shell[data-tab-actions-floating='true']:not([data-workspace-split])
+  .main-island
+  .connections-heading,
+.app-shell[data-tab-actions-floating='true'][data-workspace-split]
+  .main-island
+  .work-tab-panel[data-split-pane='right']
+  .connections-heading {
   padding-right: 92px;
 }
 .connections-actions {
