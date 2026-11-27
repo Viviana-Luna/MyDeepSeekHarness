@@ -222,6 +222,83 @@ function waitForCondition(
   })
 }
 
+/** 等待窗口视口尺寸到达目标值（兼容 Windows 150% 分数缩放的 2px 取整差）并完成两帧排版。 */
+async function waitForWindowSize(
+  win: BrowserWindow,
+  width: number,
+  height: number,
+  timeoutMs = 2_000,
+): Promise<void> {
+  await win.webContents.executeJavaScript(`(async () => {
+    const deadline = performance.now() + ${String(timeoutMs)}
+    while (performance.now() < deadline) {
+      if (Math.abs(innerWidth - ${String(width)}) <= 2 && Math.abs(innerHeight - ${String(height)}) <= 2) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    await Promise.race([
+      new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+      new Promise(resolve => setTimeout(resolve, 200)),
+    ])
+  })()`)
+}
+
+/** 等待桌面设置里的主题偏好写入根节点属性并完成两帧重绘。 */
+async function waitForColorScheme(
+  win: BrowserWindow,
+  scheme: 'light' | 'dark' | 'system',
+  timeoutMs = 2_000,
+): Promise<void> {
+  await win.webContents.executeJavaScript(`(async () => {
+    const deadline = performance.now() + ${String(timeoutMs)}
+    while (performance.now() < deadline) {
+      if (document.documentElement.dataset.colorScheme === ${JSON.stringify(scheme)}) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    await Promise.race([
+      new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+      new Promise(resolve => setTimeout(resolve, 200)),
+    ])
+  })()`)
+}
+
+/** 等待 Electron nativeTheme 切换同步到页面 prefers-color-scheme 媒体查询并完成两帧重绘。 */
+async function waitForNativeTheme(
+  win: BrowserWindow,
+  expected: 'light' | 'dark',
+  timeoutMs = 2_000,
+): Promise<void> {
+  await win.webContents.executeJavaScript(`(async () => {
+    const query = ${JSON.stringify(`(prefers-color-scheme: ${expected})`)}
+    const deadline = performance.now() + ${String(timeoutMs)}
+    while (performance.now() < deadline) {
+      if (matchMedia(query).matches) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    await Promise.race([
+      new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+      new Promise(resolve => setTimeout(resolve, 200)),
+    ])
+  })()`)
+}
+
+/** 等待指定容器内的有限时长动画结束或取消，防止取消动画抛出的 AbortError 中断验收。 */
+async function settleElementAnimations(win: BrowserWindow, selector: string): Promise<void> {
+  await win.webContents.executeJavaScript(`(async () => {
+    const target = document.querySelector(${JSON.stringify(selector)})
+    if (!(target instanceof HTMLElement)) return
+    await Promise.allSettled(
+      target
+        .getAnimations({ subtree: true })
+        .filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity)
+        .map(animation => animation.finished),
+    )
+    await Promise.race([
+      new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+      new Promise(resolve => setTimeout(resolve, 200)),
+    ])
+  })()`)
+}
+
 const VERIFY_MODE = process.argv.includes(VERIFY_FLAG)
 const VERIFY_SSH = VERIFY_MODE && process.argv.includes('--verify-ssh')
 const VERIFY_DATABASE = VERIFY_MODE && process.argv.includes('--verify-database')
@@ -236,7 +313,9 @@ if (VERIFY_BACKGROUND && process.platform === 'darwin') app.setActivationPolicy(
 // Windows 后台离屏验收在无独立 GPU 的 CI 虚拟机上容易反复触发 Chromium GPU 进程崩溃直至中止；
 // 按 Electron 离屏渲染要求关闭硬件加速改用软件合成，不影响主进程 DirectComposition 背景校验。
 if (VERIFY_BACKGROUND && process.platform === 'win32') app.disableHardwareAcceleration()
-const VERIFY_TOTAL_TIMEOUT_MS = 230_000
+// 覆盖首次离线安装两万余核心文件、运行时重启恢复及 macOS/Windows 离屏全量验收；
+// 需低于 scripts/runtime-verification.mjs 的外部时限，确保超时时仍能先输出结构化报告。
+const VERIFY_TOTAL_TIMEOUT_MS = 480_000
 const VERIFY_DEADLINE =
   VERIFY_MODE && !VERIFY_INTERACTIVE ? Date.now() + VERIFY_TOTAL_TIMEOUT_MS : undefined
 const VERIFY_HOME_INPUT = process.env.MYDSH_VERIFY_HOME
@@ -688,6 +767,9 @@ async function main(): Promise<void> {
     height: 480,
     minWidth: 760,
     minHeight: 480,
+    // 离屏后台验收在 Windows 1024×720 工作区 + 1.5x 缩放下（逻辑工作区仅 683×480），
+    // 禁用默认居中可避免构造期 AdjustToFit 将 760×480 启动小窗压窄至 683×480。
+    ...(VERIFY_BACKGROUND ? { x: 0, y: 0, center: false } : {}),
     show: false,
     resizable: false,
     title: PRODUCT_NAME,
@@ -1865,37 +1947,46 @@ async function main(): Promise<void> {
             view: document.querySelector('[data-view][aria-current="page"]')?.getAttribute('data-view') ?? null,
             body: document.body.textContent?.slice(0, 240) ?? '' }) }
       }
-      for (let attempt = 0; attempt < 80; attempt += 1) {
-        if (document.querySelector('.project-session-group .session-row') !== null) break
-        await new Promise(resolve => setTimeout(resolve, 25))
+      const wait = async (check, attempts = 80) => {
+        for (let attempt = 0; attempt < attempts; attempt += 1) {
+          const value = check()
+          if (value) return value
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+        return null
       }
+      await wait(() => document.querySelector('.project-session-group .session-row') !== null)
       projectSelector.click()
-      await new Promise(resolve => setTimeout(resolve, 40))
-      const projectFocusMenu = document.querySelector('.project-focus-menu')
+      const projectFocusMenu = await wait(() => {
+        const menu = document.querySelector('.project-focus-menu')
+        return menu instanceof HTMLElement
+          && menu.getAttribute('role') === 'menu'
+          && menu.querySelector('[role="menuitemradio"][aria-checked="true"]') instanceof HTMLButtonElement
+          ? menu
+          : null
+      })
       const ownProjectSelectorReady = projectFocusMenu instanceof HTMLElement
-        && projectFocusMenu.getAttribute('role') === 'menu'
-        && projectFocusMenu.querySelector('[role="menuitemradio"][aria-checked="true"]') instanceof HTMLButtonElement
         && document.querySelector('.project-focus select') === null
       projectSelector.click()
-      await new Promise(resolve => setTimeout(resolve, 20))
+      await wait(() => document.querySelector('.project-focus-menu') === null)
       const initialHeight = composer.getBoundingClientRect().height
       const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
       valueSetter?.call(composer, Array.from({ length: 9 }, (_, index) => '第 ' + String(index + 1) + ' 行').join('\\n'))
       composer.dispatchEvent(new Event('input', { bubbles: true }))
-      await new Promise(resolve => setTimeout(resolve, 40))
+      await wait(() => composer.getBoundingClientRect().height > initialHeight, 40)
+      await new Promise(resolve => requestAnimationFrame(resolve))
       const grownHeight = composer.getBoundingClientRect().height
       valueSetter?.call(composer, '')
       composer.dispatchEvent(new Event('input', { bubbles: true }))
       trajectory.click()
-      await new Promise(resolve => setTimeout(resolve, 40))
-      const trajectoryVisible = document.querySelector('#trajectory-view') instanceof HTMLElement
+      const trajectoryVisible = await wait(() => document.querySelector('#trajectory-view') instanceof HTMLElement) !== null
       // 轨迹在聊天浮岛内切换，不再自动收放两侧栏（见 docs/renderer.md）。
       const trajectoryShell = document.querySelector('.app-shell')
       const trajectoryKeepsPanels = trajectoryShell instanceof HTMLElement
         && trajectoryShell.dataset.navigationCollapsed !== 'true'
         && trajectoryShell.dataset.informationCollapsed !== 'true'
       document.querySelector('.conversation-view-tabs [data-view="conversation"]')?.click()
-      await new Promise(resolve => setTimeout(resolve, 40))
+      await wait(() => document.querySelector('#conversation-view') instanceof HTMLElement)
       // 切换视图会正常取消旧动画；等它们完成或取消后，继续检查实际布局。
       await Promise.allSettled(document.querySelector('.app-shell').getAnimations({ subtree: true })
         .filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity).map(animation => animation.finished))
@@ -2381,19 +2472,34 @@ async function main(): Promise<void> {
     const presentationScheme = settingsStore.read().colorScheme
     const captureProjectSelector = async (scheme: 'light' | 'dark') => {
       await clickTrustedElement(win, '.project-selector')
-      await new Promise(resolve => {
-        setTimeout(resolve, 80)
-      })
+      await win.webContents.executeJavaScript(`(async () => {
+        for (let attempt = 0; attempt < 80; attempt += 1) {
+          const menu = document.querySelector('.project-focus-menu')
+          if (menu instanceof HTMLElement && menu.checkVisibility()) {
+            await Promise.allSettled(
+              menu.getAnimations({ subtree: true })
+                .filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity)
+                .map(animation => animation.finished),
+            )
+            return
+          }
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+      })()`)
       writeFileSync(
         verificationArtifactPath('verify-project-selector-' + scheme + '.png'),
         (await captureVerifiedPage(win)).toPNG(),
       )
       await clickTrustedElement(win, '.project-selector')
+      await win.webContents.executeJavaScript(`(async () => {
+        for (let attempt = 0; attempt < 80; attempt += 1) {
+          if (document.querySelector('.project-focus-menu') === null) return
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+      })()`)
     }
     settingsController.publish(settingsStore.update({ colorScheme: 'light' }))
-    await new Promise(resolve => {
-      setTimeout(resolve, 120)
-    })
+    await waitForColorScheme(win, 'light')
     const lightPresentation = await readPresentation()
     writeFileSync(
       verificationArtifactPath('verify-body-alignment-light.png'),
@@ -2401,9 +2507,7 @@ async function main(): Promise<void> {
     )
     await captureProjectSelector('light')
     settingsController.publish(settingsStore.update({ colorScheme: 'dark' }))
-    await new Promise(resolve => {
-      setTimeout(resolve, 120)
-    })
+    await waitForColorScheme(win, 'dark')
     const darkPresentation = await readPresentation()
     writeFileSync(
       verificationArtifactPath('verify-body-alignment-dark.png'),
@@ -2411,14 +2515,13 @@ async function main(): Promise<void> {
     )
     await captureProjectSelector('dark')
     settingsController.publish(settingsStore.update({ colorScheme: presentationScheme }))
+    await waitForColorScheme(win, presentationScheme)
     win.setSize(1800, 1000)
     win.webContents.sendInputEvent({ type: 'mouseMove', x: 2, y: 2 })
     await win.webContents.executeJavaScript(
       `document.activeElement instanceof HTMLElement && document.activeElement.blur()`,
     )
-    await new Promise(resolve => {
-      setTimeout(resolve, 300)
-    })
+    await waitForWindowSize(win, 1800, 1000)
     const widePresentation = await readPresentation()
     // macOS 调整窗口尺寸后，键盘验收需要重新取得窗口与 WebContents 焦点。
     if (!VERIFY_BACKGROUND) {
@@ -2515,23 +2618,25 @@ async function main(): Promise<void> {
         },
       ],
     })
-    await new Promise(resolve => {
-      setTimeout(resolve, 150)
-    })
-    const processReady = await win.webContents.executeJavaScript(`(() => {
-      const view = document.querySelector('#conversation-view')
-      const toggle = view.querySelector('[data-turn-process="1"]')
-      const answer = view.querySelector('h1')
-      if (toggle?.textContent !== '1 次工具调用 · 1 条消息' || toggle.getAttribute('aria-expanded') !== 'false'
-        || view.querySelector('[data-tool-disclosure], [data-thinking-disclosure]') || !answer) throw new Error('过程摘要未收起：' + toggle?.textContent)
-      if (Math.abs(toggle.getBoundingClientRect().left - answer.getBoundingClientRect().left) >= 1) throw new Error('过程摘要与最终回答未对齐')
-      if (view.querySelectorAll('[aria-label="消息操作"]').length !== 1) throw new Error('最终回答的消息操作数量异常')
-      toggle.click()
-      return true
+    const processReady = await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        const view = document.querySelector('#conversation-view')
+        const toggle = view?.querySelector('[data-turn-process="1"]')
+        const answer = view?.querySelector('h1')
+        if (toggle?.textContent === '1 次工具调用 · 1 条消息'
+          && toggle.getAttribute('aria-expanded') === 'false'
+          && !view.querySelector('[data-tool-disclosure], [data-thinking-disclosure]')
+          && answer) {
+          if (Math.abs(toggle.getBoundingClientRect().left - answer.getBoundingClientRect().left) >= 1) throw new Error('过程摘要与最终回答未对齐')
+          if (view.querySelectorAll('[aria-label="消息操作"]').length !== 1) throw new Error('最终回答的消息操作数量异常')
+          toggle.click()
+          return true
+        }
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      const toggle = document.querySelector('#conversation-view [data-turn-process="1"]')
+      throw new Error('过程摘要未收起：' + toggle?.textContent)
     })()`)
-    await new Promise(resolve => {
-      setTimeout(resolve, 100)
-    })
     const expandedPresentation = await readPresentation()
     writeFileSync(
       verificationArtifactPath('verify-turn-process-expanded.png'),
@@ -2544,12 +2649,18 @@ async function main(): Promise<void> {
       !expandedPresentation.processMetadataHidden
     )
       throw new Error('过程重新展开后的排版异常：' + JSON.stringify(expandedPresentation))
-    await win.webContents.executeJavaScript(
-      `document.querySelector('[data-turn-process="1"]').click()`,
-    )
-    await new Promise(resolve => {
-      setTimeout(resolve, 100)
-    })
+    await win.webContents.executeJavaScript(`(async () => {
+      const toggle = document.querySelector('[data-turn-process="1"]')
+      toggle?.click()
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        if (document.querySelector('[data-turn-process="1"]')?.getAttribute('aria-expanded') === 'false') break
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      await Promise.race([
+        new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+        new Promise(resolve => setTimeout(resolve, 200)),
+      ])
+    })()`)
     writeFileSync(
       verificationArtifactPath('verify-turn-process.png'),
       (await captureVerifiedPage(win)).toPNG(),
@@ -2654,6 +2765,8 @@ async function main(): Promise<void> {
     try {
       win.setSize(1280, 800)
       settingsController.publish(settingsStore.update({ colorScheme: 'dark' }))
+      await waitForWindowSize(win, 1280, 800)
+      await waitForColorScheme(win, 'dark')
       win.webContents.send(HOST_CHANNELS.sessionFrame, {
         type: 'session/queue',
         sessionId: presentationSession,
@@ -2669,6 +2782,8 @@ async function main(): Promise<void> {
       )
       settingsController.publish(settingsStore.update({ colorScheme: 'light' }))
       win.setSize(1800, 1000)
+      await waitForWindowSize(win, 1800, 1000)
+      await waitForColorScheme(win, 'light')
       win.webContents.send(HOST_CHANNELS.sessionFrame, {
         type: 'session/queue',
         sessionId: presentationSession,
@@ -2680,6 +2795,7 @@ async function main(): Promise<void> {
       )
       await captureQueue('verify-queue-light-expanded.png')
       win.setSize(900, 720)
+      await waitForWindowSize(win, 900, 720)
       await captureQueue('verify-queue-narrow.png')
     } finally {
       win.webContents.send(HOST_CHANNELS.sessionFrame, {
@@ -2693,6 +2809,7 @@ async function main(): Promise<void> {
         running: false,
       })
       settingsController.publish(settingsStore.update({ colorScheme: presentationScheme }))
+      await waitForColorScheme(win, presentationScheme)
     }
     win.webContents.send(HOST_CHANNELS.sessionFrame, {
       type: 'session/snapshot',
@@ -2767,9 +2884,7 @@ async function main(): Promise<void> {
       },
     )
     win.setSize(1280, 800)
-    await new Promise(resolve => {
-      setTimeout(resolve, 300)
-    })
+    await waitForWindowSize(win, 1280, 800)
 
     // 打包窗口在系统指针位于外部时会清除合成 hover；用原生 Tab 验证提示与键盘可达性。
     if (!VERIFY_BACKGROUND) {
@@ -2778,13 +2893,19 @@ async function main(): Promise<void> {
       win.webContents.focus()
       await waitForCondition(() => win.isFocused() && win.webContents.isFocused(), 1_000)
     }
-    await win.webContents.executeJavaScript(
-      `document.querySelector('.session-search-trigger').focus()`,
-    )
+    await win.webContents.executeJavaScript(`(async () => {
+      const trigger = document.querySelector('.session-search-trigger')
+      if (!(trigger instanceof HTMLElement)) return
+      trigger.focus()
+      for (let attempt = 0; attempt < 40 && document.activeElement !== trigger; attempt += 1) {
+        trigger.focus()
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+    })()`)
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' })
     win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' })
     const modeTooltipReady = (await win.webContents.executeJavaScript(`(async () => {
-      for (let attempt = 0; attempt < 60; attempt += 1) {
+      for (let attempt = 0; attempt < 100; attempt += 1) {
         const tooltip = [...document.querySelectorAll('[role="tooltip"]')].find(element => element.textContent === '对话')
         const rect = tooltip?.getBoundingClientRect()
         if (document.activeElement?.getAttribute('data-view') === 'conversation'
@@ -2869,12 +2990,18 @@ async function main(): Promise<void> {
       await wait(() => list()?.querySelector('[id^="命令候选-skill:"]') instanceof HTMLElement)
       const skillCount = list()?.querySelectorAll('[role="option"]').length ?? 0
       list()?.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }))
-      await sleep(30)
-      const selected = list()?.querySelector('[aria-selected="true"]')?.getBoundingClientRect()
-      const listBounds = list()?.getBoundingClientRect()
-      if (!list() || !listBounds) return { ready: false, reason: 'Skill 面板没有打开', skillCount, optionCount }
-      const scrollable = list().scrollHeight > list().clientHeight && list().scrollTop > 0
-        && selected !== undefined && selected.bottom <= listBounds.bottom + 1
+      const scrollable = await wait(() => {
+        const currentList = list()
+        const selected = currentList?.querySelector('[aria-selected="true"]')?.getBoundingClientRect()
+        const listBounds = currentList?.getBoundingClientRect()
+        return currentList !== null
+          && listBounds !== undefined
+          && currentList.scrollHeight > currentList.clientHeight
+          && currentList.scrollTop > 0
+          && selected !== undefined
+          && selected.bottom <= listBounds.bottom + 1
+      })
+      if (!list() || !list()?.getBoundingClientRect()) return { ready: false, reason: 'Skill 面板没有打开', skillCount, optionCount }
       const skill = list()?.querySelector('[id^="命令候选-skill:"]:not(:disabled)')
       const skillName = skill?.querySelector('strong')?.textContent
       if (!skillName) return { ready: false, reason: 'Skill 目录为空' }
@@ -2896,10 +3023,10 @@ async function main(): Promise<void> {
         && document.querySelector('[role="menu"][aria-label="工作模式"]') === null)
       const modePreservedDraft = composer.value === skillName + ' ' + draft
       write(composer, '')
-      await sleep(40)
+      const closedAfterClear = await wait(() => palette() === null)
       return { ready: portal && ariaReady && bounded && scrollable && filtered && preserved && planOn && planOff && planPlaceholder && modePreservedDraft,
         portal, ariaReady, optionCount: optionCount + skillCount, bounded, scrollable, filtered, preserved, planOn, planOff, modePreservedDraft,
-        closedAfterClear: palette() === null, bridgeVersion: globalThis.dshDesktop?.version ?? 0 }
+        closedAfterClear, bridgeVersion: globalThis.dshDesktop?.version ?? 0 }
     })()`)) as {
       ready: boolean
       optionCount?: number
@@ -2946,12 +3073,19 @@ async function main(): Promise<void> {
       valueSetter?.call(composer, '')
       composer.setSelectionRange(0, 0)
       composer.dispatchEvent(new Event('input', { bubbles: true }))
-      await sleep(40)
+      let closedAfterClear = false
+      for (let index = 0; index < 40; index += 1) {
+        if (document.querySelector('[aria-label="文件引用面板"]') === null) {
+          closedAfterClear = true
+          break
+        }
+        await sleep(25)
+      }
       return {
         ready,
         optionCount,
         error,
-        closedAfterClear: document.querySelector('[aria-label="文件引用面板"]') === null,
+        closedAfterClear,
       }
     })()`)) as {
       ready: boolean
@@ -2983,14 +3117,21 @@ async function main(): Promise<void> {
       if (!(blob instanceof Blob)) return { ready: false, error: '无法编码验收 PNG' }
       const transfer = new DataTransfer()
       transfer.items.add(new File([blob], '拖放验收.png', { type: 'image/png' }))
+      const waitFor = async (predicate, attempts = 60) => {
+        for (let index = 0; index < attempts; index += 1) {
+          if (predicate()) return true
+          await sleep(25)
+        }
+        return false
+      }
       const dragEnterPrevented = !composer.dispatchEvent(new DragEvent('dragenter', {
         bubbles: true,
         cancelable: true,
         dataTransfer: transfer,
       }))
-      await sleep(40)
-      const overlayVisible = document.querySelector('.composer-drop-target')?.textContent?.trim()
-        === '松开以附加文件或图片'
+      const overlayVisible = await waitFor(() =>
+        document.querySelector('.composer-drop-target')?.textContent?.trim()
+          === '松开以附加文件或图片')
       const dropPrevented = !composer.dispatchEvent(new DragEvent('drop', {
         bubbles: true,
         cancelable: true,
@@ -3011,14 +3152,13 @@ async function main(): Promise<void> {
       }
       const remove = document.querySelector('.composer-attachments button')
       if (remove instanceof HTMLButtonElement) remove.click()
-      await sleep(40)
-      const removed = ![...document.querySelectorAll('.composer-attachments li')]
-        .some(item => item.querySelector('img')?.alt === '拖放验收.png')
+      const removed = await waitFor(() => ![...document.querySelectorAll('.composer-attachments li')]
+        .some(item => item.querySelector('img')?.alt === '拖放验收.png'))
       const input = document.querySelector('#composer')
       const draft = '粘贴图片时保留正在编辑的正文'
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(input, draft)
       input.dispatchEvent(new Event('input', { bubbles: true }))
-      await sleep(25)
+      await waitFor(() => input.value === draft)
       const clipboard = new DataTransfer()
       clipboard.items.add(new File([blob], '粘贴验收.png', { type: 'image/png' }))
       const pastePrevented = !input.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: clipboard }))
@@ -3035,8 +3175,7 @@ async function main(): Promise<void> {
       document.querySelector('[aria-label="移除附件 粘贴验收.png"]')?.click()
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(input, '')
       input.dispatchEvent(new Event('input', { bubbles: true }))
-      await sleep(40)
-      const pasteRemoved = document.querySelector('.composer-attachments') === null
+      const pasteRemoved = await waitFor(() => document.querySelector('.composer-attachments') === null)
       return {
         ready: dragEnterPrevented && dropPrevented && overlayVisible && attachmentVisible && removed && error === ''
           && pastePrevented && pasted && draftPreserved && icons && pasteRemoved,
@@ -3090,7 +3229,10 @@ async function main(): Promise<void> {
       valueSetter?.call(composer, line)
       composer.setSelectionRange(line.length, line.length)
       composer.dispatchEvent(new Event('input', { bubbles: true }))
-      await sleep(60)
+      await Promise.race([
+        new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+        sleep(120),
+      ])
       composer.dispatchEvent(new KeyboardEvent('keydown', {
         key: 'Enter',
         bubbles: true,
@@ -3283,13 +3425,17 @@ async function main(): Promise<void> {
     )
 
     settingsController.publish(settingsStore.update({ colorScheme: 'dark' }))
+    await waitForColorScheme(win, 'dark')
     const actionErrorReady = (await win.webContents.executeJavaScript(`(async () => {
       const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
       const composer = document.querySelector('#composer')
       const beforeHeight = document.querySelector('.composer-card').getBoundingClientRect().height
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(composer, '/mydsh-invalid-verify')
       composer.dispatchEvent(new Event('input', { bubbles: true }))
-      await sleep(40)
+      await Promise.race([
+        new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+        sleep(100),
+      ])
       composer.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
       for (let attempt = 0; attempt < 80; attempt += 1) {
         await sleep(25)
@@ -3311,10 +3457,13 @@ async function main(): Promise<void> {
     if (!actionErrorReady) throw new Error('操作错误浮层、草稿保留或输入区高度验收失败')
     settingsController.publish(settingsStore.update({ colorScheme: 'light' }))
     const lightActionErrorReady = (await win.webContents.executeJavaScript(`(async () => {
-      for (let attempt = 0; attempt < 40 && document.documentElement.dataset.colorScheme !== 'light'; attempt += 1) {
+      for (let attempt = 0; attempt < 80 && document.documentElement.dataset.colorScheme !== 'light'; attempt += 1) {
         await new Promise(resolve => setTimeout(resolve, 25))
       }
-      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      await Promise.race([
+        new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+        new Promise(resolve => setTimeout(resolve, 200)),
+      ])
       return document.documentElement.dataset.colorScheme === 'light'
         && getComputedStyle(document.documentElement).getPropertyValue('--surface-raised').trim() === '#eceef2'
         && document.querySelector('.app-alert--error.app-alert--floating') !== null
@@ -3326,15 +3475,22 @@ async function main(): Promise<void> {
     )
     const actionErrorClosed = (await win.webContents.executeJavaScript(`(async () => {
       document.querySelector('.app-alert--floating button[aria-label="关闭提示"]').click()
-      await new Promise(resolve => setTimeout(resolve, 40))
       const composer = document.querySelector('#composer')
-      const closed = document.querySelector('.app-alert--floating') === null && composer.value === '/mydsh-invalid-verify'
+      let closed = false
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        if (document.querySelector('.app-alert--floating') === null) {
+          closed = composer.value === '/mydsh-invalid-verify'
+          break
+        }
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(composer, '')
       composer.dispatchEvent(new Event('input', { bubbles: true }))
       return closed
     })()`)) as boolean
     if (!actionErrorClosed) throw new Error('操作错误关闭后未正确保留草稿')
     settingsController.publish(settingsStore.update({ colorScheme: presentationScheme }))
+    await waitForColorScheme(win, presentationScheme)
     console.log(
       'desktop-shell-verify-local: action-error-toast',
       actionErrorReady && actionErrorClosed,
@@ -3343,12 +3499,17 @@ async function main(): Promise<void> {
     // 会话信息已不再作为右栏入口，用量明细移到输入区底部的仪表盘（见 docs/renderer.md）。
     const verifyFontScale = async (fontSize: 11 | 18): Promise<boolean> => {
       settingsController.publish(settingsStore.update({ fontSize }))
-      await new Promise(resolve => {
-        setTimeout(resolve, 100)
-      })
-      return win.webContents.executeJavaScript(`(() => {
+      return win.webContents.executeJavaScript(`(async () => {
         const expected = ${String(fontSize)}
         const root = document.documentElement
+        for (let attempt = 0; attempt < 80; attempt += 1) {
+          if (root.style.getPropertyValue('--text-body').trim() === String(expected) + 'px') break
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+        await Promise.race([
+          new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+          new Promise(resolve => setTimeout(resolve, 200)),
+        ])
         const tabs = [...document.querySelectorAll('.view-tabs button')]
         const sessionRows = [...document.querySelectorAll('.session-row')]
         const projectSelector = document.querySelector('.project-selector')
@@ -3374,26 +3535,35 @@ async function main(): Promise<void> {
     const compactFontReady = await verifyFontScale(11)
     const largeFontReady = await verifyFontScale(18)
     settingsController.publish(settingsStore.update({ fontSize: 12 }))
-    await new Promise(resolve => {
-      setTimeout(resolve, 100)
-    })
+    await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        if (document.documentElement.style.getPropertyValue('--text-body').trim() === '12px') break
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+    })()`)
     settingsController.publish(settingsStore.update({ accentColor: '#ffffff' }))
-    await new Promise(resolve => {
-      setTimeout(resolve, 80)
-    })
-    const lightAccentReady = (await win.webContents
-      .executeJavaScript(`document.documentElement.style
-      .getPropertyValue('--accent-contrast').trim() === '#000000'`)) as boolean
+    const lightAccentReady = (await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        if (document.documentElement.style.getPropertyValue('--accent-contrast').trim() === '#000000') return true
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      return false
+    })()`)) as boolean
     settingsController.publish(settingsStore.update({ accentColor: '#000000' }))
-    await new Promise(resolve => {
-      setTimeout(resolve, 80)
-    })
-    const darkAccentReady = (await win.webContents.executeJavaScript(`document.documentElement.style
-      .getPropertyValue('--accent-contrast').trim() === '#ffffff'`)) as boolean
+    const darkAccentReady = (await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        if (document.documentElement.style.getPropertyValue('--accent-contrast').trim() === '#ffffff') return true
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      return false
+    })()`)) as boolean
     settingsController.publish(settingsStore.update({ accentColor: '#4d6bfe' }))
-    await new Promise(resolve => {
-      setTimeout(resolve, 100)
-    })
+    await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        if (document.documentElement.style.getPropertyValue('--accent').trim().toLowerCase() === '#4d6bfe') break
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+    })()`)
     const fontScaleReady = compactFontReady && largeFontReady
     const accentContrastReady = lightAccentReady && darkAccentReady
 
@@ -3401,12 +3571,22 @@ async function main(): Promise<void> {
       initial.projectFocused &&
       ((await win.webContents.executeJavaScript(`(async () => {
         const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
+        const waitFor = async (predicate, attempts = 80) => {
+          for (let attempt = 0; attempt < attempts; attempt += 1) {
+            const value = predicate()
+            if (value) return value
+            await sleep(25)
+          }
+          return null
+        }
         const selector = document.querySelector('button[aria-label="专注项目"]')
         if (!(selector instanceof HTMLButtonElement)
           || selector.textContent?.includes('全部项目') !== true) return false
         selector.click()
-        await sleep(40)
-        let menu = document.querySelector('.project-focus-menu')
+        let menu = await waitFor(() => {
+          const node = document.querySelector('.project-focus-menu')
+          return node instanceof HTMLElement ? node : null
+        })
         const option = menu instanceof HTMLElement
           ? [...menu.querySelectorAll('[role="menuitemradio"]')]
               .find(item => item.getAttribute('aria-checked') !== 'true')
@@ -3415,66 +3595,76 @@ async function main(): Promise<void> {
           return document.querySelectorAll('.project-session-group').length === 0
         }
         option.click()
-        await sleep(140)
         const visible = element => element instanceof HTMLElement && element.getClientRects().length > 0
-        const focusedGroup = document.querySelector('.project-session-group')
-        const focusedRows = focusedGroup === null
-          ? []
-          : [...focusedGroup.querySelectorAll('.session-row')].filter(visible)
-        const focusedToggle = focusedGroup?.querySelector('[data-project-toggle]')
-        const focusedProjectId = focusedGroup?.getAttribute('data-project-group')
-        const focusedList = focusedGroup?.querySelector('.project-session-list')
-        const focusedBlankReady = focusedRows.length === 0
-          && focusedList?.querySelector('.session-list__empty') instanceof HTMLElement
-        const focused = selector.textContent?.includes('全部项目') !== true
-          && document.querySelectorAll('.project-session-group').length === 1
-          && document.querySelector('.project-section-heading h2')?.textContent?.trim() === '会话'
-          && (focusedRows.length > 0 || focusedBlankReady)
-          && focusedProjectId !== null
-          && focusedGroup?.querySelector('.project-group-heading') === null
-          && focusedToggle === null
-          && focusedList instanceof HTMLElement
-          && !focusedList.hidden
-          && focusedRows.every(row => row.getAttribute('data-project-id') === focusedProjectId)
+        const focused = (await waitFor(() => {
+          const focusedGroup = document.querySelector('.project-session-group')
+          const focusedRows = focusedGroup === null
+            ? []
+            : [...focusedGroup.querySelectorAll('.session-row')].filter(visible)
+          const focusedToggle = focusedGroup?.querySelector('[data-project-toggle]')
+          const focusedProjectId = focusedGroup?.getAttribute('data-project-group')
+          const focusedList = focusedGroup?.querySelector('.project-session-list')
+          const focusedBlankReady = focusedRows.length === 0
+            && focusedList?.querySelector('.session-list__empty') instanceof HTMLElement
+          return selector.textContent?.includes('全部项目') !== true
+            && document.querySelectorAll('.project-session-group').length === 1
+            && document.querySelector('.project-section-heading h2')?.textContent?.trim() === '会话'
+            && (focusedRows.length > 0 || focusedBlankReady)
+            && focusedProjectId !== null
+            && focusedGroup?.querySelector('.project-group-heading') === null
+            && focusedToggle === null
+            && focusedList instanceof HTMLElement
+            && !focusedList.hidden
+            && focusedRows.every(row => row.getAttribute('data-project-id') === focusedProjectId)
+        })) === true
         selector.click()
-        await sleep(40)
-        menu = document.querySelector('.project-focus-menu')
+        menu = await waitFor(() => {
+          const node = document.querySelector('.project-focus-menu')
+          return node instanceof HTMLElement ? node : null
+        })
         const allProjects = menu instanceof HTMLElement
           ? [...menu.querySelectorAll('[role="menuitemradio"]')]
               .find(item => item.textContent?.includes('全部项目') === true)
           : undefined
         if (!(allProjects instanceof HTMLButtonElement)) return false
         allProjects.click()
-        await sleep(140)
-        const selectedRow = [...document.querySelectorAll('.session-row')]
-          .find(row => row.getAttribute('aria-current') === 'page' && visible(row))
-        const selectedGroup = selectedRow?.closest('.project-session-group')
-          ?? document.querySelector('.project-group-heading.has-selected-session')?.closest('.project-session-group')
-        const toggle = selectedGroup?.querySelector('[data-project-toggle]')
-        const selectedBlankHidden = !(selectedRow instanceof HTMLButtonElement)
-          && selectedGroup instanceof HTMLElement
-        if (!(selectedGroup instanceof HTMLElement)
-          || !(toggle instanceof HTMLButtonElement)) return false
-        const controlledId = toggle.getAttribute('aria-controls')
-        const controlled = controlledId === null ? null : document.getElementById(controlledId)
-        const restored = selector.textContent?.includes('全部项目') === true
-          && toggle.getAttribute('aria-expanded') === 'true'
-          && controlled instanceof HTMLElement
-          && !controlled.hidden
+        const restoredState = await waitFor(() => {
+          const selectedRow = [...document.querySelectorAll('.session-row')]
+            .find(row => row.getAttribute('aria-current') === 'page' && visible(row))
+          const selectedGroup = selectedRow?.closest('.project-session-group')
+            ?? document.querySelector('.project-group-heading.has-selected-session')?.closest('.project-session-group')
+          const toggle = selectedGroup?.querySelector('[data-project-toggle]')
+          if (!(selectedGroup instanceof HTMLElement) || !(toggle instanceof HTMLButtonElement)) return null
+          const controlledId = toggle.getAttribute('aria-controls')
+          const controlled = controlledId === null ? null : document.getElementById(controlledId)
+          if (selector.textContent?.includes('全部项目') === true
+            && toggle.getAttribute('aria-expanded') === 'true'
+            && controlled instanceof HTMLElement
+            && !controlled.hidden) {
+            return {
+              selectedGroup,
+              toggle,
+              controlled,
+              selectedBlankHidden: !(selectedRow instanceof HTMLButtonElement),
+            }
+          }
+          return null
+        })
+        if (restoredState === null) return false
+        const { selectedGroup, toggle, controlled, selectedBlankHidden } = restoredState
+        const restored = true
         toggle.click()
-        await sleep(80)
-        const collapsed = selector.textContent?.includes('全部项目') === true
-          && toggle.getAttribute('aria-expanded') === 'false'
-          && controlled instanceof HTMLElement
-          && controlled.hidden
-          && ![...selectedGroup.querySelectorAll('.session-row')].some(visible)
+        const collapsed = (await waitFor(() =>
+          selector.textContent?.includes('全部项目') === true
+            && toggle.getAttribute('aria-expanded') === 'false'
+            && controlled.hidden
+            && ![...selectedGroup.querySelectorAll('.session-row')].some(visible))) === true
         toggle.click()
-        await sleep(80)
-        const expandedAgain = selector.textContent?.includes('全部项目') === true
-          && toggle.getAttribute('aria-expanded') === 'true'
-          && controlled instanceof HTMLElement
-          && !controlled.hidden
-          && (selectedBlankHidden || [...selectedGroup.querySelectorAll('.session-row')].some(visible))
+        const expandedAgain = (await waitFor(() =>
+          selector.textContent?.includes('全部项目') === true
+            && toggle.getAttribute('aria-expanded') === 'true'
+            && !controlled.hidden
+            && (selectedBlankHidden || [...selectedGroup.querySelectorAll('.session-row')].some(visible)))) === true
         return focused
           && restored
           && collapsed
@@ -3496,31 +3686,34 @@ async function main(): Promise<void> {
         win,
         `.project-session-group .session-row-shell[data-session-id=${escapedSessionActionTarget}] button[aria-label="置顶聊天"]`,
       )
-      await new Promise(resolve => {
-        setTimeout(resolve, 120)
-      })
-      sessionActionsReady = (await win.webContents.executeJavaScript(`(() => {
+      sessionActionsReady = (await win.webContents.executeJavaScript(`(async () => {
         const sessionId = ${escapedSessionActionTarget}
-        const pinnedGroup = document.querySelector('.pinned-session-group')
-        const pinnedRow = pinnedGroup?.querySelector('.session-row-shell[data-session-id=' + JSON.stringify(sessionId) + ']')
-        const projectDuplicate = document.querySelector('.project-session-group .session-row-shell[data-session-id=' + JSON.stringify(sessionId) + ']')
-        const unpin = pinnedRow?.querySelector('button[aria-label="取消置顶聊天"]')
-        const archive = pinnedRow?.querySelector('button[aria-label="归档聊天"]')
-        const stored = JSON.parse(localStorage.getItem('mydsh:pinned-session-ids') ?? '[]')
-        if (!(pinnedGroup instanceof HTMLElement)
-          || !(pinnedRow instanceof HTMLElement)
-          || !(unpin instanceof HTMLButtonElement)
-          || !(archive instanceof HTMLButtonElement)) return false
-        const rowRect = pinnedRow.getBoundingClientRect()
-        const groupRect = pinnedGroup.getBoundingClientRect()
-        return pinnedGroup.querySelector('h2')?.textContent?.trim() === '置顶'
-          && pinnedRow.getAttribute('data-pinned') === 'true'
-          && projectDuplicate === null
-          && Array.isArray(stored)
-          && stored[0] === sessionId
-          && rowRect.left >= groupRect.left - 1
-          && rowRect.right <= groupRect.right + 1
-          && rowRect.height >= 32
+        for (let attempt = 0; attempt < 80; attempt += 1) {
+          const pinnedGroup = document.querySelector('.pinned-session-group')
+          const pinnedRow = pinnedGroup?.querySelector('.session-row-shell[data-session-id=' + JSON.stringify(sessionId) + ']')
+          const projectDuplicate = document.querySelector('.project-session-group .session-row-shell[data-session-id=' + JSON.stringify(sessionId) + ']')
+          const unpin = pinnedRow?.querySelector('button[aria-label="取消置顶聊天"]')
+          const archive = pinnedRow?.querySelector('button[aria-label="归档聊天"]')
+          const stored = JSON.parse(localStorage.getItem('mydsh:pinned-session-ids') ?? '[]')
+          if (pinnedGroup instanceof HTMLElement
+            && pinnedRow instanceof HTMLElement
+            && unpin instanceof HTMLButtonElement
+            && archive instanceof HTMLButtonElement) {
+            const rowRect = pinnedRow.getBoundingClientRect()
+            const groupRect = pinnedGroup.getBoundingClientRect()
+            const ok = pinnedGroup.querySelector('h2')?.textContent?.trim() === '置顶'
+              && pinnedRow.getAttribute('data-pinned') === 'true'
+              && projectDuplicate === null
+              && Array.isArray(stored)
+              && stored[0] === sessionId
+              && rowRect.left >= groupRect.left - 1
+              && rowRect.right <= groupRect.right + 1
+              && rowRect.height >= 32
+            if (ok) return true
+          }
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+        return false
       })()`)) as boolean
       if (sessionActionsReady) {
         const hoverPoint = (await win.webContents.executeJavaScript(`(() => {
@@ -3545,48 +3738,69 @@ async function main(): Promise<void> {
         win,
         `.pinned-session-group .session-row-shell[data-session-id=${escapedSessionActionTarget}] button[aria-label="取消置顶聊天"]`,
       )
-      await new Promise(resolve => {
-        setTimeout(resolve, 100)
-      })
       sessionActionsReady =
         sessionActionsReady &&
-        ((await win.webContents.executeJavaScript(`(() => {
+        ((await win.webContents.executeJavaScript(`(async () => {
           const sessionId = ${escapedSessionActionTarget}
-          const projectRow = document.querySelector('.project-session-group .session-row-shell[data-session-id=' + JSON.stringify(sessionId) + ']')
-          const stored = JSON.parse(localStorage.getItem('mydsh:pinned-session-ids') ?? '[]')
-          return projectRow instanceof HTMLElement
-            && document.querySelector('.pinned-session-group') === null
-            && Array.isArray(stored)
-            && !stored.includes(sessionId)
+          for (let attempt = 0; attempt < 80; attempt += 1) {
+            const projectRow = document.querySelector('.project-session-group .session-row-shell[data-session-id=' + JSON.stringify(sessionId) + ']')
+            const stored = JSON.parse(localStorage.getItem('mydsh:pinned-session-ids') ?? '[]')
+            if (projectRow instanceof HTMLElement
+              && document.querySelector('.pinned-session-group') === null
+              && Array.isArray(stored)
+              && !stored.includes(sessionId)) return true
+            await new Promise(resolve => setTimeout(resolve, 25))
+          }
+          return false
         })()`)) as boolean)
     }
 
     await clickTrustedElement(win, '.session-search-trigger')
-    await new Promise(resolve => {
-      setTimeout(resolve, 160)
-    })
-    const sessionSearchState = (await win.webContents.executeJavaScript(`(() => {
-      const trigger = document.querySelector('.session-search-trigger')
-      const dialog = document.querySelector('#session-search-dialog')
-      const input = dialog?.querySelector('input[type="search"]')
-      const results = [...document.querySelectorAll('.session-search-result')]
-      const ready = trigger instanceof HTMLButtonElement
-        && trigger.getAttribute('aria-expanded') === 'true'
-        && dialog instanceof HTMLElement
-        && dialog.getAttribute('role') === 'dialog'
-        && input instanceof HTMLInputElement
-        && document.activeElement === input
-        && results.length > 0
-        && results.every(result => result.querySelector('strong')?.textContent?.trim() !== '')
-        && results.every(result => result.querySelector('small')?.textContent?.trim() !== '')
-      return {
-        ready,
-        expanded: trigger?.getAttribute('aria-expanded') ?? null,
-        dialogPresent: dialog instanceof HTMLElement,
-        closePresent: dialog?.querySelector('.session-search-close') instanceof HTMLButtonElement,
-        inputFocused: document.activeElement === input,
-        resultCount: results.length,
+    // SessionSearch 的输入框聚焦在 useEffect 后的下一帧 requestAnimationFrame 执行，且面板带有 360ms 滑入动画；
+    // 离屏或高负载环境下必须轮询等待聚焦与动画收敛，避免固定 160ms 误判 inputFocused=false。
+    const sessionSearchState = (await win.webContents.executeJavaScript(`(async () => {
+      let state
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const trigger = document.querySelector('.session-search-trigger')
+        const dialog = document.querySelector('#session-search-dialog')
+        const input = dialog?.querySelector('input[type="search"]')
+        const results = [...document.querySelectorAll('.session-search-result')]
+        const ready = trigger instanceof HTMLButtonElement
+          && trigger.getAttribute('aria-expanded') === 'true'
+          && dialog instanceof HTMLElement
+          && dialog.getAttribute('role') === 'dialog'
+          && input instanceof HTMLInputElement
+          && document.activeElement === input
+          && results.length > 0
+          && results.every(result => result.querySelector('strong')?.textContent?.trim() !== '')
+          && results.every(result => result.querySelector('small')?.textContent?.trim() !== '')
+        state = {
+          ready,
+          expanded: trigger?.getAttribute('aria-expanded') ?? null,
+          dialogPresent: dialog instanceof HTMLElement,
+          closePresent: dialog?.querySelector('.session-search-close') instanceof HTMLButtonElement,
+          inputFocused: document.activeElement === input,
+          resultCount: results.length,
+          ...(ready
+            ? {}
+            : {
+                activeTag: document.activeElement?.tagName ?? null,
+                activeClass: document.activeElement instanceof HTMLElement ? document.activeElement.className : null,
+                documentHasFocus: document.hasFocus(),
+              }),
+        }
+        if (ready) {
+          await Promise.allSettled(
+            dialog
+              .getAnimations({ subtree: true })
+              .filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity)
+              .map(animation => animation.finished),
+          )
+          return state
+        }
+        await new Promise(resolve => setTimeout(resolve, 25))
       }
+      return state
     })()`)) as {
       ready: boolean
       expanded: string | null
@@ -3594,6 +3808,9 @@ async function main(): Promise<void> {
       closePresent: boolean
       inputFocused: boolean
       resultCount: number
+      activeTag?: string | null
+      activeClass?: string | null
+      documentHasFocus?: boolean
     }
     let sessionSearchReady = sessionSearchState.ready
     console.log(`desktop-shell-verify-local: session-search ${JSON.stringify(sessionSearchState)}`)
@@ -3606,14 +3823,37 @@ async function main(): Promise<void> {
     }
     if (sessionSearchState.closePresent) await clickTrustedElement(win, '.session-search-close')
 
-    sessionSearchReady =
-      sessionSearchReady &&
-      ((await win.webContents.executeJavaScript(`(() => {
-      const trigger = document.querySelector('.session-search-trigger')
-      return document.querySelector('#session-search-dialog') === null
-        && trigger?.getAttribute('aria-expanded') === 'false'
-        && document.activeElement === trigger
-    })()`)) as boolean)
+    const sessionSearchCloseState = (await win.webContents.executeJavaScript(`(async () => {
+      let state
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        const trigger = document.querySelector('.session-search-trigger')
+        const closed = document.querySelector('#session-search-dialog') === null
+          && trigger?.getAttribute('aria-expanded') === 'false'
+          && document.activeElement === trigger
+        state = {
+          closed,
+          dialogAbsent: document.querySelector('#session-search-dialog') === null,
+          expanded: trigger?.getAttribute('aria-expanded') ?? null,
+          triggerFocused: document.activeElement === trigger,
+          activeTag: document.activeElement?.tagName ?? null,
+        }
+        if (closed) return state
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      return state
+    })()`)) as {
+      closed: boolean
+      dialogAbsent: boolean
+      expanded: string | null
+      triggerFocused: boolean
+      activeTag: string | null
+    }
+    if (!sessionSearchCloseState.closed) {
+      console.log(
+        `desktop-shell-verify-local: session-search-close ${JSON.stringify(sessionSearchCloseState)}`,
+      )
+    }
+    sessionSearchReady = sessionSearchReady && sessionSearchCloseState.closed
 
     const originalSessionTab = (await win.webContents.executeJavaScript(
       `document.querySelector('.session-tab[aria-selected="true"]')?.getAttribute('data-session-tab') ?? null`,
@@ -3629,14 +3869,17 @@ async function main(): Promise<void> {
       if (groupNavigationExpanded)
         await clickTrustedElement(win, '.panel-divider--navigation .panel-divider__capsule')
       await clickTrustedElement(win, '.session-search-trigger')
-      await new Promise(resolve => {
-        setTimeout(resolve, 120)
-      })
-      await win.webContents.executeJavaScript(`(() => {
-        const result = [...document.querySelectorAll('.session-search-result')]
-          .find(button => button.querySelector('small')?.textContent !== ${JSON.stringify(originalGroup)})
-        if (!result) throw new Error('缺少另一个项目的验收会话')
-        result.id = 'verify-other-group'
+      await win.webContents.executeJavaScript(`(async () => {
+        for (let attempt = 0; attempt < 80; attempt += 1) {
+          const result = [...document.querySelectorAll('.session-search-result')]
+            .find(button => button.querySelector('small')?.textContent !== ${JSON.stringify(originalGroup)})
+          if (result) {
+            result.id = 'verify-other-group'
+            return
+          }
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+        throw new Error('缺少另一个项目的验收会话')
       })()`)
       await clickTrustedElement(win, '#verify-other-group')
       win.webContents.send(HOST_CHANNELS.hostFrame, {
@@ -3715,9 +3958,7 @@ async function main(): Promise<void> {
         throw new Error('新建的同项目会话未出现在搜索结果中')
       })()`)
       await clickTrustedElement(win, '#verify-peer-session')
-      await win.webContents
-        .executeJavaScript(`Promise.all(document.querySelector('.app-shell').getAnimations({ subtree: true })
-        .filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity).map(animation => animation.finished))`)
+      await settleElementAnimations(win, '.app-shell')
       const otherSessionTab = (await win.webContents.executeJavaScript(
         `document.querySelector('.session-tab[aria-selected="true"]')?.getAttribute('data-session-tab') ?? null`,
       )) as string | null
@@ -3862,15 +4103,21 @@ async function main(): Promise<void> {
           clickCount: 1,
         })
         try {
-          await new Promise(resolve => {
-            setTimeout(resolve, 400)
-          })
-          longPressReady = (await win.webContents.executeJavaScript(`(() => {
-            const lens = document.querySelector('.session-tab-lens')
-            const height = lens.getBoundingClientRect().height
-            return lens.dataset.pressed === 'true' && height >= 25 && height <= 27
-              && document.querySelectorAll('.session-tab-lens').length === 1
-              && getComputedStyle(document.querySelector('.session-tab-shell[data-selected]')).backgroundColor === 'rgba(0, 0, 0, 0)'
+          longPressReady = (await win.webContents.executeJavaScript(`(async () => {
+            for (let attempt = 0; attempt < 80; attempt += 1) {
+              const lens = document.querySelector('.session-tab-lens')
+              const height = lens?.getBoundingClientRect().height ?? 0
+              if (lens instanceof HTMLElement
+                && lens.dataset.pressed === 'true'
+                && height >= 25
+                && height <= 27
+                && document.querySelectorAll('.session-tab-lens').length === 1
+                && getComputedStyle(document.querySelector('.session-tab-shell[data-selected]')).backgroundColor === 'rgba(0, 0, 0, 0)') {
+                return true
+              }
+              await new Promise(resolve => setTimeout(resolve, 25))
+            }
+            return false
           })()`)) as boolean
           writeFileSync(
             verificationArtifactPath('verify-session-tabs-pressed.png'),
@@ -3884,9 +4131,16 @@ async function main(): Promise<void> {
             clickCount: 1,
           })
         }
-        await new Promise(resolve => {
-          setTimeout(resolve, 350)
-        })
+        await win.webContents.executeJavaScript(`(async () => {
+          for (let attempt = 0; attempt < 80; attempt += 1) {
+            const lens = document.querySelector('.session-tab-lens')
+            if (lens instanceof HTMLElement
+              && lens.dataset.pressed === undefined
+              && lens.dataset.moving === undefined
+              && Math.abs(lens.getBoundingClientRect().height - 26) < 0.1) return
+            await new Promise(resolve => setTimeout(resolve, 25))
+          }
+        })()`)
         const liquidMotionReady = liquidMotionState.ready && longPressReady
         console.log('desktop-shell-verify-local: liquid-motion-geometry', liquidMotionState)
         const peerSessionConversationReady = (await win.webContents.executeJavaScript(
@@ -3938,9 +4192,7 @@ async function main(): Promise<void> {
         const tabMinimumSize = win.getMinimumSize()
         try {
           nativeTheme.themeSource = 'light'
-          await new Promise(resolve => {
-            setTimeout(resolve, 100)
-          })
+          await waitForNativeTheme(win, 'light')
           await verifyWindowControls(win, false)
           writeFileSync(
             verificationArtifactPath('verify-session-tabs-light.png'),
@@ -3948,12 +4200,8 @@ async function main(): Promise<void> {
           )
           nativeTheme.themeSource = 'dark'
           win.setSize(1_440, 900)
-          await win.webContents.executeJavaScript(
-            'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
-          )
-          await new Promise(resolve => {
-            setTimeout(resolve, 100)
-          })
+          await waitForNativeTheme(win, 'dark')
+          await waitForWindowSize(win, 1_440, 900)
           await verifyWindowControls(win, false)
           writeFileSync(
             verificationArtifactPath('verify-session-tabs-dark-large.png'),
@@ -4037,9 +4285,8 @@ async function main(): Promise<void> {
           nativeTheme.themeSource = tabTheme
           win.setMinimumSize(tabMinimumSize[0] ?? 900, tabMinimumSize[1] ?? 600)
           win.setSize(tabSize[0] ?? 1_280, tabSize[1] ?? 800)
-          await new Promise(resolve => {
-            setTimeout(resolve, 220)
-          })
+          await waitForNativeTheme(win, nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
+          await waitForWindowSize(win, tabSize[0] ?? 1_280, tabSize[1] ?? 800)
         }
         let reducedMotionReady = false
         let accessibleMaterialReady = true
@@ -4083,12 +4330,16 @@ async function main(): Promise<void> {
             await emulateVerificationMedia(win, [{ name, value }])
             accessibleMaterialReady =
               accessibleMaterialReady &&
-              ((await win.webContents.executeJavaScript(`(() => {
-              const active = document.querySelector('.session-tab-shell[data-selected="true"]')
-              return getComputedStyle(document.querySelector('.session-tab-content')).filter === 'none'
-                && getComputedStyle(document.querySelector('.session-tab-material')).filter === 'none'
-                && getComputedStyle(document.querySelector('.session-tab-lens')).display === 'none'
-                && Number.parseFloat(getComputedStyle(active).outlineWidth) * devicePixelRatio >= .99
+              ((await win.webContents.executeJavaScript(`(async () => {
+              for (let attempt = 0; attempt < 40; attempt += 1) {
+                const active = document.querySelector('.session-tab-shell[data-selected="true"]')
+                if (getComputedStyle(document.querySelector('.session-tab-content')).filter === 'none'
+                  && getComputedStyle(document.querySelector('.session-tab-material')).filter === 'none'
+                  && getComputedStyle(document.querySelector('.session-tab-lens')).display === 'none'
+                  && Number.parseFloat(getComputedStyle(active).outlineWidth) * devicePixelRatio >= .99) return true
+                await new Promise(resolve => setTimeout(resolve, 25))
+              }
+              return false
             })()`)) as boolean)
           }
           /* oxlint-enable no-await-in-loop */
@@ -4129,8 +4380,11 @@ async function main(): Promise<void> {
         })
         win.webContents.sendInputEvent({ type: 'mouseMove', x: cancelTargetX, y: cancelPoint.y })
         const cancelStarted = (await win.webContents.executeJavaScript(`(async () => {
-          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-          return document.querySelector('.session-tab-glass')?.dataset.reordering === 'true'
+          for (let attempt = 0; attempt < 60; attempt += 1) {
+            if (document.querySelector('.session-tab-glass')?.dataset.reordering === 'true') return true
+            await new Promise(resolve => setTimeout(resolve, 25))
+          }
+          return false
         })()`)) as boolean
         win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' })
         win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' })
@@ -4142,11 +4396,14 @@ async function main(): Promise<void> {
           clickCount: 1,
         })
         const cancelRestored = (await win.webContents.executeJavaScript(`(async () => {
-          await new Promise(resolve => requestAnimationFrame(resolve))
-          const tabs = [...document.querySelectorAll('.session-tab')]
-          return tabs[0]?.dataset.sessionTab === ${JSON.stringify(expectedFirst)}
-            && tabs[1]?.dataset.sessionTab === ${JSON.stringify(expectedSecond)}
-            && document.querySelector('[data-reordering], [data-dragging]') === null
+          for (let attempt = 0; attempt < 60; attempt += 1) {
+            const tabs = [...document.querySelectorAll('.session-tab')]
+            if (tabs[0]?.dataset.sessionTab === ${JSON.stringify(expectedFirst)}
+              && tabs[1]?.dataset.sessionTab === ${JSON.stringify(expectedSecond)}
+              && document.querySelector('[data-reordering], [data-dragging]') === null) return true
+            await new Promise(resolve => setTimeout(resolve, 25))
+          }
+          return false
         })()`)) as boolean
         const dragReady = reorderReady && cancelStarted && cancelRestored
         const readTabsFill = async () =>
@@ -4224,12 +4481,18 @@ async function main(): Promise<void> {
             }
           }
         } finally {
-          await win.webContents.executeJavaScript(
-            `document.querySelector('.session-tabs-frame').style.removeProperty('flex')`,
-          )
-          await new Promise(resolve => {
-            setTimeout(resolve, 120)
-          })
+          await win.webContents.executeJavaScript(`(async () => {
+            document.querySelector('.session-tabs-frame').style.removeProperty('flex')
+            for (let attempt = 0; attempt < 40; attempt += 1) {
+              const strip = document.querySelector('.session-tabs')
+              if (strip instanceof HTMLElement && strip.scrollWidth <= strip.clientWidth + 1) break
+              await new Promise(resolve => setTimeout(resolve, 25))
+            }
+            await Promise.race([
+              new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+              new Promise(resolve => setTimeout(resolve, 200)),
+            ])
+          })()`)
         }
         const overflowScheme = settingsStore.read().colorScheme
         try {
@@ -4269,12 +4532,7 @@ async function main(): Promise<void> {
           win,
           '.session-tab-shell[data-selected="true"] .session-tab-close',
         )
-        await win.webContents.executeJavaScript(`(async () => {
-            await Promise.all(document.querySelector('.app-shell').getAnimations({ subtree: true })
-              .filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity)
-              .map(animation => animation.finished.catch(() => {})))
-            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-          })()`)
+        await settleElementAnimations(win, '.app-shell')
         sessionTabsReady =
           liquidMotionReady &&
           reducedMotionReady &&
@@ -4286,38 +4544,43 @@ async function main(): Promise<void> {
           conversationRestored &&
           otherSessionRightRestored &&
           peerSessionConversationReady &&
-          ((await win.webContents.executeJavaScript(`(() => {
-          const active = document.querySelector('.session-tab[aria-selected="true"]')
-          const chrome = document.querySelector('.session-chrome')
-          const shell = document.querySelector('.app-shell')
-          const main = document.querySelector('.main-island')
-          const floating = document.querySelector('[data-floating-tab-actions="true"]')
-          const overviewButtons = document.querySelectorAll('[aria-label="平铺选择标签"]')
-          const newTabButtons = document.querySelectorAll('[aria-label="新建工作标签"]')
-          const tools = main?.querySelector('.conversation-tools')
-          const blur = main?.querySelector('[data-top-progressive-blur="true"]')
-          const windowEdge = Number.parseFloat(getComputedStyle(shell).getPropertyValue('--window-edge'))
-          const floatingRect = floating instanceof HTMLElement ? floating.getBoundingClientRect() : null
-          const toolsRect = tools instanceof HTMLElement ? tools.getBoundingClientRect() : null
-          return active?.getAttribute('data-session-tab') === ${JSON.stringify(originalSessionTab)}
-            && document.querySelector(${JSON.stringify(otherSelector)}) === null
-            && document.querySelectorAll('.session-tab').length === 1
-            && shell?.dataset.sessionTabsVisible === 'false'
-            && chrome instanceof HTMLElement && chrome.getAttribute('aria-hidden') === 'true' && chrome.inert
-            && getComputedStyle(chrome).visibility === 'hidden'
-            && document.querySelectorAll('.session-search-trigger').length === 1
-            && document.querySelector('.project-focus .session-search-trigger') instanceof HTMLButtonElement
-            && Math.abs(main.getBoundingClientRect().top - windowEdge) <= 1
-            && floating instanceof HTMLElement && floating.checkVisibility()
-            && overviewButtons.length === 1 && newTabButtons.length === 1
-            && floating.contains(overviewButtons[0]) && floating.contains(newTabButtons[0])
-            && (toolsRect === null || (floatingRect !== null
-              && toolsRect.top >= floatingRect.bottom
-              && Math.abs(toolsRect.right - (floatingRect.right - 4)) <= 1))
-            && blur instanceof HTMLElement && getComputedStyle(blur).pointerEvents === 'none'
-            && (document.activeElement === newTabButtons[0]
-              || document.activeElement === document.querySelector('.session-search-trigger'))
-            && document.querySelector('.main-island .composer-card') !== null
+          ((await win.webContents.executeJavaScript(`(async () => {
+          for (let attempt = 0; attempt < 80; attempt += 1) {
+            const active = document.querySelector('.session-tab[aria-selected="true"]')
+            const chrome = document.querySelector('.session-chrome')
+            const shell = document.querySelector('.app-shell')
+            const main = document.querySelector('.main-island')
+            const floating = document.querySelector('[data-floating-tab-actions="true"]')
+            const overviewButtons = document.querySelectorAll('[aria-label="平铺选择标签"]')
+            const newTabButtons = document.querySelectorAll('[aria-label="新建工作标签"]')
+            const tools = main?.querySelector('.conversation-tools')
+            const blur = main?.querySelector('[data-top-progressive-blur="true"]')
+            const windowEdge = Number.parseFloat(getComputedStyle(shell).getPropertyValue('--window-edge'))
+            const floatingRect = floating instanceof HTMLElement ? floating.getBoundingClientRect() : null
+            const toolsRect = tools instanceof HTMLElement ? tools.getBoundingClientRect() : null
+            const ready = active?.getAttribute('data-session-tab') === ${JSON.stringify(originalSessionTab)}
+              && document.querySelector(${JSON.stringify(otherSelector)}) === null
+              && document.querySelectorAll('.session-tab').length === 1
+              && shell?.dataset.sessionTabsVisible === 'false'
+              && chrome instanceof HTMLElement && chrome.getAttribute('aria-hidden') === 'true' && chrome.inert
+              && getComputedStyle(chrome).visibility === 'hidden'
+              && document.querySelectorAll('.session-search-trigger').length === 1
+              && document.querySelector('.project-focus .session-search-trigger') instanceof HTMLButtonElement
+              && Math.abs(main.getBoundingClientRect().top - windowEdge) <= 1
+              && floating instanceof HTMLElement && floating.checkVisibility()
+              && overviewButtons.length === 1 && newTabButtons.length === 1
+              && floating.contains(overviewButtons[0]) && floating.contains(newTabButtons[0])
+              && (toolsRect === null || (floatingRect !== null
+                && toolsRect.top >= floatingRect.bottom
+                && Math.abs(toolsRect.right - (floatingRect.right - 4)) <= 1))
+              && blur instanceof HTMLElement && getComputedStyle(blur).pointerEvents === 'none'
+              && (document.activeElement === newTabButtons[0]
+                || document.activeElement === document.querySelector('.session-search-trigger'))
+              && document.querySelector('.main-island .composer-card') !== null
+            if (ready) return true
+            await new Promise(resolve => setTimeout(resolve, 25))
+          }
+          return false
         })()`)) as boolean)
       }
     }
@@ -4595,23 +4858,43 @@ async function main(): Promise<void> {
       movementX: 36,
       movementY: 0,
     })
-    await new Promise(resolve => {
-      setTimeout(resolve, 60)
-    })
+    const waitForPanelGeometry = async (
+      predicate: (geometry: NonNullable<Awaited<ReturnType<typeof readPanelGeometry>>>) => boolean,
+    ) => {
+      let latest = await readPanelGeometry()
+      /* oxlint-disable no-await-in-loop -- 串行轮询当前窗口的面板几何直到目标尺寸落稳。 */
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        if (latest !== null && predicate(latest)) return latest
+        await new Promise(resolve => {
+          setTimeout(resolve, 25)
+        })
+        latest = await readPanelGeometry()
+      }
+      /* oxlint-enable no-await-in-loop */
+      return latest
+    }
     const dragLineActive = (await win.webContents.executeJavaScript(`(async () => {
-      const divider = document.querySelector('.panel-divider--navigation')
-      const sidebar = document.querySelector('.sidebar-island')
-      if (!(divider instanceof HTMLElement) || !(sidebar instanceof HTMLElement)) return false
-      await Promise.all(divider.getAnimations({ subtree: true }).map(animation => animation.finished))
-      const line = getComputedStyle(divider, '::before')
-      const dividerRect = divider.getBoundingClientRect()
-      const islandRadius = Number.parseFloat(getComputedStyle(sidebar).borderBottomLeftRadius)
-      return divider.classList.contains('is-resizing')
-        && Number(line.opacity) === 1
-        && new DOMMatrixReadOnly(line.transform).d === 1
-        && Math.abs(Number.parseFloat(line.width) - dividerRect.width) <= 0.1
-        && Number.parseFloat(line.top) >= islandRadius - 1
-        && Number.parseFloat(line.bottom) >= islandRadius - 1
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        const divider = document.querySelector('.panel-divider--navigation')
+        const sidebar = document.querySelector('.sidebar-island')
+        if (divider instanceof HTMLElement && sidebar instanceof HTMLElement && divider.classList.contains('is-resizing')) {
+          await Promise.allSettled(
+            divider.getAnimations({ subtree: true })
+              .filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity)
+              .map(animation => animation.finished),
+          )
+          const line = getComputedStyle(divider, '::before')
+          const dividerRect = divider.getBoundingClientRect()
+          const islandRadius = Number.parseFloat(getComputedStyle(sidebar).borderBottomLeftRadius)
+          if (Number(line.opacity) === 1
+            && new DOMMatrixReadOnly(line.transform).d === 1
+            && Math.abs(Number.parseFloat(line.width) - dividerRect.width) <= 0.1
+            && Number.parseFloat(line.top) >= islandRadius - 1
+            && Number.parseFloat(line.bottom) >= islandRadius - 1) return true
+        }
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      return false
     })()`)) as boolean
     win.webContents.sendInputEvent({
       type: 'mouseUp',
@@ -4625,41 +4908,48 @@ async function main(): Promise<void> {
       x: navigationDragPoint.x + 72,
       y: navigationDragPoint.y,
     })
-    await new Promise(resolve => {
-      setTimeout(resolve, 100)
-    })
     const dragLineCleared = (await win.webContents.executeJavaScript(`(async () => {
-      const divider = document.querySelector('.panel-divider--navigation')
-      if (!(divider instanceof HTMLElement)) return false
-      await Promise.all(divider.getAnimations({ subtree: true }).map(animation => animation.finished))
-      return !divider.classList.contains('is-resizing')
-        && Number(getComputedStyle(divider, '::before').opacity) === 0
-        && new DOMMatrixReadOnly(getComputedStyle(divider, '::before').transform).d === 0
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        const divider = document.querySelector('.panel-divider--navigation')
+        if (divider instanceof HTMLElement && !divider.classList.contains('is-resizing')) {
+          await Promise.allSettled(
+            divider.getAnimations({ subtree: true })
+              .filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity)
+              .map(animation => animation.finished),
+          )
+          if (Number(getComputedStyle(divider, '::before').opacity) === 0
+            && new DOMMatrixReadOnly(getComputedStyle(divider, '::before').transform).d === 0) return true
+        }
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      return false
     })()`)) as boolean
     const panelDragLineReady = dragLineActive && dragLineCleared
-    const navigationResized = await readPanelGeometry()
+    const navigationResized = await waitForPanelGeometry(
+      geometry => geometry.navigationWidth >= 295 && geometry.navigationWidth <= 297,
+    )
     await win.webContents.executeJavaScript(`(() => {
       const divider = document.querySelector('.panel-divider--navigation')
       if (!(divider instanceof HTMLElement)) return false
       divider.focus()
       return divider.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
     })()`)
-    await new Promise(resolve => {
-      setTimeout(resolve, 80)
-    })
-    const navigationReset = await readPanelGeometry()
+    const navigationReset = await waitForPanelGeometry(geometry =>
+      nearPanelValue(geometry.navigationWidth, 260),
+    )
     await dragTrustedElementHorizontally(win, '.panel-divider--information', -36)
-    const informationResized = await readPanelGeometry()
+    const informationResized = await waitForPanelGeometry(
+      geometry => geometry.informationWidth >= 295 && geometry.informationWidth <= 297,
+    )
     await win.webContents.executeJavaScript(`(() => {
       const divider = document.querySelector('.panel-divider--information')
       if (!(divider instanceof HTMLElement)) return false
       divider.focus()
       return divider.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
     })()`)
-    await new Promise(resolve => {
-      setTimeout(resolve, 80)
-    })
-    const informationReset = await readPanelGeometry()
+    const informationReset = await waitForPanelGeometry(geometry =>
+      nearPanelValue(geometry.informationWidth, 260),
+    )
     const composerDragPoint = (await win.webContents.executeJavaScript(`(() => {
       const divider = document.querySelector('.panel-divider--composer')
       if (!(divider instanceof HTMLElement)) return null
@@ -4688,20 +4978,18 @@ async function main(): Promise<void> {
       button: 'left',
       clickCount: 1,
     })
-    await new Promise(resolve => {
-      setTimeout(resolve, 100)
-    })
-    const composerResized = await readPanelGeometry()
+    const composerResized = await waitForPanelGeometry(
+      geometry => geometry.composerHeight >= 147 && geometry.composerHeight <= 149,
+    )
     await win.webContents.executeJavaScript(`(() => {
       const divider = document.querySelector('.panel-divider--composer')
       if (!(divider instanceof HTMLElement)) return false
       divider.focus()
       return divider.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
     })()`)
-    await new Promise(resolve => {
-      setTimeout(resolve, 80)
-    })
-    const composerReset = await readPanelGeometry()
+    const composerReset = await waitForPanelGeometry(geometry =>
+      nearPanelValue(geometry.composerHeight, 112),
+    )
 
     const cornerDragPoint = (await win.webContents.executeJavaScript(`(() => {
       const handle = document.querySelector('.panel-resize-corner')
@@ -4731,20 +5019,24 @@ async function main(): Promise<void> {
       button: 'left',
       clickCount: 1,
     })
-    await new Promise(resolve => {
-      setTimeout(resolve, 100)
-    })
-    const cornerResized = await readPanelGeometry()
+    const cornerResized = await waitForPanelGeometry(
+      geometry =>
+        geometry.informationWidth >= 289 &&
+        geometry.informationWidth <= 291 &&
+        geometry.composerHeight >= 141 &&
+        geometry.composerHeight <= 143,
+    )
     await win.webContents.executeJavaScript(`(() => {
       const handle = document.querySelector('.panel-resize-corner')
       if (!(handle instanceof HTMLElement)) return false
       handle.focus()
       return handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
     })()`)
-    await new Promise(resolve => {
-      setTimeout(resolve, 80)
-    })
-    const cornerReset = await readPanelGeometry()
+    const cornerReset = await waitForPanelGeometry(
+      geometry =>
+        nearPanelValue(geometry.informationWidth, 260) &&
+        nearPanelValue(geometry.composerHeight, 112),
+    )
     const panelResizeReady =
       navigationResized !== null &&
       navigationResized.navigationWidth >= 295 &&
@@ -5079,19 +5371,22 @@ async function main(): Promise<void> {
         fileTree.scrollLeft = Math.min(37, Math.max(0, fileTree.scrollWidth - fileTree.clientWidth))
         fileTree.scrollTop = Math.min(29, Math.max(0, fileTree.scrollHeight - fileTree.clientHeight))
         fileTree.dispatchEvent(new Event('scroll', { bubbles: true }))
-        await sleep(420)
         const projects = await globalThis.dshDesktop.projects.list()
         const projectId = Array.isArray(projects) && typeof projects[0]?.id === 'string'
           ? projects[0].id
           : null
-        const state = projectId === null ? null : await globalThis.dshDesktop.fileWorkspace.read(projectId)
-        fileWorkspacePersisted = state !== null
-          && state.pinnedFiles.includes(deepFilePath)
-          && state.previewFile === 'large-preview.png'
-          && state.activeFile === 'large-preview.png'
-          && state.expandedDirectories.includes(deepRelativePath)
-          && state.treeScrollLeft === Math.round(fileTree.scrollLeft)
-          && state.treeScrollTop === Math.round(fileTree.scrollTop)
+        for (let attempt = 0; attempt < 60 && projectId !== null; attempt += 1) {
+          const state = await globalThis.dshDesktop.fileWorkspace.read(projectId)
+          fileWorkspacePersisted = state !== null
+            && state.pinnedFiles.includes(deepFilePath)
+            && state.previewFile === 'large-preview.png'
+            && state.activeFile === 'large-preview.png'
+            && state.expandedDirectories.includes(deepRelativePath)
+            && state.treeScrollLeft === Math.round(fileTree.scrollLeft)
+            && state.treeScrollTop === Math.round(fileTree.scrollTop)
+          if (fileWorkspacePersisted) break
+          await sleep(50)
+        }
       }
       return {
         fileTreeReady,
@@ -5386,8 +5681,11 @@ async function main(): Promise<void> {
             .find(button => button.checkVisibility() && button.getAttribute('aria-label') === '放弃文件更改')
           if (!(discard instanceof HTMLButtonElement)) return false
           discard.click()
-          await sleep(40)
-          return document.querySelector('.file-dirty-status') === null
+          for (let clearAttempt = 0; clearAttempt < 80; clearAttempt += 1) {
+            if (document.querySelector('.file-dirty-status') === null) return true
+            await sleep(25)
+          }
+          return false
         }
         await sleep(25)
       }
@@ -5588,7 +5886,7 @@ async function main(): Promise<void> {
           output += event.data
           if (output.includes('PROJECT_TASK_PTY_OK')) finish(true)
         })
-        const timeout = setTimeout(() => { finish(false) }, 4_000)
+        const timeout = setTimeout(() => { finish(false) }, 15_000)
         api.write(terminal.terminalId, 'PROJECT_TASK_PTY_OK' + String.fromCharCode(13)).catch(() => { finish(false) })
       })
       if (!document.querySelector('[data-island-id="file-outline-tasks"]')) document.querySelector('[aria-label="更多右侧栏目"][aria-haspopup="menu"]')?.click()
@@ -5630,9 +5928,8 @@ async function main(): Promise<void> {
     try {
       win.setSize(1800, 1000)
       settingsController.publish(settingsStore.update({ colorScheme: 'light' }))
-      await new Promise(resolve => {
-        setTimeout(resolve, 180)
-      })
+      await waitForWindowSize(win, 1800, 1000)
+      await waitForColorScheme(win, 'light')
       const editorLayout = (await win.webContents.executeJavaScript(`(() => {
         const viewer = document.querySelector('.work-tab-panel:not([hidden]) [data-file-path]')
         const editor = viewer?.querySelector('.cm-scroller')
@@ -5699,6 +5996,8 @@ async function main(): Promise<void> {
     } finally {
       win.setSize(editorSize[0] ?? 1280, editorSize[1] ?? 800)
       settingsController.publish(settingsStore.update({ colorScheme: editorScheme }))
+      await waitForWindowSize(win, editorSize[0] ?? 1280, editorSize[1] ?? 800)
+      await waitForColorScheme(win, editorScheme)
     }
     await openRightPanel('git-history')
     const sourceControlPrepared = (await win.webContents.executeJavaScript(`(async () => {
@@ -5859,8 +6158,11 @@ async function main(): Promise<void> {
             const close = error.querySelector('button[aria-label="关闭提示"]')
             if (!(close instanceof HTMLButtonElement)) return false
             close.click()
-            await sleep(30)
-            return document.querySelector('.project-workspace-alert [role="alert"]') === null
+            for (let clearAttempt = 0; clearAttempt < 60; clearAttempt += 1) {
+              if (document.querySelector('.project-workspace-alert [role="alert"]') === null) return true
+              await sleep(25)
+            }
+            return false
           }
           await sleep(25)
         }
@@ -5992,9 +6294,8 @@ async function main(): Promise<void> {
     try {
       win.setSize(1_440, 900)
       nativeTheme.themeSource = 'dark'
-      await new Promise(resolve => {
-        setTimeout(resolve, 220)
-      })
+      await waitForWindowSize(win, 1_440, 900)
+      await waitForNativeTheme(win, 'dark')
       changeFileListReadable &&= (await win.webContents.executeJavaScript(
         fileListBoundsCheck,
       )) as boolean
@@ -6005,9 +6306,8 @@ async function main(): Promise<void> {
     } finally {
       nativeTheme.themeSource = gitViewTheme
       win.setBounds(gitViewBounds)
-      await new Promise(resolve => {
-        setTimeout(resolve, 160)
-      })
+      await waitForNativeTheme(win, nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
+      await waitForWindowSize(win, gitViewBounds.width, gitViewBounds.height)
     }
     console.log('desktop-shell-verify-local: source-control-view', sourceControlView)
     const diffToolsScheme = settingsStore.read().colorScheme
@@ -6023,13 +6323,20 @@ async function main(): Promise<void> {
       )
     } finally {
       settingsController.publish(settingsStore.update({ colorScheme: diffToolsScheme }))
+      await waitForColorScheme(win, diffToolsScheme)
     }
     await clickTrustedElement(win, '[aria-label="新建工作标签"]')
-    await win.webContents.executeJavaScript(`(() => {
-      const item = [...document.querySelectorAll('[role="menuitem"]')]
-        .find(node => node.checkVisibility() && node.textContent.includes('新终端'))
-      if (!item) throw new Error('新建工作标签菜单缺少终端入口')
-      item.click()
+    await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        const item = [...document.querySelectorAll('[role="menuitem"]')]
+          .find(node => node.checkVisibility() && node.textContent.includes('新终端'))
+        if (item instanceof HTMLElement) {
+          item.click()
+          return
+        }
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      throw new Error('新建工作标签菜单缺少终端入口')
     })()`)
     const terminalAudit = (await win.webContents.executeJavaScript(`(async () => {
       const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
@@ -6138,7 +6445,8 @@ async function main(): Promise<void> {
         if (output.includes('DSH_TERMINAL_ANSI_OK') && output.includes('\\u001b[31m')
           && (${terminalPathCheck})) finish(true)
       })
-      const timeout = setTimeout(() => { finish(false) }, 4_000)
+      // Windows CI 上 PowerShell 冷启动耗时较长，给足 15s 输出等待并在命中后立即返回。
+      const timeout = setTimeout(() => { finish(false) }, 15_000)
       Promise.all([
         api.resize(${JSON.stringify(terminalId)}, 100, 30),
         api.write(${JSON.stringify(terminalId)}, ${JSON.stringify(terminalCommand)})
@@ -6270,26 +6578,28 @@ async function main(): Promise<void> {
     )
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'ESC' })
     win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'ESC' })
-    await new Promise(resolve => {
-      setTimeout(resolve, 120)
-    })
-    const modelMenuReturned = (await win.webContents.executeJavaScript(`(() => {
-      const menu = document.querySelector('[role="menu"][aria-label="选择模型"]')
-      return menu !== null && menu.querySelector('[role="menuitemradio"]') !== null
-        && menu.querySelector('[aria-expanded="true"]') === null
-        && menu.contains(document.activeElement)
+    const modelMenuReturned = (await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const menu = document.querySelector('[role="menu"][aria-label="选择模型"]')
+        if (menu !== null && menu.querySelector('[role="menuitemradio"]') !== null
+          && menu.querySelector('[aria-expanded="true"]') === null
+          && menu.contains(document.activeElement)) return true
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      return false
     })()`)) as boolean
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'ESC' })
     win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'ESC' })
-    await new Promise(resolve => {
-      setTimeout(resolve, 120)
-    })
-    const modelMenuClosed = (await win.webContents.executeJavaScript(`(() => {
-      const trigger = document.querySelector('button[title^="模型："]')
-      return trigger instanceof HTMLButtonElement
-        && trigger.getAttribute('aria-expanded') === 'false'
-        && document.activeElement === trigger
-        && document.querySelector('[role="menu"][aria-label="选择模型"]') === null
+    const modelMenuClosed = (await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const trigger = document.querySelector('button[title^="模型："]')
+        if (trigger instanceof HTMLButtonElement
+          && trigger.getAttribute('aria-expanded') === 'false'
+          && document.activeElement === trigger
+          && document.querySelector('[role="menu"][aria-label="选择模型"]') === null) return true
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      return false
     })()`)) as boolean
     const modelMenuReady =
       modelMenuAudit.open &&
@@ -6350,14 +6660,28 @@ async function main(): Promise<void> {
     // 通过真实选择器切换空会话，再恢复标准预设；请求走同一个公开 Remote 接口。
     await openRightPanel('git-history')
     let sessionPresetReady = true
+    const waitForPresetCardClosed = async (): Promise<void> => {
+      await win.webContents.executeJavaScript(`(async () => {
+        for (let attempt = 0; attempt < 80; attempt += 1) {
+          const card = document.querySelector('.session-preset-card')
+          if (card === null || (card instanceof HTMLElement && !card.checkVisibility())) return
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+      })()`)
+    }
     /* oxlint-disable no-await-in-loop -- 依次切换空会话预设再恢复标准预设。 */
     for (const label of ['极简模式', 'ChatGPT', '标准模式']) {
       await clickTrustedElement(win, '.conversation-tools [aria-label="会话预设"]')
       await clickTrustedElement(win, '.session-preset-select')
-      const optionId = (await win.webContents
-        .executeJavaScript(`[...document.querySelectorAll('.ant-select-dropdown [role="option"]')]
-        .find(option => option.checkVisibility() && option.textContent === ${JSON.stringify(label)})?.id`)) as
-        string | undefined
+      const optionId = (await win.webContents.executeJavaScript(`(async () => {
+        for (let attempt = 0; attempt < 80; attempt += 1) {
+          const found = [...document.querySelectorAll('.ant-select-dropdown [role="option"]')]
+            .find(option => option.checkVisibility() && option.textContent === ${JSON.stringify(label)})
+          if (found?.id) return found.id
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+        return undefined
+      })()`)) as string | undefined
       if (optionId === undefined) throw new Error(`预设选择器未显示选项：${label}`)
       await clickTrustedElement(win, `[role="option"][id=${JSON.stringify(optionId)}]`)
       const selected = (await win.webContents.executeJavaScript(`(async () => {
@@ -6374,6 +6698,7 @@ async function main(): Promise<void> {
       sessionPresetReady = sessionPresetReady && selected
       win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' })
       win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' })
+      await waitForPresetCardClosed()
       if (!selected) {
         const state = await win.webContents.executeJavaScript(
           `document.querySelector('.session-preset-card')?.textContent`,
@@ -6420,6 +6745,7 @@ async function main(): Promise<void> {
     if (!presetLocked) throw new Error('已有对话的 Agent 预设未锁定或意外创建了会话')
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' })
     win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' })
+    await waitForPresetCardClosed()
     sessionPresetReady &&= presetLocked
     console.log('desktop-shell-verify-local: session-preset', { sessionPresetReady, presetLocked })
     let sessionInfoReady =
@@ -6498,30 +6824,36 @@ async function main(): Promise<void> {
       ] as const) {
         win.setSize(sample.width, sample.height)
         settingsController.publish(settingsStore.update({ colorScheme: sample.colorScheme }))
-        await new Promise(resolve => {
-          setTimeout(resolve, 250)
-        })
-        const todoReady = (await win.webContents.executeJavaScript(`(() => {
-          const list = document.querySelector('.todo-card__list')
-          const card = document.querySelector('.todo-card__body')
-          if (!list || !card) return false
-          const todoRect = card.getBoundingClientRect()
-          const inputRect = document.querySelector('.composer-card').getBoundingClientRect()
-          const toggle = card.querySelector('.todo-card__toggle')
-          const arrow = toggle?.querySelector('svg:last-child')
-          list.scrollTop = list.scrollHeight
-          card.scrollIntoView({ block: 'nearest' })
-          return list.children.length === 9 && list.querySelectorAll('[data-status="in_progress"]').length === 2
-            && list.clientHeight <= 180 && list.scrollHeight > list.clientHeight && list.scrollTop > 0
-            && card.scrollWidth <= card.clientWidth + 1 && list.querySelectorAll('input').length === 0
-            && [...list.querySelectorAll('.todo-card__content')].every(item => item.title === item.textContent)
-            && card.closest('.composer-dock') !== null && !document.querySelector('.info-island .todo-card')
-            && todoRect.top > 0 && Math.abs(todoRect.left - inputRect.left) < 1
-            && Math.abs(todoRect.right - inputRect.right) < 1 && inputRect.top - todoRect.bottom >= 4
-            && inputRect.top - todoRect.bottom <= 10
-            && toggle?.getAttribute('aria-expanded') === 'true'
-            && arrow?.classList.contains('lucide-chevron-down') && getComputedStyle(arrow).transform === 'none'
-            && document.querySelector('.info-island .git-review-panel') instanceof HTMLElement
+        await waitForWindowSize(win, sample.width, sample.height)
+        await waitForColorScheme(win, sample.colorScheme)
+        await settleElementAnimations(win, '.app-shell')
+        const todoReady = (await win.webContents.executeJavaScript(`(async () => {
+          for (let attempt = 0; attempt < 80; attempt += 1) {
+            const list = document.querySelector('.todo-card__list')
+            const card = document.querySelector('.todo-card__body')
+            if (list && card) {
+              const todoRect = card.getBoundingClientRect()
+              const inputRect = document.querySelector('.composer-card').getBoundingClientRect()
+              const toggle = card.querySelector('.todo-card__toggle')
+              const arrow = toggle?.querySelector('svg:last-child')
+              list.scrollTop = list.scrollHeight
+              card.scrollIntoView({ block: 'nearest' })
+              const ok = list.children.length === 9 && list.querySelectorAll('[data-status="in_progress"]').length === 2
+                && list.clientHeight <= 180 && list.scrollHeight > list.clientHeight && list.scrollTop > 0
+                && card.scrollWidth <= card.clientWidth + 1 && list.querySelectorAll('input').length === 0
+                && [...list.querySelectorAll('.todo-card__content')].every(item => item.title === item.textContent)
+                && card.closest('.composer-dock') !== null && !document.querySelector('.info-island .todo-card')
+                && todoRect.top > 0 && Math.abs(todoRect.left - inputRect.left) < 1
+                && Math.abs(todoRect.right - inputRect.right) < 1 && inputRect.top - todoRect.bottom >= 4
+                && inputRect.top - todoRect.bottom <= 10
+                && toggle?.getAttribute('aria-expanded') === 'true'
+                && arrow?.classList.contains('lucide-chevron-down') && getComputedStyle(arrow).transform === 'none'
+                && document.querySelector('.info-island .git-review-panel') instanceof HTMLElement
+              if (ok) return true
+            }
+            await new Promise(resolve => setTimeout(resolve, 25))
+          }
+          return false
         })()`)) as boolean
         sessionInfoReady &&= todoReady
         writeFileSync(
@@ -6529,17 +6861,22 @@ async function main(): Promise<void> {
           (await captureVerifiedPage(win)).toPNG(),
         )
         await clickTrustedElement(win, '.todo-card__toggle')
-        const centered = (await win.webContents.executeJavaScript(`(() => {
-          const card = document.querySelector('.todo-card__body')
-          const input = document.querySelector('.composer-card')
-          const toggle = card?.querySelector('.todo-card__toggle')
-          const arrow = toggle?.querySelector('svg:last-child')
-          if (!card || !input || !arrow) return false
-          const a = card.getBoundingClientRect(), b = input.getBoundingClientRect()
-          const transform = new DOMMatrixReadOnly(getComputedStyle(arrow).transform)
-          return toggle.getAttribute('aria-expanded') === 'false' && !card.querySelector('.todo-card__list')
-            && Math.abs(a.left + a.right - b.left - b.right) < 1
-            && arrow.classList.contains('lucide-chevron-down') && transform.d < -0.99
+        const centered = (await win.webContents.executeJavaScript(`(async () => {
+          for (let attempt = 0; attempt < 80; attempt += 1) {
+            const card = document.querySelector('.todo-card__body')
+            const input = document.querySelector('.composer-card')
+            const toggle = card?.querySelector('.todo-card__toggle')
+            const arrow = toggle?.querySelector('svg:last-child')
+            if (card && input && arrow) {
+              const a = card.getBoundingClientRect(), b = input.getBoundingClientRect()
+              const transform = new DOMMatrixReadOnly(getComputedStyle(arrow).transform)
+              if (toggle.getAttribute('aria-expanded') === 'false' && !card.querySelector('.todo-card__list')
+                && Math.abs(a.left + a.right - b.left - b.right) < 1
+                && arrow.classList.contains('lucide-chevron-down') && transform.d < -0.99) return true
+            }
+            await new Promise(resolve => setTimeout(resolve, 25))
+          }
+          return false
         })()`)) as boolean
         if (!centered) throw new Error('收起的待办没有居中或箭头方向错误')
         writeFileSync(
@@ -6551,35 +6888,50 @@ async function main(): Promise<void> {
           `document.querySelector('.composer-card').getBoundingClientRect().height`,
         )) as number
         await clickTrustedElement(win, '.panel-divider--information .panel-divider__capsule')
-        const hudReady = (await win.webContents.executeJavaScript(`(() => {
-          const hud = document.querySelector('[data-composer-readings]')
-          const card = document.querySelector('.composer-card').getBoundingClientRect()
-          const island = document.querySelector('.main-island').getBoundingClientRect()
-          if (!hud) return false
-          const row = hud.getBoundingClientRect()
-          return hud.querySelectorAll('button').length === 3 && hud.textContent.includes('121K tok')
-            && Math.abs(card.height - ${String(cardHeight)}) < 1 && row.height === 24
-            && Math.abs(row.top - card.bottom - 2) < 1 && Math.abs(island.bottom - row.bottom - 7) < 1
-            && Math.abs(row.left + row.right - card.left - card.right) < 1 && hud.scrollWidth <= hud.clientWidth
+        await settleElementAnimations(win, '.app-shell')
+        const hudReady = (await win.webContents.executeJavaScript(`(async () => {
+          for (let attempt = 0; attempt < 80; attempt += 1) {
+            const hud = document.querySelector('[data-composer-readings]')
+            const card = document.querySelector('.composer-card')?.getBoundingClientRect()
+            const island = document.querySelector('.main-island')?.getBoundingClientRect()
+            if (hud && card && island) {
+              const row = hud.getBoundingClientRect()
+              if (hud.querySelectorAll('button').length === 3 && hud.textContent.includes('121K tok')
+                && Math.abs(card.height - ${String(cardHeight)}) < 1 && row.height === 24
+                && Math.abs(row.top - card.bottom - 2) < 1 && Math.abs(island.bottom - row.bottom - 7) < 1
+                && Math.abs(row.left + row.right - card.left - card.right) < 1 && hud.scrollWidth <= hud.clientWidth) return true
+            }
+            await new Promise(resolve => setTimeout(resolve, 25))
+          }
+          return false
         })()`)) as boolean
         if (!hudReady) throw new Error('输入区 HUD 间距、底部留白或读数布局异常')
         await clickTrustedElement(win, '[data-composer-readings] button[aria-label^="Token 用量"]')
-        const hudPanelReady = (await win.webContents.executeJavaScript(`(() => {
-          const panel = document.querySelector('[role="dialog"][aria-label="Token 用量"]')
-          const button = document.querySelector('[data-composer-readings] button[aria-label^="Token 用量"]')
-          if (!panel || !button) return false
-          const rect = panel.getBoundingClientRect()
-          return button.getAttribute('aria-expanded') === 'true' && panel.textContent.includes('缓存读取')
-            && rect.top >= 0 && rect.bottom <= button.getBoundingClientRect().top
+        const hudPanelReady = (await win.webContents.executeJavaScript(`(async () => {
+          for (let attempt = 0; attempt < 60; attempt += 1) {
+            const panel = document.querySelector('[role="dialog"][aria-label="Token 用量"]')
+            const button = document.querySelector('[data-composer-readings] button[aria-label^="Token 用量"]')
+            if (panel && button) {
+              const rect = panel.getBoundingClientRect()
+              if (button.getAttribute('aria-expanded') === 'true' && panel.textContent.includes('缓存读取')
+                && rect.top >= 0 && rect.bottom <= button.getBoundingClientRect().top) return true
+            }
+            await new Promise(resolve => setTimeout(resolve, 25))
+          }
+          return false
         })()`)) as boolean
         if (!hudPanelReady) throw new Error('HUD 用量面板未向上展开或按钮状态异常')
         await clickTrustedElement(win, '[data-composer-readings] button[aria-label^="Token 用量"]')
         await clickTrustedElement(win, '[data-composer-readings] button[aria-label^="上下文占用"]')
-        const contextPanelReady = (await win.webContents.executeJavaScript(`(() => {
-          const panel = document.querySelector('[role="dialog"][aria-label="上下文占用"]')
-          return panel?.textContent.includes('系统提示词~700') && panel.textContent.includes('工具定义~800')
-            && panel.textContent.includes('对话消息~2.1K') && panel.querySelectorAll('i[data-kind]').length === 6
-            && !panel.textContent.includes('缓存读取')
+        const contextPanelReady = (await win.webContents.executeJavaScript(`(async () => {
+          for (let attempt = 0; attempt < 60; attempt += 1) {
+            const panel = document.querySelector('[role="dialog"][aria-label="上下文占用"]')
+            if (panel?.textContent.includes('系统提示词~700') && panel.textContent.includes('工具定义~800')
+              && panel.textContent.includes('对话消息~2.1K') && panel.querySelectorAll('i[data-kind]').length === 6
+              && !panel.textContent.includes('缓存读取')) return true
+            await new Promise(resolve => setTimeout(resolve, 25))
+          }
+          return false
         })()`)) as boolean
         if (!contextPanelReady) throw new Error('仪表盘上下文构成未读取核心投影或与累计用量混淆')
         writeFileSync(
@@ -6592,17 +6944,20 @@ async function main(): Promise<void> {
           (await captureVerifiedPage(win)).toPNG(),
         )
         await clickTrustedElement(win, '.panel-divider--information .panel-divider__capsule')
+        await settleElementAnimations(win, '.app-shell')
       }
       /* oxlint-enable no-await-in-loop */
       win.setSize(1100, 800)
-      await new Promise(resolve => {
-        setTimeout(resolve, 350)
-      })
-      const narrowTodoReady = await win.webContents.executeJavaScript(`(() => {
-        const todo = document.querySelector('.composer-dock .todo-card')?.getBoundingClientRect()
-        const input = document.querySelector('.composer-card')?.getBoundingClientRect()
-        return todo && input && todo.top >= 0 && todo.bottom < input.top && input.bottom < innerHeight
-          && Math.abs(todo.width - input.width) < 1 && !!document.querySelector('[data-composer-readings]')
+      await waitForWindowSize(win, 1100, 800)
+      const narrowTodoReady = await win.webContents.executeJavaScript(`(async () => {
+        for (let attempt = 0; attempt < 60; attempt += 1) {
+          const todo = document.querySelector('.composer-dock .todo-card')?.getBoundingClientRect()
+          const input = document.querySelector('.composer-card')?.getBoundingClientRect()
+          if (todo && input && todo.top >= 0 && todo.bottom < input.top && input.bottom < innerHeight
+            && Math.abs(todo.width - input.width) < 1 && !!document.querySelector('[data-composer-readings]')) return true
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+        return false
       })()`)
       if (!narrowTodoReady) throw new Error('窄窗口待办未显示在输入框正上方')
       writeFileSync(
@@ -6634,14 +6989,20 @@ async function main(): Promise<void> {
           values: { ...sessionInfoProjection.values, todos: [] },
         },
       })
+      await waitForWindowSize(win, infoSize[0] ?? 1280, infoSize[1] ?? 800)
+      await waitForColorScheme(win, infoScheme)
     }
-    const infoMenuReady = (await win.webContents.executeJavaScript(`(() => {
-      const menu = document.querySelector('.right-island-tabs')
-      return menu && !menu.querySelector('small') && menu.querySelectorAll('[aria-selected="true"]').length === 1
-        && menu.querySelector('[data-tab-id="conversation"]') === null
-        && menu.querySelector('[data-island-id="git-history"]')?.getAttribute('aria-selected') === 'true'
-        && !menu.querySelector('[data-tab-id="session-info"], [data-tab-id="plan-preview"]')
-        && !document.querySelector('.todo-card')
+    const infoMenuReady = (await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        const menu = document.querySelector('.right-island-tabs')
+        if (menu && !menu.querySelector('small') && menu.querySelectorAll('[aria-selected="true"]').length === 1
+          && menu.querySelector('[data-tab-id="conversation"]') === null
+          && menu.querySelector('[data-island-id="git-history"]')?.getAttribute('aria-selected') === 'true'
+          && !menu.querySelector('[data-tab-id="session-info"], [data-tab-id="plan-preview"]')
+          && !document.querySelector('.todo-card')) return true
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      return false
     })()`)) as boolean
     writeFileSync(
       verificationArtifactPath('verify-right-island-tabs.png'),
@@ -6850,34 +7211,44 @@ async function main(): Promise<void> {
     console.log('desktop-shell-verify-local: appearance-open')
     const verifySettingsHeader = async (): Promise<void> => {
       const aligned = (await win.webContents.executeJavaScript(`(async () => {
-        const dialog = document.querySelector('.settings-dialog[role="dialog"]')
-        if (!(dialog instanceof HTMLElement)) return false
-        await Promise.allSettled(
-        dialog
-          .getAnimations({ subtree: true })
-          .filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity)
-          .map(animation => animation.finished),
-      )
-        const header = dialog.querySelector('.settings-dialog__header')
-        const title = header?.querySelector('h1')
-        const close = header?.querySelector('button[aria-label="关闭设置"]')
-        const content = dialog.querySelector('.settings-content')
-        const surface = dialog.querySelector('.mydsh-glass-dialog')
-        const current = dialog.querySelector('.settings-nav__items .ant-menu-item-selected')
-        if (!(header instanceof HTMLElement) || !(title instanceof HTMLElement)
-          || !(close instanceof HTMLButtonElement) || !(content instanceof HTMLElement)
-          || !surface || !current || !getComputedStyle(surface).backdropFilter.includes('blur')
-          || getComputedStyle(current).backgroundImage === 'none') return false
-        const frame = header.getBoundingClientRect()
-        const center = frame.top + frame.height / 2
-        const controls = [title, ...header.querySelectorAll('button')]
-        return controls.every(control => {
-          const rect = control.getBoundingClientRect()
-          return Math.abs(rect.top + rect.height / 2 - center) <= 1
-            && rect.top >= frame.top + 11 && rect.bottom <= frame.bottom - 11
-            && rect.left >= frame.left + 12 && rect.right <= frame.right - 12
-        }) && content.getBoundingClientRect().top >= frame.bottom
-          && frame.top >= 0 && frame.right <= innerWidth
+        const inMotion = node =>
+          typeof node.className === 'string'
+          && /(?:^|\\s)ant-[^\\s]+-(?:appear|enter|leave)(?:-(?:prepare|start|active))?(?:\\s|$)/.test(node.className)
+        for (let attempt = 0; attempt < 80; attempt += 1) {
+          const dialog = document.querySelector('.settings-dialog[role="dialog"]')
+          if (dialog instanceof HTMLElement && !inMotion(dialog)) {
+            await Promise.allSettled(
+              dialog
+                .getAnimations({ subtree: true })
+                .filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity)
+                .map(animation => animation.finished),
+            )
+            const header = dialog.querySelector('.settings-dialog__header')
+            const title = header?.querySelector('h1')
+            const close = header?.querySelector('button[aria-label="关闭设置"]')
+            const content = dialog.querySelector('.settings-content')
+            const surface = dialog.querySelector('.mydsh-glass-dialog')
+            const current = dialog.querySelector('.settings-nav__items .ant-menu-item-selected')
+            if (header instanceof HTMLElement && title instanceof HTMLElement
+              && close instanceof HTMLButtonElement && content instanceof HTMLElement
+              && surface && current && getComputedStyle(surface).backdropFilter.includes('blur')
+              && getComputedStyle(current).backgroundImage !== 'none') {
+              const frame = header.getBoundingClientRect()
+              const center = frame.top + frame.height / 2
+              const controls = [title, ...header.querySelectorAll('button')]
+              const ok = controls.every(control => {
+                const rect = control.getBoundingClientRect()
+                return Math.abs(rect.top + rect.height / 2 - center) <= 1
+                  && rect.top >= frame.top + 11 && rect.bottom <= frame.bottom - 11
+                  && rect.left >= frame.left + 12 && rect.right <= frame.right - 12
+              }) && content.getBoundingClientRect().top >= frame.bottom
+                && frame.top >= 0 && frame.right <= innerWidth
+              if (ok) return true
+            }
+          }
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+        return false
       })()`)) as boolean
       if (!aligned) throw new Error('设置顶栏的标题、配置入口和关闭按钮没有对齐或越出了安全边距')
     }
@@ -6887,7 +7258,7 @@ async function main(): Promise<void> {
       const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
       return (async () => {
         const expectedNav = ['通用设置', '外观', '模型', 'Agent 预设', '已归档会话', '浏览器与桌面操控']
-        for (let attempt = 0; attempt < 40; attempt += 1) {
+        for (let attempt = 0; attempt < 100; attempt += 1) {
           const dialog = document.querySelector('.settings-dialog[role="dialog"]')
           const navigation = dialog?.querySelector('.settings-nav')
           const removedAppearanceControlsGone = dialog?.querySelector('.material-options') === null
@@ -6950,7 +7321,7 @@ async function main(): Promise<void> {
             && automaticLayoutReady
             && accents.length === 6 && accentShapesReady && accentValuePill instanceof HTMLElement
             && navOrderReady
-            && (focusInside || attempt >= 75)) return {
+            && (focusInside || attempt >= 95)) return {
               open: true,
               focusInside,
               panelFits,
@@ -6974,9 +7345,6 @@ async function main(): Promise<void> {
     }
     const settingsDialog = settingsAudit.open
     await verifySettingsHeader()
-    await new Promise(resolve => {
-      setTimeout(resolve, 180)
-    })
     const appearanceCapture = 'verify-appearance.png'
     writeFileSync(
       verificationArtifactPath(appearanceCapture),
@@ -6986,46 +7354,47 @@ async function main(): Promise<void> {
     const appearanceBackgroundsReady = settingsAudit.layerCount === 0
 
     await clickTrustedElement(win, '.settings-nav__items > [role="menuitem"]:nth-child(3)')
-    await new Promise(resolve => {
-      setTimeout(resolve, 120)
-    })
+    const modelsReady = (await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        const dialog = document.querySelector('.settings-dialog[role="dialog"]')
+        const content = dialog?.querySelector('.settings-content')
+        const provider = dialog?.querySelector('.settings-provider-summary')
+        if (provider instanceof HTMLButtonElement
+          && provider.getAttribute('aria-expanded') === 'false'
+          && dialog?.querySelector('.models-detail-view') === null
+          && content instanceof HTMLElement
+          && content.scrollWidth <= content.clientWidth + 1) return true
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      return false
+    })()`)) as boolean
     const modelsCapture = 'verify-models.png'
     writeFileSync(verificationArtifactPath(modelsCapture), (await captureVerifiedPage(win)).toPNG())
-    const modelsReady = (await win.webContents.executeJavaScript(`(() => {
-      const dialog = document.querySelector('.settings-dialog[role="dialog"]')
-      const content = dialog?.querySelector('.settings-content')
-      const provider = dialog?.querySelector('.settings-provider-summary')
-      return provider instanceof HTMLButtonElement
-        && provider.getAttribute('aria-expanded') === 'false'
-        && dialog?.querySelector('.models-detail-view') === null
-        && content instanceof HTMLElement
-        && content.scrollWidth <= content.clientWidth + 1
-    })()`)) as boolean
 
     await clickTrustedElement(win, '.settings-nav__items > [role="menuitem"]:nth-child(4)')
-    await new Promise(resolve => {
-      setTimeout(resolve, 120)
-    })
+    const settingsPagesReady = (await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        const dialog = document.querySelector('.settings-dialog[role="dialog"]')
+        const presetList = dialog?.querySelector('.settings-preset-list')
+        const selectedPreset = dialog?.querySelector('.settings-preset-card[data-selected="true"]')
+        const presetColumns = presetList instanceof HTMLElement
+          ? getComputedStyle(presetList).gridTemplateColumns.split(' ').filter(Boolean).length
+          : 0
+        if (dialog instanceof HTMLElement
+          && dialog.checkVisibility()
+          && presetList instanceof HTMLElement
+          && presetColumns === 2
+          && selectedPreset instanceof HTMLElement
+          && dialog.querySelector('[aria-label="新会话默认 Agent 预设"]') === null) return true
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      return false
+    })()`)) as boolean
     const presetsCapture = 'verify-presets.png'
     writeFileSync(
       verificationArtifactPath(presetsCapture),
       (await captureVerifiedPage(win)).toPNG(),
     )
-    const settingsPagesReady = (await win.webContents.executeJavaScript(`(() => {
-      const dialog = document.querySelector('.settings-dialog[role="dialog"]')
-      const presetList = dialog?.querySelector('.settings-preset-list')
-      const selectedPreset = dialog?.querySelector('.settings-preset-card[data-selected="true"]')
-      const presetColumns = presetList instanceof HTMLElement
-        ? getComputedStyle(presetList).gridTemplateColumns.split(' ').filter(Boolean).length
-        : 0
-      const presetsReady = dialog instanceof HTMLElement
-        && dialog.checkVisibility()
-        && presetList instanceof HTMLElement
-        && presetColumns === 2
-        && selectedPreset instanceof HTMLElement
-        && dialog.querySelector('[aria-label="新会话默认 Agent 预设"]') === null
-      return presetsReady
-    })()`)) as boolean
     // 复用隔离插件夹具写入并刷盘真实历史，不启动模型请求。
     writeFileSync(
       join(extensionSource, 'mydsh.plugin.json'),
@@ -7076,12 +7445,18 @@ async function main(): Promise<void> {
         if (row && search instanceof HTMLInputElement) {
           Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(search, owner?.title ?? '未分组')
           search.dispatchEvent(new Event('input', { bubbles: true }))
-          await new Promise(resolve => setTimeout(resolve, 80))
-          const content = document.querySelector('.settings-content')
-          return { sessionId, throughSeq, history, ownerId: owner?.workspaceId, ready: row.isConnected
-            && row.textContent.includes(owner?.title ?? '未分组')
-            && content.scrollWidth <= content.clientWidth + 1
-            && document.querySelector('.session-row-shell[data-session-id=' + JSON.stringify(sessionId) + ']') === null }
+          let ready = false
+          for (let filterAttempt = 0; filterAttempt < 40; filterAttempt += 1) {
+            const content = document.querySelector('.settings-content')
+            ready = row.isConnected
+              && row.textContent.includes(owner?.title ?? '未分组')
+              && content instanceof HTMLElement
+              && content.scrollWidth <= content.clientWidth + 1
+              && document.querySelector('.session-row-shell[data-session-id=' + JSON.stringify(sessionId) + ']') === null
+            if (ready) break
+            await new Promise(resolve => setTimeout(resolve, 25))
+          }
+          return { sessionId, throughSeq, history, ownerId: owner?.workspaceId, ready }
         }
         await new Promise(resolve => setTimeout(resolve, 25))
       }
@@ -7200,9 +7575,7 @@ async function main(): Promise<void> {
     /* oxlint-disable no-await-in-loop -- 明暗主题必须逐一渲染后截图，不能并行切换。 */
     for (const colorScheme of ['light', 'dark'] as const) {
       settingsController.publish(settingsStore.update({ colorScheme }))
-      await new Promise(resolve => {
-        setTimeout(resolve, 180)
-      })
+      await waitForColorScheme(win, colorScheme)
       writeFileSync(
         verificationArtifactPath(`verify-delete-archive-${colorScheme}.png`),
         (await captureVerifiedPage(win)).toPNG(),
@@ -7210,6 +7583,7 @@ async function main(): Promise<void> {
     }
     /* oxlint-enable no-await-in-loop */
     settingsController.publish(settingsStore.update({ colorScheme: archiveColorScheme }))
+    await waitForColorScheme(win, archiveColorScheme)
     const permanentDeletionReady =
       deletionConfirmationReady &&
       ((await win.webContents.executeJavaScript(`(async () => {
@@ -7383,9 +7757,14 @@ async function main(): Promise<void> {
     })()`)) as boolean
     console.log('desktop-shell-verify-local: host-settings-events', { hostSettingsEventsReady })
     await clickTrustedElement(win, '[data-view="conversation"]')
-    await new Promise(resolve => {
-      setTimeout(resolve, 180)
-    })
+    await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        if (document.querySelector('[data-view="conversation"][aria-current="page"]') !== null
+          && document.querySelector('.main-island .composer-card') instanceof HTMLElement) return
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+    })()`)
+    await settleElementAnimations(win, '.app-shell')
 
     const allSettingsPagesReady =
       appearanceBackgroundsReady &&
@@ -7447,12 +7826,17 @@ async function main(): Promise<void> {
     await new Promise(resolve => {
       setTimeout(resolve, 120)
     })
-    const editorAppearanceRestored = (await win.webContents.executeJavaScript(`(() => {
+    const editorAppearanceRestored = (await win.webContents.executeJavaScript(`(async () => {
       const editor = document.querySelector('.code-editor .cm-editor')
       const scroller = editor?.querySelector('.cm-scroller')
       const sameEditor = globalThis.__mydshVerifyEditor === editor
       Reflect.deleteProperty(globalThis, '__mydshVerifyEditor')
       document.querySelector('[data-view="conversation"]')?.click()
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        if (document.querySelector('[data-view="conversation"][aria-current="page"]') !== null
+          && document.querySelector('.main-island .composer-card') instanceof HTMLElement) break
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
       if (!(scroller instanceof HTMLElement)) return false
       const style = getComputedStyle(scroller)
       return sameEditor
@@ -7467,13 +7851,11 @@ async function main(): Promise<void> {
 
     // 已下线的浮岛间隙旧字段兼容读取，但界面与红绿灯均固定投影为官方 8px 默认值。
     settingsController.publish(settingsStore.update({ islandGap: 6 }))
-    await new Promise(resolve => {
-      setTimeout(resolve, 120)
-    })
+    await settleElementAnimations(win, '.app-shell')
     const compactGapIgnored =
       isTrafficLightAlignedForGap(win, 8) &&
       ((await win.webContents.executeJavaScript(`(async () => {
-      await Promise.all(document.querySelector('.app-shell').getAnimations({ subtree: true })
+      await Promise.allSettled(document.querySelector('.app-shell').getAnimations({ subtree: true })
         .filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity).map(animation => animation.finished))
       const navigation = document.querySelector('.sidebar-island')
       const main = document.querySelector('.main-island')
@@ -7513,9 +7895,7 @@ async function main(): Promise<void> {
         && Math.abs(informationDivider.getBoundingClientRect().width - 8) <= 1
     })()`)) as boolean)
     settingsController.publish(settingsStore.update({ islandGap: 20 }))
-    await new Promise(resolve => {
-      setTimeout(resolve, 120)
-    })
+    await settleElementAnimations(win, '.app-shell')
     const wideGapIgnored =
       isTrafficLightAlignedForGap(win, 8) &&
       ((await win.webContents.executeJavaScript(`(() => {
@@ -7527,9 +7907,7 @@ async function main(): Promise<void> {
         && Math.abs(Number.parseFloat(getComputedStyle(sidebar).borderBottomLeftRadius) - Math.max(0, outer - 8)) <= 0.1
     })()`)) as boolean)
     settingsController.publish(settingsStore.update({ islandGap: 8 }))
-    await new Promise(resolve => {
-      setTimeout(resolve, 120)
-    })
+    await settleElementAnimations(win, '.app-shell')
     const islandGapSettingReady =
       compactGapIgnored &&
       wideGapIgnored &&
@@ -7549,27 +7927,33 @@ async function main(): Promise<void> {
       await emulateVerificationMedia(win, [
         { name: 'prefers-reduced-transparency', value: 'reduce' },
       ])
-      await new Promise(resolve => {
-        setTimeout(resolve, 200)
-      })
-      reducedTransparencyReady = (await win.webContents.executeJavaScript(`(() => {
-        const canvas = document.querySelector('.background-layer')
-        const islands = [...document.querySelectorAll('.app-shell > .island:not([hidden])')]
-        const canvasStyle = getComputedStyle(canvas)
-        return matchMedia('(prefers-reduced-transparency: reduce)').matches
-          && canvasStyle.opacity === '1'
-          && canvasStyle.backgroundImage === 'none'
-          && canvasStyle.backgroundColor !== 'rgba(0, 0, 0, 0)'
-          && canvasStyle.backgroundColor !== 'transparent'
-          && islands.every(island => getComputedStyle(island).backdropFilter === 'none')
+      reducedTransparencyReady = (await win.webContents.executeJavaScript(`(async () => {
+        for (let attempt = 0; attempt < 60; attempt += 1) {
+          const canvas = document.querySelector('.background-layer')
+          const islands = [...document.querySelectorAll('.app-shell > .island:not([hidden])')]
+          const canvasStyle = canvas instanceof HTMLElement ? getComputedStyle(canvas) : null
+          if (matchMedia('(prefers-reduced-transparency: reduce)').matches
+            && canvasStyle !== null
+            && canvasStyle.opacity === '1'
+            && canvasStyle.backgroundImage === 'none'
+            && canvasStyle.backgroundColor !== 'rgba(0, 0, 0, 0)'
+            && canvasStyle.backgroundColor !== 'transparent'
+            && islands.every(island => getComputedStyle(island).backdropFilter === 'none')) return true
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+        return false
       })()`)) as boolean
       await emulateVerificationMedia(win, [{ name: 'forced-colors', value: 'active' }])
-      forcedColorsReady = (await win.webContents.executeJavaScript(`(() => {
-        const controls = [...document.querySelectorAll('.app-shell > .island:not([hidden]), .mode-rail, .composer-card')]
-        return matchMedia('(forced-colors: active)').matches
-          && controls.length === 5
-          && controls.every(control => getComputedStyle(control).borderTopStyle === 'solid'
-            && Math.abs(Number.parseFloat(getComputedStyle(control).borderTopWidth) * devicePixelRatio - Math.max(1, Math.floor(devicePixelRatio))) < .1)
+      forcedColorsReady = (await win.webContents.executeJavaScript(`(async () => {
+        for (let attempt = 0; attempt < 60; attempt += 1) {
+          const controls = [...document.querySelectorAll('.app-shell > .island:not([hidden]), .mode-rail, .composer-card')]
+          if (matchMedia('(forced-colors: active)').matches
+            && controls.length === 5
+            && controls.every(control => getComputedStyle(control).borderTopStyle === 'solid'
+              && Math.abs(Number.parseFloat(getComputedStyle(control).borderTopWidth) * devicePixelRatio - Math.max(1, Math.floor(devicePixelRatio))) < .1)) return true
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+        return false
       })()`)) as boolean
     } finally {
       await emulateVerificationMedia(win)
@@ -7582,7 +7966,7 @@ async function main(): Promise<void> {
     console.log('desktop-shell-verify-local: captures')
     // 媒体仿真恢复后等待实际绘制，防止默认主题截图保留上一帧的高对比配色。
     await win.webContents.executeJavaScript(
-      `new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`,
+      `Promise.race([new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))), new Promise(resolve => setTimeout(resolve, 200))])`,
     )
     await verifyEmptyConversationLayout(win)
     const defaultCapture = 'verify.png'
@@ -7592,9 +7976,7 @@ async function main(): Promise<void> {
     )
     const previousThemeSource = nativeTheme.themeSource
     nativeTheme.themeSource = 'dark'
-    await new Promise(resolve => {
-      setTimeout(resolve, 220)
-    })
+    await waitForNativeTheme(win, 'dark')
     await verifyEmptyConversationLayout(win)
     const darkCapture = 'verify-dark.png'
     writeFileSync(verificationArtifactPath(darkCapture), (await captureVerifiedPage(win)).toPNG())
@@ -7633,31 +8015,28 @@ async function main(): Promise<void> {
     await clickTrustedElement(win, '.settings-dialog button[aria-label="关闭设置"]')
     await waitForSettingsClosed()
     nativeTheme.themeSource = 'light'
-    await new Promise(resolve => {
-      setTimeout(resolve, 140)
-    })
+    await waitForNativeTheme(win, 'light')
 
     // 已下线的画布配色旧字段不再覆盖固定投影（始终跟随界面配色）。
     settingsController.publish(settingsStore.update({ canvasColorScheme: 'dark' }))
-    await new Promise(resolve => {
-      setTimeout(resolve, 140)
-    })
-    const canvasColorSchemeReady = (await win.webContents.executeJavaScript(`(() => {
-      const root = document.documentElement
-      const canvas = document.querySelector('.background-layer')
-      const canvasStyle = canvas instanceof HTMLElement ? getComputedStyle(canvas) : null
-      return matchMedia('(prefers-color-scheme: light)').matches
-        && root.dataset.canvasColorScheme === 'follow-interface'
-        && root.style.getPropertyValue('--canvas-layer-bg').trim() === 'var(--canvas-bg)'
-        && canvasStyle !== null
-        && canvasStyle.backgroundImage.includes('radial-gradient')
-        && !canvasStyle.backgroundImage.includes('rgb(16, 17, 19)')
-        && canvasStyle.backgroundColor !== 'rgb(16, 17, 19)'
+    const canvasColorSchemeReady = (await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        const root = document.documentElement
+        const canvas = document.querySelector('.background-layer')
+        const canvasStyle = canvas instanceof HTMLElement ? getComputedStyle(canvas) : null
+        if (matchMedia('(prefers-color-scheme: light)').matches
+          && root.dataset.canvasColorScheme === 'follow-interface'
+          && root.style.getPropertyValue('--canvas-layer-bg').trim() === 'var(--canvas-bg)'
+          && canvasStyle !== null
+          && canvasStyle.backgroundImage.includes('radial-gradient')
+          && !canvasStyle.backgroundImage.includes('rgb(16, 17, 19)')
+          && canvasStyle.backgroundColor !== 'rgb(16, 17, 19)') return true
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      return false
     })()`)) as boolean
     settingsController.publish(settingsStore.update({ canvasColorScheme: 'follow-interface' }))
-    await new Promise(resolve => {
-      setTimeout(resolve, 120)
-    })
+    await settleElementAnimations(win, '.app-shell')
 
     // 已下线的透明度、遮罩与背景图旧字段不再覆盖官方默认值：画布采用中心实色、边缘通透径向渐变，遮罩固定 0.84，无背景图。
     settingsController.publish(
@@ -7666,12 +8045,9 @@ async function main(): Promise<void> {
         contentScrimOpacity: 0.82,
       }),
     )
-    await new Promise(resolve => {
-      setTimeout(resolve, 220)
-    })
     const material = (await win.webContents.executeJavaScript(`(async () => {
       const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
-      for (let attempt = 0; attempt < 40; attempt += 1) {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
         const island = document.querySelector('.sidebar-island')
         const mainIsland = document.querySelector('.main-island')
         const content = document.querySelector('.workspace-view')
@@ -7843,34 +8219,41 @@ async function main(): Promise<void> {
 
     // 即使旧配置将 canvasTransparency 设为 1，画布仍保持中心实色、边缘通透的径向渐变与原透明窗口合成。
     settingsController.publish(settingsStore.update({ canvasTransparency: 1 }))
-    await new Promise(resolve => {
-      setTimeout(resolve, 160)
-    })
-    const clearCanvas = (await win.webContents.executeJavaScript(`(() => {
-      const background = document.querySelector('.background-layer')
-      const shell = document.querySelector('.app-shell')
-      const root = document.querySelector('#root')
-      const islands = [...document.querySelectorAll('.app-shell > .island:not([hidden])')]
-      if (!(background instanceof HTMLElement)
-        || !(shell instanceof HTMLElement)
-        || !(root instanceof HTMLElement)
-        || islands.length !== 3) return null
-      const backgroundRect = background.getBoundingClientRect()
-      const backgroundStyle = getComputedStyle(background)
-      const transparent = value => value === 'rgba(0, 0, 0, 0)' || value === 'transparent'
-      return {
-        canvasAlpha: document.documentElement.style.getPropertyValue('--canvas-alpha').trim(),
-        canvasOpacity: backgroundStyle.opacity,
-        canvasBackgroundImage: backgroundStyle.backgroundImage,
-        shellOpacity: getComputedStyle(shell).opacity,
-        islandsKeepOwnOpacity: islands.every(island => getComputedStyle(island).opacity === '1'),
-        transparentRoots: [document.documentElement, document.body, root]
-          .every(element => transparent(getComputedStyle(element).backgroundColor)),
-        canvasCoversWindow: Math.abs(backgroundRect.left) <= 1
-          && Math.abs(backgroundRect.top) <= 1
-          && Math.abs(backgroundRect.right - innerWidth) <= 1
-          && Math.abs(backgroundRect.bottom - innerHeight) <= 1,
+    const clearCanvas = (await win.webContents.executeJavaScript(`(async () => {
+      let latest = null
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        const background = document.querySelector('.background-layer')
+        const shell = document.querySelector('.app-shell')
+        const root = document.querySelector('#root')
+        const islands = [...document.querySelectorAll('.app-shell > .island:not([hidden])')]
+        if (background instanceof HTMLElement
+          && shell instanceof HTMLElement
+          && root instanceof HTMLElement
+          && islands.length === 3) {
+          const backgroundRect = background.getBoundingClientRect()
+          const backgroundStyle = getComputedStyle(background)
+          const transparent = value => value === 'rgba(0, 0, 0, 0)' || value === 'transparent'
+          latest = {
+            canvasAlpha: document.documentElement.style.getPropertyValue('--canvas-alpha').trim(),
+            canvasOpacity: backgroundStyle.opacity,
+            canvasBackgroundImage: backgroundStyle.backgroundImage,
+            shellOpacity: getComputedStyle(shell).opacity,
+            islandsKeepOwnOpacity: islands.every(island => getComputedStyle(island).opacity === '1'),
+            transparentRoots: [document.documentElement, document.body, root]
+              .every(element => transparent(getComputedStyle(element).backgroundColor)),
+            canvasCoversWindow: Math.abs(backgroundRect.left) <= 1
+              && Math.abs(backgroundRect.top) <= 1
+              && Math.abs(backgroundRect.right - innerWidth) <= 1
+              && Math.abs(backgroundRect.bottom - innerHeight) <= 1,
+          }
+          if (Math.abs(Number(latest.canvasAlpha) - 0.68) <= 0.001
+            && latest.canvasOpacity === '1'
+            && latest.canvasBackgroundImage.includes('radial-gradient')
+            && latest.canvasCoversWindow) return latest
+        }
+        await new Promise(resolve => setTimeout(resolve, 25))
       }
+      return latest
     })()`)) as null | {
       canvasAlpha: string
       canvasOpacity: string
@@ -7911,9 +8294,7 @@ async function main(): Promise<void> {
       clearCanvasReady,
     })
     settingsController.publish(settingsStore.update({ canvasTransparency: 0.42 }))
-    await new Promise(resolve => {
-      setTimeout(resolve, 120)
-    })
+    await settleElementAnimations(win, '.app-shell')
 
     if (process.platform === 'darwin' && !VERIFY_BACKGROUND) {
       const paintedSize = { width: 0, height: 0 }
@@ -7954,34 +8335,36 @@ async function main(): Promise<void> {
       }
     }
     win.setSize(1_440, 900)
-    await new Promise(resolve => {
-      setTimeout(resolve, 140)
-    })
-    const largeLayoutStable = (await win.webContents.executeJavaScript(`(() => {
-      const shell = document.querySelector('.app-shell')
-      const topIslands = [...document.querySelectorAll('.app-shell > .island:not([hidden])')]
-      const dragRegion = document.querySelector('.window-drag-region')
-      const toolbar = document.querySelector('.mode-rail')
-      const searchTrigger = document.querySelector('.session-search-trigger')
-      const shellStyle = shell instanceof HTMLElement ? getComputedStyle(shell) : null
-      const expectedTop = Number.parseFloat(shellStyle?.getPropertyValue('--window-edge') ?? '')
-        + (shell?.getAttribute('data-session-tabs-visible') === 'true'
-          ? Number.parseFloat(shellStyle?.getPropertyValue('--session-chrome-height') ?? '')
-            + Number.parseFloat(shellStyle?.getPropertyValue('--window-gap') ?? '') : 0)
-      return shell instanceof HTMLElement
-        && Math.abs(shell.getBoundingClientRect().width - innerWidth) <= 1
-        && document.querySelectorAll('.app-shell > .island:not([hidden])').length === 3
-        && topIslands.every(island => Math.abs(island.getBoundingClientRect().top
-          - (island.classList.contains('sidebar-island') ? Number.parseFloat(shellStyle.getPropertyValue('--window-edge')) : expectedTop)) <= 1)
-        && dragRegion instanceof HTMLElement
-        && Math.abs(dragRegion.getBoundingClientRect().bottom - innerHeight) <= 1
-        && toolbar instanceof HTMLElement
-        && Math.abs(toolbar.getBoundingClientRect().left - Number.parseFloat(shellStyle.getPropertyValue('--window-edge'))) <= 1
-        && Math.abs(toolbar.getBoundingClientRect().width - Number.parseFloat(shellStyle.getPropertyValue('--mode-rail-width'))) <= 1
-        && toolbar.scrollWidth <= toolbar.clientWidth + 1
-        && searchTrigger instanceof HTMLElement
-        && searchTrigger.getBoundingClientRect().left >= document.querySelector('.project-selector').getBoundingClientRect().right
-        && searchTrigger.textContent.trim() === ''
+    await waitForWindowSize(win, 1_440, 900)
+    const largeLayoutStable = (await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        const shell = document.querySelector('.app-shell')
+        const topIslands = [...document.querySelectorAll('.app-shell > .island:not([hidden])')]
+        const dragRegion = document.querySelector('.window-drag-region')
+        const toolbar = document.querySelector('.mode-rail')
+        const searchTrigger = document.querySelector('.session-search-trigger')
+        const shellStyle = shell instanceof HTMLElement ? getComputedStyle(shell) : null
+        const expectedTop = Number.parseFloat(shellStyle?.getPropertyValue('--window-edge') ?? '')
+          + (shell?.getAttribute('data-session-tabs-visible') === 'true'
+            ? Number.parseFloat(shellStyle?.getPropertyValue('--session-chrome-height') ?? '')
+              + Number.parseFloat(shellStyle?.getPropertyValue('--window-gap') ?? '') : 0)
+        if (shell instanceof HTMLElement
+          && Math.abs(shell.getBoundingClientRect().width - innerWidth) <= 1
+          && document.querySelectorAll('.app-shell > .island:not([hidden])').length === 3
+          && topIslands.every(island => Math.abs(island.getBoundingClientRect().top
+            - (island.classList.contains('sidebar-island') ? Number.parseFloat(shellStyle.getPropertyValue('--window-edge')) : expectedTop)) <= 1)
+          && dragRegion instanceof HTMLElement
+          && Math.abs(dragRegion.getBoundingClientRect().bottom - innerHeight) <= 1
+          && toolbar instanceof HTMLElement
+          && Math.abs(toolbar.getBoundingClientRect().left - Number.parseFloat(shellStyle.getPropertyValue('--window-edge'))) <= 1
+          && Math.abs(toolbar.getBoundingClientRect().width - Number.parseFloat(shellStyle.getPropertyValue('--mode-rail-width'))) <= 1
+          && toolbar.scrollWidth <= toolbar.clientWidth + 1
+          && searchTrigger instanceof HTMLElement
+          && searchTrigger.getBoundingClientRect().left >= document.querySelector('.project-selector').getBoundingClientRect().right
+          && searchTrigger.textContent.trim() === '') return true
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      return false
     })()`)) as boolean
     const largeCapture = 'verify-large.png'
     writeFileSync(verificationArtifactPath(largeCapture), (await captureVerifiedPage(win)).toPNG())
@@ -7995,90 +8378,98 @@ async function main(): Promise<void> {
     await waitForSettingsClosed()
 
     await dragTrustedElementHorizontally(win, '.panel-divider--information', -220)
-    const wideInformationResizable = (await win.webContents.executeJavaScript(`(() => {
-      const shell = document.querySelector('.app-shell')
-      const main = document.querySelector('.main-island')
-      const information = document.querySelector('.info-island')
-      const divider = document.querySelector('.panel-divider--information')
-      if (!(shell instanceof HTMLElement)
-        || !(main instanceof HTMLElement)
-        || !(information instanceof HTMLElement)
-        || !(divider instanceof HTMLElement)) return false
-      const shellStyle = getComputedStyle(shell)
-      const expandedWidth = Number.parseFloat(shellStyle.getPropertyValue('--information-expanded-width'))
-      const windowGap = Number.parseFloat(shellStyle.getPropertyValue('--window-gap'))
-      const mainRect = main.getBoundingClientRect()
-      const informationRect = information.getBoundingClientRect()
-      return Math.abs(expandedWidth - 480) <= 1
-        && informationRect.width > 420
-        && Math.abs(informationRect.width - expandedWidth) <= 1
-        && mainRect.width + windowGap >= 420
-        && divider.getAttribute('aria-valuemax') === null
-        && document.documentElement.scrollWidth === innerWidth
+    const wideInformationResizable = (await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        const shell = document.querySelector('.app-shell')
+        const main = document.querySelector('.main-island')
+        const information = document.querySelector('.info-island')
+        const divider = document.querySelector('.panel-divider--information')
+        if (shell instanceof HTMLElement
+          && main instanceof HTMLElement
+          && information instanceof HTMLElement
+          && divider instanceof HTMLElement) {
+          const shellStyle = getComputedStyle(shell)
+          const expandedWidth = Number.parseFloat(shellStyle.getPropertyValue('--information-expanded-width'))
+          const windowGap = Number.parseFloat(shellStyle.getPropertyValue('--window-gap'))
+          const mainRect = main.getBoundingClientRect()
+          const informationRect = information.getBoundingClientRect()
+          if (Math.abs(expandedWidth - 480) <= 1
+            && informationRect.width > 420
+            && Math.abs(informationRect.width - expandedWidth) <= 1
+            && mainRect.width + windowGap >= 420
+            && divider.getAttribute('aria-valuemax') === null
+            && document.documentElement.scrollWidth === innerWidth) return true
+        }
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      return false
     })()`)) as boolean
     win.setSize(1_200, 760)
-    await new Promise(resolve => {
-      setTimeout(resolve, 140)
-    })
-    const mediumToolbarCompact = (await win.webContents.executeJavaScript(`(() => {
-      const shell = document.querySelector('.app-shell')
-      const information = document.querySelector('.info-island')
-      const main = document.querySelector('.main-island')
-      const informationDivider = document.querySelector('.panel-divider--information')
-      const searchTrigger = document.querySelector('.session-search-trigger')
-      const viewTabs = document.querySelector('.view-tabs')
-      if (!(shell instanceof HTMLElement)
-        || !(information instanceof HTMLElement)
-        || !(main instanceof HTMLElement)
-        || !(informationDivider instanceof HTMLElement)
-        || !(searchTrigger instanceof HTMLElement)
-        || !(viewTabs instanceof HTMLElement)) return false
-      const shellStyle = getComputedStyle(shell)
-      const expandedWidth = Number.parseFloat(shellStyle.getPropertyValue('--information-expanded-width'))
-      const rail = document.querySelector('.mode-rail').getBoundingClientRect()
-      const searchRect = searchTrigger.getBoundingClientRect()
-      const tabsRect = viewTabs.getBoundingClientRect()
-      return Math.abs(expandedWidth - 480) <= 1
-        && Math.abs(rail.width - Number.parseFloat(shellStyle.getPropertyValue('--mode-rail-width'))) <= 1
-        && information.getClientRects().length === 0 && information.inert
-        && getComputedStyle(main).paddingRight === '0px'
-        && Math.abs(main.getBoundingClientRect().right - innerWidth + Number.parseFloat(shellStyle.getPropertyValue('--window-edge'))) <= 1
-        && getComputedStyle(informationDivider).display === 'none'
-        && Math.abs(searchRect.width - 28) <= 1
-        && searchTrigger.textContent.trim() === ''
-        && searchRect.left >= document.querySelector('.project-selector').getBoundingClientRect().right
-        && tabsRect.left > rail.left && tabsRect.right < rail.right
-        && searchRect.bottom < tabsRect.top
-        && document.documentElement.scrollWidth === innerWidth
+    await waitForWindowSize(win, 1_200, 760)
+    const mediumToolbarCompact = (await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        const shell = document.querySelector('.app-shell')
+        const information = document.querySelector('.info-island')
+        const main = document.querySelector('.main-island')
+        const informationDivider = document.querySelector('.panel-divider--information')
+        const searchTrigger = document.querySelector('.session-search-trigger')
+        const viewTabs = document.querySelector('.view-tabs')
+        if (shell instanceof HTMLElement
+          && information instanceof HTMLElement
+          && main instanceof HTMLElement
+          && informationDivider instanceof HTMLElement
+          && searchTrigger instanceof HTMLElement
+          && viewTabs instanceof HTMLElement) {
+          const shellStyle = getComputedStyle(shell)
+          const expandedWidth = Number.parseFloat(shellStyle.getPropertyValue('--information-expanded-width'))
+          const rail = document.querySelector('.mode-rail').getBoundingClientRect()
+          const searchRect = searchTrigger.getBoundingClientRect()
+          const tabsRect = viewTabs.getBoundingClientRect()
+          if (Math.abs(expandedWidth - 480) <= 1
+            && Math.abs(rail.width - Number.parseFloat(shellStyle.getPropertyValue('--mode-rail-width'))) <= 1
+            && information.getClientRects().length === 0 && information.inert
+            && getComputedStyle(main).paddingRight === '0px'
+            && Math.abs(main.getBoundingClientRect().right - innerWidth + Number.parseFloat(shellStyle.getPropertyValue('--window-edge'))) <= 1
+            && getComputedStyle(informationDivider).display === 'none'
+            && Math.abs(searchRect.width - 28) <= 1
+            && searchTrigger.textContent.trim() === ''
+            && searchRect.left >= document.querySelector('.project-selector').getBoundingClientRect().right
+            && tabsRect.left > rail.left && tabsRect.right < rail.right
+            && searchRect.bottom < tabsRect.top
+            && document.documentElement.scrollWidth === innerWidth) return true
+        }
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      return false
     })()`)) as boolean
     win.setSize(1_440, 900)
-    await new Promise(resolve => {
-      setTimeout(resolve, 140)
-    })
+    await waitForWindowSize(win, 1_440, 900)
     await win.webContents.executeJavaScript(`(() => {
       const divider = document.querySelector('.panel-divider--information')
       if (!(divider instanceof HTMLElement)) return false
       divider.focus()
       return divider.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
     })()`)
-    await new Promise(resolve => {
-      setTimeout(resolve, 100)
-    })
-    const mediumToolbarReset = (await win.webContents.executeJavaScript(`(() => {
-      const shell = document.querySelector('.app-shell')
-      const information = document.querySelector('.info-island')
-      const viewTabs = document.querySelector('.view-tabs')
-      if (!(shell instanceof HTMLElement)
-        || !(information instanceof HTMLElement)
-        || !(viewTabs instanceof HTMLElement)) return false
-      const expandedWidth = Number.parseFloat(getComputedStyle(shell)
-        .getPropertyValue('--information-expanded-width'))
-      const tabsRect = viewTabs.getBoundingClientRect()
-      return Math.abs(expandedWidth - 260) <= 1
-        && information.checkVisibility() && !information.inert
-        && Math.abs(information.getBoundingClientRect().width - expandedWidth) <= 1
-        && tabsRect.left >= 10 && tabsRect.right <= 86
-        && tabsRect.width < expandedWidth
+    const mediumToolbarReset = (await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        const shell = document.querySelector('.app-shell')
+        const information = document.querySelector('.info-island')
+        const viewTabs = document.querySelector('.view-tabs')
+        if (shell instanceof HTMLElement
+          && information instanceof HTMLElement
+          && viewTabs instanceof HTMLElement) {
+          const expandedWidth = Number.parseFloat(getComputedStyle(shell)
+            .getPropertyValue('--information-expanded-width'))
+          const tabsRect = viewTabs.getBoundingClientRect()
+          if (Math.abs(expandedWidth - 260) <= 1
+            && information.checkVisibility() && !information.inert
+            && Math.abs(information.getBoundingClientRect().width - expandedWidth) <= 1
+            && tabsRect.left >= 10 && tabsRect.right <= 86
+            && tabsRect.width < expandedWidth) return true
+        }
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      return false
     })()`)) as boolean
     const mediumToolbarStable =
       wideInformationResizable && mediumToolbarCompact && mediumToolbarReset
@@ -8098,42 +8489,45 @@ async function main(): Promise<void> {
       })
 
     win.setSize(900, 600)
-    await new Promise(resolve => {
-      setTimeout(resolve, 140)
-    })
-    const narrowRightPanelHidden = (await win.webContents.executeJavaScript(`(() => {
-      const shell = document.querySelector('.app-shell')
-      const information = document.querySelector('.info-island')
-      const main = document.querySelector('.main-island')
-      if (!(shell instanceof HTMLElement)
-        || !(information instanceof HTMLElement)
-        || !(main instanceof HTMLElement)) return false
-      const style = getComputedStyle(shell)
-      const edge = Number.parseFloat(style.getPropertyValue('--window-edge'))
-      const expectedTop = edge + (shell.dataset.sessionTabsVisible === 'true'
-        ? Number.parseFloat(style.getPropertyValue('--session-chrome-height'))
-          + Number.parseFloat(style.getPropertyValue('--window-gap')) : 0)
-      const mainRect = main.getBoundingClientRect()
-      const conversationRect = main.querySelector('.workspace-view:not([hidden])')?.getBoundingClientRect()
-      const composerRect = document.querySelector('.composer-card')?.getBoundingClientRect()
-      const footer = document.querySelector('.composer-card footer')
-      const buttons = footer === null ? [] : [...footer.querySelectorAll('button')]
-        .filter(button => button.checkVisibility()).map(button => button.getBoundingClientRect())
-      const footerRect = footer?.getBoundingClientRect()
-      const composerControlsFit = footerRect !== undefined && buttons.length >= 4
-        && buttons.every((button, index) => button.width >= 24
-          && button.left >= footerRect.left && button.right <= footerRect.right
-          && (index === 0 || button.left >= buttons[index - 1].right))
-      return information.inert && information.hidden && information.getClientRects().length === 0
-        && document.querySelector('[data-composer-readings]') !== null
-        && getComputedStyle(main).paddingRight === '0px'
-        && Math.abs(mainRect.top - expectedTop) <= 1
-        && Math.abs(mainRect.right - (innerWidth - edge)) <= 1
-        && conversationRect !== undefined && Math.abs(conversationRect.right - mainRect.right) <= 2
-        && composerRect !== undefined && composerRect.width >= mainRect.width - 96
-        && composerRect.left >= mainRect.left + 16 && composerRect.right <= mainRect.right - 16
-        && composerControlsFit
-        && document.querySelector('.info-capsule, .info-compact-backdrop') === null
+    await waitForWindowSize(win, 900, 600)
+    const narrowRightPanelHidden = (await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        const shell = document.querySelector('.app-shell')
+        const information = document.querySelector('.info-island')
+        const main = document.querySelector('.main-island')
+        if (shell instanceof HTMLElement
+          && information instanceof HTMLElement
+          && main instanceof HTMLElement) {
+          const style = getComputedStyle(shell)
+          const edge = Number.parseFloat(style.getPropertyValue('--window-edge'))
+          const expectedTop = edge + (shell.dataset.sessionTabsVisible === 'true'
+            ? Number.parseFloat(style.getPropertyValue('--session-chrome-height'))
+              + Number.parseFloat(style.getPropertyValue('--window-gap')) : 0)
+          const mainRect = main.getBoundingClientRect()
+          const conversationRect = main.querySelector('.workspace-view:not([hidden])')?.getBoundingClientRect()
+          const composerRect = document.querySelector('.composer-card')?.getBoundingClientRect()
+          const footer = document.querySelector('.composer-card footer')
+          const buttons = footer === null ? [] : [...footer.querySelectorAll('button')]
+            .filter(button => button.checkVisibility()).map(button => button.getBoundingClientRect())
+          const footerRect = footer?.getBoundingClientRect()
+          const composerControlsFit = footerRect !== undefined && buttons.length >= 4
+            && buttons.every((button, index) => button.width >= 24
+              && button.left >= footerRect.left && button.right <= footerRect.right
+              && (index === 0 || button.left >= buttons[index - 1].right))
+          if (information.inert && information.hidden && information.getClientRects().length === 0
+            && document.querySelector('[data-composer-readings]') !== null
+            && getComputedStyle(main).paddingRight === '0px'
+            && Math.abs(mainRect.top - expectedTop) <= 1
+            && Math.abs(mainRect.right - (innerWidth - edge)) <= 1
+            && conversationRect !== undefined && Math.abs(conversationRect.right - mainRect.right) <= 2
+            && composerRect !== undefined && composerRect.width >= mainRect.width - 96
+            && composerRect.left >= mainRect.left + 16 && composerRect.right <= mainRect.right - 16
+            && composerControlsFit
+            && document.querySelector('.info-capsule, .info-compact-backdrop') === null) return true
+        }
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      return false
     })()`)) as boolean
     console.log('desktop-shell-verify-local: narrow-right-panel', { narrowRightPanelHidden })
     writeFileSync(
@@ -8143,16 +8537,18 @@ async function main(): Promise<void> {
     await clickTrustedElement(win, '[aria-label="打开命令与 Skill"]')
     await clickTrustedElement(win, '[id="命令候选-category:skill"]')
     const narrowPickerReady = (await win.webContents.executeJavaScript(`(async () => {
-      for (let attempt = 0; attempt < 80 && document.querySelector('#composer-command-listbox') === null; attempt += 1) {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        const panel = document.querySelector('[role="dialog"][aria-label="命令与 Skill"]')
+        const list = panel?.querySelector('[role="listbox"]')
+        if (panel instanceof HTMLElement && list instanceof HTMLElement) {
+          const bounds = panel.getBoundingClientRect()
+          if (bounds.top >= 12 && bounds.left >= 12 && bounds.right <= innerWidth - 12
+            && bounds.height <= 361 && panel.querySelector('input') === document.activeElement
+            && getComputedStyle(list).overflowY === 'auto' && list.clientHeight > 0) return true
+        }
         await new Promise(resolve => setTimeout(resolve, 25))
       }
-      const panel = document.querySelector('[role="dialog"][aria-label="命令与 Skill"]')
-      const list = panel?.querySelector('[role="listbox"]')
-      if (!(panel instanceof HTMLElement) || !(list instanceof HTMLElement)) return false
-      const bounds = panel.getBoundingClientRect()
-      return bounds.top >= 12 && bounds.left >= 12 && bounds.right <= innerWidth - 12
-        && bounds.height <= 361 && panel.querySelector('input') === document.activeElement
-        && getComputedStyle(list).overflowY === 'auto' && list.clientHeight > 0
+      return false
     })()`)) as boolean
     if (!narrowPickerReady) throw new Error('窄窗口 Skill 面板没有保持边界、搜索焦点和滚动区域')
     writeFileSync(
@@ -8162,19 +8558,29 @@ async function main(): Promise<void> {
     const pickerTheme = nativeTheme.themeSource
     try {
       nativeTheme.themeSource = 'dark'
-      await new Promise(resolve => {
-        setTimeout(resolve, 150)
-      })
+      await waitForNativeTheme(win, 'dark')
       writeFileSync(
         verificationArtifactPath('verify-skill-picker-dark.png'),
         (await captureVerifiedPage(win)).toPNG(),
       )
     } finally {
       nativeTheme.themeSource = pickerTheme
+      await waitForNativeTheme(win, nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
     }
     await clickTrustedElement(win, '[aria-label="关闭候选面板"]')
     const narrowSettingsFits = (await win.webContents.executeJavaScript(`(async () => {
       const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
+      const inMotion = node =>
+        typeof node.className === 'string'
+        && /(?:^|\\s)ant-[^\\s]+-(?:appear|enter|leave)(?:-(?:prepare|start|active))?(?:\\s|$)/.test(node.className)
+      const waitFor = async (predicate, attempts = 80) => {
+        for (let attempt = 0; attempt < attempts; attempt += 1) {
+          const value = predicate()
+          if (value) return value
+          await sleep(25)
+        }
+        return null
+      }
       const shell = document.querySelector('.app-shell')
       const navigation = document.querySelector('.navigation-island')
       const main = document.querySelector('.main-island')
@@ -8208,52 +8614,60 @@ async function main(): Promise<void> {
       const trigger = document.querySelector('#open-settings')
       if (!(trigger instanceof HTMLButtonElement)) return false
       trigger.click()
-      // Modal 的动画在下一帧启动，等待入场完成后再测量弹层锚点。
-      await sleep(350)
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        const settingsDialog = document.querySelector('.settings-dialog[role="dialog"]')
-        const settingsContent = settingsDialog?.querySelector('.settings-content')
-        if (settingsDialog instanceof HTMLElement && settingsDialog.checkVisibility()
-          && settingsContent instanceof HTMLElement) {
-          let fontFamily = settingsDialog.querySelector('[role="combobox"][aria-label="界面字体"]')
-          if (!(fontFamily instanceof HTMLInputElement)) {
-            const appearance = [...settingsDialog.querySelectorAll('.settings-nav__items > [role="menuitem"]')]
-              .find(button => button.textContent?.trim() === '外观')
-            if (appearance instanceof HTMLElement) appearance.click()
-            await sleep(25)
-            fontFamily = settingsDialog.querySelector('[role="combobox"][aria-label="界面字体"]')
-          }
-          if (!(fontFamily instanceof HTMLInputElement)) return false
-          await Promise.all(settingsDialog.getAnimations().map(animation => animation.finished))
-          fontFamily.focus()
-          fontFamily.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
-          await sleep(150)
-          const listbox = document.getElementById(fontFamily.getAttribute('aria-controls') ?? '')
-          const popup = listbox?.closest('.ant-select-dropdown')
-          if (!(popup instanceof HTMLElement)) return false
-          await Promise.all(popup.getAnimations().map(animation => animation.finished))
-          const popupRect = popup.getBoundingClientRect()
-          const triggerRect = fontFamily.closest('.settings-select').getBoundingClientRect()
-          const rect = settingsDialog.getBoundingClientRect()
-          const listboxRect = listbox instanceof HTMLElement ? listbox.getBoundingClientRect() : null
-          const customSelectFits = listboxRect !== null
-            && Math.abs(popupRect.width - triggerRect.width) <= 2
-            && Math.abs(popupRect.left - triggerRect.left) <= 2
-            && popupRect.top >= triggerRect.bottom
-            && popupRect.top - triggerRect.bottom <= 8
-            && listboxRect.left >= rect.left && listboxRect.top >= rect.top
-            && listboxRect.right <= rect.right && listboxRect.bottom <= rect.bottom
-            && settingsDialog.querySelector('select') === null
-          const fits = rect.left >= 0 && rect.top >= 0
-            && rect.right <= innerWidth && rect.bottom <= innerHeight
-            && settingsContent.scrollWidth <= settingsContent.clientWidth + 1
-            && document.documentElement.scrollWidth === innerWidth
-            && customSelectFits
-          return fits
-        }
-        await sleep(25)
+      const settingsDialog = await waitFor(() => {
+        const dialog = document.querySelector('.settings-dialog[role="dialog"]')
+        const content = dialog?.querySelector('.settings-content')
+        if (!(dialog instanceof HTMLElement) || !dialog.checkVisibility() || inMotion(dialog) || !(content instanceof HTMLElement)) return null
+        const running = dialog.getAnimations({ subtree: true })
+          .some(animation => animation.playState !== 'finished' && animation.effect?.getComputedTiming().iterations !== Infinity)
+        return running ? null : dialog
+      }, 100)
+      if (!(settingsDialog instanceof HTMLElement)) return false
+      const settingsContent = settingsDialog.querySelector('.settings-content')
+      if (!(settingsContent instanceof HTMLElement)) return false
+      let fontFamily = settingsDialog.querySelector('[role="combobox"][aria-label="界面字体"]')
+      if (!(fontFamily instanceof HTMLInputElement)) {
+        const appearance = [...settingsDialog.querySelectorAll('.settings-nav__items > [role="menuitem"]')]
+          .find(button => button.textContent?.trim() === '外观')
+        if (appearance instanceof HTMLElement) appearance.click()
+        fontFamily = await waitFor(() => {
+          const candidate = settingsDialog.querySelector('[role="combobox"][aria-label="界面字体"]')
+          return candidate instanceof HTMLInputElement ? candidate : null
+        })
       }
-      return false
+      if (!(fontFamily instanceof HTMLInputElement)) return false
+      await Promise.allSettled(settingsDialog.getAnimations({ subtree: true })
+        .filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity)
+        .map(animation => animation.finished))
+      fontFamily.focus()
+      fontFamily.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+      const popup = await waitFor(() => {
+        const listbox = document.getElementById(fontFamily.getAttribute('aria-controls') ?? '')
+        const candidate = listbox?.closest('.ant-select-dropdown')
+        if (!(candidate instanceof HTMLElement) || !candidate.checkVisibility() || inMotion(candidate)) return null
+        const running = candidate.getAnimations({ subtree: true })
+          .some(animation => animation.playState !== 'finished' && animation.effect?.getComputedTiming().iterations !== Infinity)
+        return running ? null : candidate
+      }, 100)
+      if (!(popup instanceof HTMLElement)) return false
+      const listbox = document.getElementById(fontFamily.getAttribute('aria-controls') ?? '')
+      const popupRect = popup.getBoundingClientRect()
+      const triggerRect = fontFamily.closest('.settings-select').getBoundingClientRect()
+      const rect = settingsDialog.getBoundingClientRect()
+      const listboxRect = listbox instanceof HTMLElement ? listbox.getBoundingClientRect() : null
+      const customSelectFits = listboxRect !== null
+        && Math.abs(popupRect.width - triggerRect.width) <= 2
+        && Math.abs(popupRect.left - triggerRect.left) <= 2
+        && popupRect.top >= triggerRect.bottom
+        && popupRect.top - triggerRect.bottom <= 8
+        && listboxRect.left >= rect.left && listboxRect.top >= rect.top
+        && listboxRect.right <= rect.right && listboxRect.bottom <= rect.bottom
+        && settingsDialog.querySelector('select') === null
+      return rect.left >= 0 && rect.top >= 0
+        && rect.right <= innerWidth && rect.bottom <= innerHeight
+        && settingsContent.scrollWidth <= settingsContent.clientWidth + 1
+        && document.documentElement.scrollWidth === innerWidth
+        && customSelectFits
     })()`)) as boolean
     const narrowCapture = 'verify-narrow.png'
     await verifySettingsHeader()
@@ -8269,9 +8683,8 @@ async function main(): Promise<void> {
     settingsController.publish(settingsStore.update({ canvasTransparency: 0.32 }))
     nativeTheme.themeSource = previousThemeSource
     win.setSize(1_280, 800)
-    await new Promise(resolve => {
-      setTimeout(resolve, 140)
-    })
+    await waitForNativeTheme(win, nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
+    await waitForWindowSize(win, 1_280, 800)
 
     // 越出视口的浮层会让根元素重新可滚动；外壳必须钉在视口上，且根偏移必须被复位。
     const shellPinnedToViewport = (await win.webContents.executeJavaScript(`(async () => {
@@ -8296,11 +8709,16 @@ async function main(): Promise<void> {
     })()`)) as boolean
     console.log('desktop-shell-verify-local: shell-pinned', { shellPinnedToViewport })
 
-    await win.webContents.executeJavaScript(`document.querySelector('.panel-divider--information')
-      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))`)
-    await new Promise(resolve => {
-      setTimeout(resolve, 450)
-    })
+    await win.webContents.executeJavaScript(`(async () => {
+      const divider = document.querySelector('.panel-divider--information')
+      divider?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        const info = document.querySelector('.info-island')
+        if (info instanceof HTMLElement && Math.abs(info.getBoundingClientRect().width - 260) <= 1) return
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+    })()`)
+    await settleElementAnimations(win, '.app-shell')
     await openRightPanel('file-outline-tasks')
     const rightTabsReady = (await win.webContents.executeJavaScript(`(async () => {
       const wait = async predicate => {
@@ -8995,9 +9413,7 @@ async function main(): Promise<void> {
           (await captureVerifiedPage(win)).toPNG(),
         )
         nativeTheme.themeSource = 'dark'
-        await new Promise(resolve => {
-          setTimeout(resolve, 120)
-        })
+        await waitForNativeTheme(win, 'dark')
         const dark = await inspectStartup()
         writeFileSync(
           verificationArtifactPath('verify-startup-dark.png'),
@@ -9012,6 +9428,7 @@ async function main(): Promise<void> {
           `document.documentElement.dataset.colorScheme = 'dark'`,
         )
         nativeTheme.themeSource = 'light'
+        await waitForNativeTheme(win, 'light')
         const manualDark = await inspectStartup()
         await win.webContents.executeJavaScript(
           `document.documentElement.dataset.colorScheme = 'system'`,

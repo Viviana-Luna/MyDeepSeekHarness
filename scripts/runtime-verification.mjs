@@ -12,7 +12,8 @@ import {
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const DEFAULT_TIMEOUT_MS = 240_000
+// 预留宽于主进程 VERIFY_TOTAL_TIMEOUT_MS（480s）的 30s 收尾窗口，保证超时前先输出完整报告并清理子进程。
+const DEFAULT_TIMEOUT_MS = 510_000
 
 function createVerificationProject(verifyHome) {
   // 验收 Skill 目录自给，不能借用开发者的全局 Skill 或个人配置。
