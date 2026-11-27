@@ -3009,16 +3009,45 @@ async function main(): Promise<void> {
       await wait(() => list()?.querySelectorAll('[role="option"]').length === 1)
       search()?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
       const preserved = await wait(() => composer.value === skillName + ' ' + draft && palette() === null)
-      document.querySelector('[aria-label="切换工作模式"]')?.click()
-      await wait(() => document.querySelector('[role="menuitemradio"]') !== null)
-      const chooseMode = name => [...document.querySelectorAll('[role="menuitemradio"]')]
-        .find(button => button.textContent.trim() === name)?.click()
-      chooseMode('Plan 模式')
-      const planOn = await wait(() => document.querySelector('[data-plan-active="true"]') !== null
-        && document.querySelector('[role="menu"][aria-label="工作模式"]') === null)
+      const findOpenModeMenu = () => {
+        const menu = document.querySelector('[role="menu"][aria-label="工作模式"]')
+        return menu instanceof HTMLElement
+          && !menu.hasAttribute('inert')
+          && menu.dataset.menuMotion === 'open'
+          && menu.checkVisibility()
+          ? menu
+          : null
+      }
+      const modeTrigger = document.querySelector('[aria-label="切换工作模式"]')
+      if (modeTrigger instanceof HTMLButtonElement && !modeTrigger.disabled) modeTrigger.click()
+      const planModeReady = await wait(() => {
+        const menu = findOpenModeMenu()
+        const button = [...(menu?.querySelectorAll('[role="menuitemradio"]') ?? [])]
+          .find(item => item.textContent?.trim() === 'Plan 模式')
+        return button instanceof HTMLButtonElement && !button.disabled && button.checkVisibility()
+      })
+      if (planModeReady) {
+        const menu = findOpenModeMenu()
+        ;[...(menu?.querySelectorAll('[role="menuitemradio"]') ?? [])]
+          .find(
+            button =>
+              button instanceof HTMLButtonElement
+              && !button.disabled
+              && button.textContent?.trim() === 'Plan 模式',
+          )
+          ?.click()
+      }
+      const planOn = await wait(() => {
+        const chip = document.querySelector('[aria-label="退出 Plan 模式"]')
+        return document.querySelector('[data-plan-active="true"]') !== null
+          && document.querySelector('[role="menu"][aria-label="工作模式"]') === null
+          && chip instanceof HTMLButtonElement
+          && !chip.disabled
+          && chip.checkVisibility()
+      })
       const planChip = document.querySelector('[aria-label="退出 Plan 模式"]')
       const planPlaceholder = composer.placeholder === '描述你的任务以生成计划…'
-      planChip?.click()
+      if (planChip instanceof HTMLButtonElement && !planChip.disabled) planChip.click()
       const planOff = await wait(() => document.querySelector('[data-plan-active="false"]') !== null
         && document.querySelector('[role="menu"][aria-label="工作模式"]') === null)
       const modePreservedDraft = composer.value === skillName + ' ' + draft
@@ -3282,9 +3311,11 @@ async function main(): Promise<void> {
     if (!commandLifecycleReady)
       throw new Error('没有观察到真实 command/run 与 command/done 生命周期')
 
+    // 权限菜单退场会经液态形变驻留 inert 节点，且提交完成、pick 清理与权限投影推送异步解耦；
+    // 必须等弹窗与退场菜单彻底卸载，再对可见、未禁用且投影已落位的目标项点击。
     const permissionMenuResult = (await win.webContents.executeJavaScript(`(async () => {
       const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
-      const wait = async (check, attempts = 100) => {
+      const wait = async (check, attempts = 120) => {
         for (let attempt = 0; attempt < attempts; attempt += 1) {
           const value = check()
           if (value) return value
@@ -3292,122 +3323,278 @@ async function main(): Promise<void> {
         }
         return null
       }
+      const waitStable = async (check, attempts = 200, stableCount = 2) => {
+        let streak = 0
+        for (let attempt = 0; attempt < attempts; attempt += 1) {
+          if (check()) {
+            streak += 1
+            if (streak >= stableCount) return true
+          } else {
+            streak = 0
+          }
+          await sleep(25)
+        }
+        return false
+      }
+      const motionClassPattern = /(?:^|\\s)ant-[^\\s]+-(?:appear|enter|leave)(?:-(?:prepare|start|active))?(?:\\s|$)/
+      const leaveClassPattern = /(?:^|\\s)[^\\s]+-leave(?:-(?:prepare|start|active))?(?:\\s|$)/
       const inMotion = node =>
-        typeof node.className === 'string'
-        && /(?:^|\\s)ant-[^\\s]+-(?:appear|enter|leave)(?:-(?:prepare|start|active))?(?:\\s|$)/.test(node.className)
+        typeof node.className === 'string' && motionClassPattern.test(node.className)
+      const isLeaving = node => {
+        for (let current = node; current instanceof Element; current = current.parentElement) {
+          if (current.hasAttribute('inert')) return true
+          if (current instanceof HTMLElement) {
+            if (current.dataset.menuMotion === 'closing') return true
+            if (typeof current.className === 'string' && leaveClassPattern.test(current.className)) {
+              return true
+            }
+          }
+        }
+        return false
+      }
+      const isVisibleElement = node =>
+        node instanceof HTMLElement
+        && node.isConnected
+        && node.checkVisibility()
+        && node.getClientRects().length > 0
+        && !isLeaving(node)
+      const hasFiniteRunningAnimation = node =>
+        typeof node.getAnimations === 'function'
+        && node.getAnimations({ subtree: true }).some(
+          animation =>
+            animation.playState !== 'finished'
+            && animation.effect?.getComputedTiming().iterations !== Infinity,
+        )
+      const permissionMenuButtons = () => [
+        ...document.querySelectorAll('button[aria-label="工作区内修改"], button[aria-label="完全权限"]'),
+      ]
+      const findOpenPermissionMenu = () =>
+        [...document.querySelectorAll('[role="menu"][aria-label="选择访问模式"]')].find(
+          menu =>
+            menu instanceof HTMLElement
+            && menu.dataset.menuMotion === 'open'
+            && isVisibleElement(menu),
+        ) ?? null
+      const hasAnyPermissionMenu = () =>
+        document.querySelector('[role="menu"][aria-label="选择访问模式"]') !== null
+        || document.querySelector('[aria-label="选择访问模式"]') !== null
+        || permissionMenuButtons().length > 0
+      const hasVisibleOrLeavingDialog = () =>
+        document.querySelector('[role="dialog"]') !== null
+        || [...document.querySelectorAll('.ant-modal, .ant-modal-mask')].some(
+          node =>
+            node instanceof HTMLElement
+            && (
+              node.checkVisibility()
+              || inMotion(node)
+              || (typeof node.className === 'string' && leaveClassPattern.test(node.className))
+            ),
+        )
+      const findActiveDialog = () =>
+        [...document.querySelectorAll('[role="dialog"]')].find(
+          dialog =>
+            dialog instanceof HTMLElement
+            && isVisibleElement(dialog)
+            && !inMotion(dialog)
+            && !hasFiniteRunningAnimation(dialog),
+        ) ?? null
       const composer = document.querySelector('#composer')
       const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
+      let trigger = null
+      const diagnose = (stage, targetLabel) => {
+        const currentTrigger =
+          trigger instanceof HTMLButtonElement && trigger.isConnected
+            ? trigger
+            : document.querySelector('.composer-card button[aria-label^="访问模式"]')
+        const openMenu = findOpenPermissionMenu()
+        const anyMenu = document.querySelector('[role="menu"][aria-label="选择访问模式"]')
+        const scopedItem =
+          openMenu instanceof HTMLElement && targetLabel
+            ? openMenu.querySelector('button[aria-label=' + JSON.stringify(targetLabel) + ']')
+            : null
+        const fallbackItem = targetLabel
+          ? document.querySelector('button[aria-label=' + JSON.stringify(targetLabel) + ']')
+          : null
+        const item = scopedItem ?? fallbackItem
+        const dialog = document.querySelector('[role="dialog"]')
+        const alertText =
+          document.querySelector('.app-alert--floating[role="alert"]')?.textContent?.trim() ?? null
+        return {
+          ok: false,
+          stage,
+          triggerFound: currentTrigger instanceof HTMLButtonElement,
+          triggerConnected:
+            currentTrigger instanceof HTMLButtonElement ? currentTrigger.isConnected : false,
+          triggerDisabled:
+            currentTrigger instanceof HTMLButtonElement ? currentTrigger.disabled : null,
+          triggerLabel: currentTrigger?.getAttribute('aria-label') ?? null,
+          menuExpanded: currentTrigger?.getAttribute('aria-expanded') ?? null,
+          openMenuPresent: openMenu instanceof HTMLElement,
+          anyMenuPresent: anyMenu instanceof HTMLElement,
+          anyMenuMotion: anyMenu instanceof HTMLElement ? (anyMenu.dataset.menuMotion ?? null) : null,
+          anyMenuInert: anyMenu instanceof HTMLElement ? anyMenu.hasAttribute('inert') : null,
+          lingeringMenuButtons: permissionMenuButtons().length,
+          itemFound: item instanceof HTMLButtonElement,
+          itemInOpenMenu: scopedItem instanceof HTMLButtonElement,
+          itemDisabled: item instanceof HTMLButtonElement ? item.disabled : null,
+          itemVisible: item instanceof HTMLElement ? isVisibleElement(item) : false,
+          itemLeaving: item instanceof HTMLElement ? isLeaving(item) : false,
+          itemChecked: item instanceof HTMLButtonElement ? item.getAttribute('aria-checked') : null,
+          dialogPresent: dialog instanceof HTMLElement,
+          dialogVisibleOrLeaving: hasVisibleOrLeavingDialog(),
+          dialogClass: dialog instanceof HTMLElement ? dialog.className : null,
+          activeTag: document.activeElement?.tagName ?? null,
+          alertText,
+          commandStatePresent: document.querySelector('.composer-command-state') !== null,
+          queuePresent: document.querySelector('[aria-label="消息队列"]') !== null,
+          draftMatches:
+            composer instanceof HTMLTextAreaElement
+              ? composer.value === '权限切换时保留这条草稿'
+              : false,
+        }
+      }
+      const isTriggerReadyToOpen = expectedLabel =>
+        trigger instanceof HTMLButtonElement
+        && isVisibleElement(trigger)
+        && !trigger.disabled
+        && trigger.getAttribute('aria-expanded') !== 'true'
+        && trigger.getAttribute('aria-label') === expectedLabel
+        && !hasAnyPermissionMenu()
+        && !hasVisibleOrLeavingDialog()
+      const findReadyMenuItem = (label, expectedChecked) => {
+        const menu = findOpenPermissionMenu()
+        if (!(menu instanceof HTMLElement)) return null
+        if (!(trigger instanceof HTMLButtonElement) || trigger.getAttribute('aria-expanded') !== 'true') {
+          return null
+        }
+        const item = [...menu.querySelectorAll('button[role="menuitemradio"]')].find(
+          button => button.getAttribute('aria-label') === label,
+        )
+        if (!(item instanceof HTMLButtonElement) || !isVisibleElement(item) || item.disabled) {
+          return null
+        }
+        if (
+          expectedChecked !== undefined
+          && item.getAttribute('aria-checked') !== String(expectedChecked)
+        ) {
+          return null
+        }
+        return item
+      }
+      if (!(composer instanceof HTMLTextAreaElement)) return diagnose('composer')
       valueSetter?.call(composer, '权限切换时保留这条草稿')
       composer.dispatchEvent(new Event('input', { bubbles: true }))
       await sleep(40)
-      const trigger = await wait(() => {
+      trigger = await wait(() => {
         const button = document.querySelector('.composer-card button[aria-label="访问模式，当前：工作区内修改"]')
-        return button instanceof HTMLButtonElement && !button.disabled ? button : null
-      }, 80)
-      if (!(trigger instanceof HTMLButtonElement)) return { ok: false, stage: 'trigger' }
+        return button instanceof HTMLButtonElement
+          && isVisibleElement(button)
+          && !button.disabled
+          && button.getAttribute('aria-expanded') !== 'true'
+          && !hasAnyPermissionMenu()
+          && !hasVisibleOrLeavingDialog()
+          ? button
+          : null
+      }, 120)
+      if (!(trigger instanceof HTMLButtonElement)) return diagnose('trigger')
       trigger.click()
-      const full = await wait(() => {
-        const menu = document.querySelector('[role="menu"][aria-label="选择访问模式"]')
-        const item = menu?.querySelector('button[aria-label="完全权限"]')
-        return menu instanceof HTMLElement && item instanceof HTMLButtonElement ? item : null
-      }, 60)
-      if (!(full instanceof HTMLButtonElement)) return { ok: false, stage: 'menu' }
+      const full = await wait(() => findReadyMenuItem('完全权限', false), 120)
+      if (!(full instanceof HTMLButtonElement)) return diagnose('menu', '完全权限')
       full.click()
-      const ready = await wait(() => {
-        const dialog = document.querySelector('[role="dialog"]')
-        if (!(dialog instanceof HTMLElement) || inMotion(dialog)) return false
-        const running = dialog.getAnimations({ subtree: true })
-          .some(animation => animation.playState !== 'finished' && animation.effect?.getComputedTiming().iterations !== Infinity)
-        if (running) return false
-        const confirmation = [...dialog.querySelectorAll('button')].find(button => button.textContent?.includes('启用完全权限'))
+      const firstDialog = await wait(() => {
+        const dialog = findActiveDialog()
+        if (!(dialog instanceof HTMLElement)) return null
+        const confirmation = [...dialog.querySelectorAll('button')].find(
+          button => button.textContent?.includes('启用完全权限'),
+        )
         const acknowledgement = dialog.querySelector('input[type="checkbox"]')
         const rect = dialog.getBoundingClientRect()
-        return confirmation instanceof HTMLButtonElement && confirmation.disabled
+        const ready = confirmation instanceof HTMLButtonElement && confirmation.disabled
           && acknowledgement instanceof HTMLInputElement && !acknowledgement.checked
+          && findOpenPermissionMenu() === null
           && document.querySelector('[aria-label="选择访问模式"]') === null
-          && rect.top >= 8 && rect.bottom <= innerHeight - 8 && Math.abs(rect.left + rect.width / 2 - innerWidth / 2) < 2
+          && rect.top >= 8 && rect.bottom <= innerHeight - 8
+          && Math.abs(rect.left + rect.width / 2 - innerWidth / 2) < 2
           && Math.abs(rect.top + rect.height / 2 - innerHeight / 2) < 20
           && dialog.contains(document.activeElement)
-      }, 100)
-      if (!ready) {
-        const dialog = document.querySelector('[role="dialog"]')
-        return {
-          ok: false,
-          stage: 'open-dialog',
-          hasDialog: dialog instanceof HTMLElement,
-          dialogClass: dialog?.className ?? null,
-          activeTag: document.activeElement?.tagName ?? null,
-          menuOpen: document.querySelector('[aria-label="选择访问模式"]') !== null,
-        }
-      }
-      document.querySelector('[role="dialog"]')?.dispatchEvent(
+        return ready ? dialog : null
+      }, 160)
+      if (!(firstDialog instanceof HTMLElement)) return diagnose('open-dialog', '完全权限')
+      firstDialog.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true, cancelable: true }),
       )
-      const cancelled = await wait(() =>
-        document.querySelector('[aria-label="选择访问模式"]') === null
-        && document.querySelector('[role="dialog"]') === null
-        && document.activeElement === trigger
-        && trigger.getAttribute('aria-label') === '访问模式，当前：工作区内修改', 100)
-      if (!cancelled) {
-        return {
-          ok: false,
-          stage: 'cancel-dialog',
-          hasDialog: document.querySelector('[role="dialog"]') !== null,
-          activeTag: document.activeElement?.tagName ?? null,
-          triggerLabel: trigger.getAttribute('aria-label'),
-        }
-      }
+      const cancelled = await wait(
+        () =>
+          isTriggerReadyToOpen('访问模式，当前：工作区内修改')
+          && document.activeElement === trigger,
+        160,
+      )
+      if (!cancelled) return diagnose('cancel-dialog')
       trigger.click()
-      const reopenFull = await wait(() => document.querySelector('button[aria-label="完全权限"]'), 60)
-      if (!(reopenFull instanceof HTMLButtonElement)) return { ok: false, stage: 'reopen-menu' }
+      const reopenFull = await wait(() => findReadyMenuItem('完全权限', false), 120)
+      if (!(reopenFull instanceof HTMLButtonElement)) return diagnose('reopen-menu', '完全权限')
       reopenFull.click()
       const confirmedDialog = await wait(() => {
-        const dialog = document.querySelector('.ant-modal[role="dialog"]')
-        return dialog instanceof HTMLElement && !inMotion(dialog) && dialog.querySelector('input[type="checkbox"]')
+        const dialog = findActiveDialog()
+        if (!(dialog instanceof HTMLElement)) return null
+        const acknowledgement = dialog.querySelector('input[type="checkbox"]')
+        return acknowledgement instanceof HTMLInputElement
+          && !acknowledgement.disabled
+          && isVisibleElement(acknowledgement)
           ? dialog
           : null
-      }, 100)
-      if (!(confirmedDialog instanceof HTMLElement)) return { ok: false, stage: 'reopen-dialog' }
-      confirmedDialog.querySelector('input[type="checkbox"]').click()
+      }, 160)
+      if (!(confirmedDialog instanceof HTMLElement)) return diagnose('reopen-dialog', '完全权限')
+      const acknowledgement = confirmedDialog.querySelector('input[type="checkbox"]')
+      if (!(acknowledgement instanceof HTMLInputElement)) return diagnose('reopen-dialog', '完全权限')
+      acknowledgement.click()
       const confirmButton = await wait(() => {
-        const button = [...confirmedDialog.querySelectorAll('button')].find(item => item.textContent?.includes('启用完全权限'))
-        return button instanceof HTMLButtonElement && !button.disabled ? button : null
-      }, 60)
-      if (!(confirmButton instanceof HTMLButtonElement)) return { ok: false, stage: 'confirm-button' }
+        if (!isVisibleElement(confirmedDialog)) return null
+        const button = [...confirmedDialog.querySelectorAll('button')].find(
+          item => item.textContent?.includes('启用完全权限'),
+        )
+        return button instanceof HTMLButtonElement && isVisibleElement(button) && !button.disabled
+          ? button
+          : null
+      }, 120)
+      if (!(confirmButton instanceof HTMLButtonElement)) return diagnose('confirm-button')
       confirmButton.click()
-      await wait(
+      const switched = await waitStable(
         () =>
-          document.querySelector('[role="dialog"]') === null
-          && trigger.getAttribute('aria-label') === '访问模式，当前：完全权限'
-          && !trigger.disabled,
-        120,
+          isTriggerReadyToOpen('访问模式，当前：完全权限')
+          && document.querySelector('.composer-command-state') === null
+          && document.querySelector('[aria-label="消息队列"]') === null
+          && !(document.querySelector('.composer-tools')?.textContent ?? '').includes('待处理')
+          && composer.value === '权限切换时保留这条草稿',
+        200,
       )
-      const switched = document.querySelector('[role="dialog"]') === null
-        && trigger.getAttribute('aria-label') === '访问模式，当前：完全权限'
-        && document.querySelector('.composer-command-state') === null
-        && document.querySelector('[aria-label="消息队列"]') === null
-        && !document.querySelector('.composer-tools').textContent.includes('待处理')
-        && composer.value === '权限切换时保留这条草稿'
+      if (!switched) return diagnose('switch-full', '完全权限')
       trigger.click()
-      const workspaceItem = await wait(() => document.querySelector('button[aria-label="工作区内修改"]'), 80)
+      // 同步确认选项未禁用（pick/busy 已清零）且「完全权限」已由会话投影勾选，避免命中退场旧菜单或提前 no-op。
+      const workspaceItem = await wait(() => {
+        const item = findReadyMenuItem('工作区内修改', false)
+        const activeFull = findReadyMenuItem('完全权限', true)
+        return item instanceof HTMLButtonElement && activeFull instanceof HTMLButtonElement
+          ? item
+          : null
+      }, 160)
       if (!(workspaceItem instanceof HTMLButtonElement)) {
-        return {
-          ok: false,
-          stage: 'restore-menu',
-          hasDialog: document.querySelector('[role="dialog"]') !== null,
-          triggerLabel: trigger.getAttribute('aria-label'),
-        }
+        return diagnose('restore-menu', '工作区内修改')
       }
       workspaceItem.click()
-      await wait(() => trigger.getAttribute('aria-label') === '访问模式，当前：工作区内修改', 80)
+      const restored = await waitStable(
+        () => isTriggerReadyToOpen('访问模式，当前：工作区内修改'),
+        200,
+      )
       valueSetter?.call(composer, '')
       composer.dispatchEvent(new Event('input', { bubbles: true }))
+      if (!restored) return diagnose('restore-mode', '工作区内修改')
       return {
-        ok: switched && trigger.getAttribute('aria-label') === '访问模式，当前：工作区内修改',
-        stage: switched ? 'restore-mode' : 'switch-full',
+        ok: true,
+        stage: 'done',
         triggerLabel: trigger.getAttribute('aria-label'),
       }
-    })()`)) as { ok: boolean; stage?: string }
+    })()`)) as { ok: boolean; stage?: string; [key: string]: unknown }
     const permissionMenuReady = permissionMenuResult.ok
     if (!permissionMenuReady)
       throw new Error(
@@ -3579,17 +3766,35 @@ async function main(): Promise<void> {
           }
           return null
         }
+        const findOpenProjectMenu = () => {
+          const node = document.querySelector('.project-focus-menu[role="menu"]')
+          return node instanceof HTMLElement
+            && !node.hasAttribute('inert')
+            && node.dataset.menuMotion === 'open'
+            && node.checkVisibility()
+            ? node
+            : null
+        }
         const selector = document.querySelector('button[aria-label="专注项目"]')
         if (!(selector instanceof HTMLButtonElement)
           || selector.textContent?.includes('全部项目') !== true) return false
+        await waitFor(
+          () =>
+            !selector.disabled
+            && selector.getAttribute('aria-expanded') !== 'true'
+            && document.querySelector('.project-focus-menu') === null,
+        )
         selector.click()
-        let menu = await waitFor(() => {
-          const node = document.querySelector('.project-focus-menu')
-          return node instanceof HTMLElement ? node : null
-        })
+        let menu = await waitFor(findOpenProjectMenu)
         const option = menu instanceof HTMLElement
           ? [...menu.querySelectorAll('[role="menuitemradio"]')]
-              .find(item => item.getAttribute('aria-checked') !== 'true')
+              .find(
+                item =>
+                  item instanceof HTMLButtonElement
+                  && !item.disabled
+                  && item.checkVisibility()
+                  && item.getAttribute('aria-checked') !== 'true',
+              )
           : undefined
         if (!(option instanceof HTMLButtonElement)) {
           return document.querySelectorAll('.project-session-group').length === 0
@@ -3617,14 +3822,23 @@ async function main(): Promise<void> {
             && !focusedList.hidden
             && focusedRows.every(row => row.getAttribute('data-project-id') === focusedProjectId)
         })) === true
+        await waitFor(
+          () =>
+            !selector.disabled
+            && selector.getAttribute('aria-expanded') !== 'true'
+            && document.querySelector('.project-focus-menu') === null,
+        )
         selector.click()
-        menu = await waitFor(() => {
-          const node = document.querySelector('.project-focus-menu')
-          return node instanceof HTMLElement ? node : null
-        })
+        menu = await waitFor(findOpenProjectMenu)
         const allProjects = menu instanceof HTMLElement
           ? [...menu.querySelectorAll('[role="menuitemradio"]')]
-              .find(item => item.textContent?.includes('全部项目') === true)
+              .find(
+                item =>
+                  item instanceof HTMLButtonElement
+                  && !item.disabled
+                  && item.checkVisibility()
+                  && item.textContent?.includes('全部项目') === true,
+              )
           : undefined
         if (!(allProjects instanceof HTMLButtonElement)) return false
         allProjects.click()
