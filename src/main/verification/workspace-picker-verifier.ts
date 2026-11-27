@@ -2,6 +2,29 @@
 import type { BrowserWindow, WebContentsView } from 'electron'
 import { emulateVerificationMedia } from './desktop-verifier.ts'
 
+/** 在有界时限内等待原生网页视图显隐状态完成 IPC 同步。 */
+export function waitForGuestVisibility(
+  guest: WebContentsView,
+  expected: boolean,
+  timeoutMs = 2_000,
+): Promise<boolean> {
+  return new Promise(resolve => {
+    const deadline = Date.now() + timeoutMs
+    const poll = (): void => {
+      if (!guest.webContents.isDestroyed() && guest.getVisible() === expected) {
+        resolve(true)
+        return
+      }
+      if (Date.now() >= deadline) {
+        resolve(false)
+        return
+      }
+      setTimeout(poll, 25)
+    }
+    poll()
+  })
+}
+
 /** 窗口在菜单收回期间重新布局时，检查原生网页的实际显隐。 */
 export async function verifyBrowserMenuExit(win: BrowserWindow, guest: WebContentsView) {
   const [width = 1440, height = 900] = win.getSize()
@@ -25,7 +48,8 @@ export async function verifyBrowserMenuExit(win: BrowserWindow, guest: WebConten
       }
       return false;
     })()`)
-    if (!opened || guest.getVisible()) throw new Error('项目菜单展开时没有遮住原生网页')
+    if (!opened || !(await waitForGuestVisibility(guest, false, 1_500)))
+      throw new Error('项目菜单展开时没有遮住原生网页')
     await win.webContents.executeJavaScript(`(async () => {
       document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       await new Promise(resolve => requestAnimationFrame(resolve));
@@ -40,9 +64,12 @@ export async function verifyBrowserMenuExit(win: BrowserWindow, guest: WebConten
     await win.webContents.executeJavaScript(`(async () => {
       const menu = document.querySelector('.project-focus-menu[data-menu-motion="closing"]');
       await Promise.allSettled((menu?.getAnimations() ?? []).map(animation => animation.finished));
-      await new Promise(resolve => setTimeout(resolve, 80));
+      for (let attempt = 0; attempt < 60 && document.querySelector('.project-focus-menu') !== null; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
     })()`)
-    if (!guest.getVisible()) throw new Error('菜单收回后网页未恢复')
+    // 菜单卸载后需经 MutationObserver、rAF 与主进程 IPC 才会重新显示 WebContentsView，避免固定 80ms 竞态。
+    if (!(await waitForGuestVisibility(guest, true, 2_000))) throw new Error('菜单收回后网页未恢复')
   } finally {
     win.setSize(width, height)
   }

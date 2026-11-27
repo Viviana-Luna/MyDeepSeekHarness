@@ -2,7 +2,11 @@ import { session, WebContentsView, type BrowserWindow } from 'electron'
 import type { DesktopSessionFrame } from '../../shared/session-live.ts'
 import { clickTrustedElement, emulateVerificationMedia } from './desktop-verifier.ts'
 import { verifySourceControlSections } from './source-control-sections-verifier.ts'
-import { verifyBrowserMenuExit, verifyWorkspacePickers } from './workspace-picker-verifier.ts'
+import {
+  verifyBrowserMenuExit,
+  verifyWorkspacePickers,
+  waitForGuestVisibility,
+} from './workspace-picker-verifier.ts'
 
 const settle = (win: BrowserWindow) =>
   win.webContents.executeJavaScript('new Promise(resolve => setTimeout(resolve, 250))')
@@ -264,18 +268,17 @@ export async function verifyWorkspaceReview(
     await win.webContents.executeJavaScript(
       `(() => { const dialog=document.createElement('div'); dialog.id='verify-browser-overlay'; dialog.setAttribute('role','dialog'); dialog.style.cssText='position:fixed;inset:0;z-index:999;background:#222'; dialog.textContent='验收遮挡层'; document.body.append(dialog) })()`,
     )
-    await settle(win)
-    if (guest.getVisible()) throw new Error('浏览器遮挡了页面弹层')
+    if (!(await waitForGuestVisibility(guest, false, 1_500)))
+      throw new Error('浏览器遮挡了页面弹层')
     await win.webContents.executeJavaScript(
       `document.getElementById('verify-browser-overlay').remove()`,
     )
-    await settle(win)
-    if (!guest.getVisible()) throw new Error('关闭弹层后浏览器未恢复')
+    if (!(await waitForGuestVisibility(guest, true, 1_500)))
+      throw new Error('关闭弹层后浏览器未恢复')
     await verifyBrowserMenuExit(win, guest)
     await settle(win)
     await clickTrustedElement(win, '[data-work-tab="session"]')
-    await settle(win)
-    if (guest.getVisible() || guest.webContents.isDestroyed())
+    if (!(await waitForGuestVisibility(guest, false, 1_500)) || guest.webContents.isDestroyed())
       throw new Error('切换工作标签未正确隐藏并保留网页')
     await clickTrustedElement(win, '[data-work-tab="browser"]')
     await settle(win)

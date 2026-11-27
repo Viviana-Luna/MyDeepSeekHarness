@@ -188,6 +188,18 @@ function waitForAbortableDelay(signal: AbortSignal, delayMs: number): Promise<vo
   })
 }
 
+function resolveExportDirectory(): string {
+  for (const name of ['downloads', 'documents', 'home', 'temp'] as const) {
+    try {
+      const directory = app.getPath(name)
+      if (directory !== '') return directory
+    } catch {
+      /* 系统已知目录缺失或未在隔离配置下注册时顺序回退。 */
+    }
+  }
+  return tmpdir()
+}
+
 function waitForCondition(
   predicate: () => boolean,
   timeoutMs: number,
@@ -1490,7 +1502,7 @@ async function main(): Promise<void> {
             const result = await dialog.showSaveDialog(win, {
               title: '导出会话日志',
               buttonLabel: '导出',
-              defaultPath: join(app.getPath('downloads'), suggestedName),
+              defaultPath: join(resolveExportDirectory(), suggestedName),
               filters: [{ name: 'ZIP 压缩包', extensions: ['zip'] }],
             })
             if (controller.signal.aborted) return null

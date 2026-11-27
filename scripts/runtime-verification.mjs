@@ -167,8 +167,8 @@ export async function runRuntimeVerification({
   const verifyHome = realpathSync.native(mkdtempSync(join(tmpdir(), 'mydsh-verify-')))
   console.log(label + '隔离验收目录：' + verifyHome)
   const mydshHome = join(verifyHome, 'mydsh')
-  // Chromium 的 Windows 已知目录必须存在，才能使用隔离 USERPROFILE。
-  for (const directory of ['AppData/Roaming', 'AppData/Local'])
+  // Chromium 与 Electron 已知目录（含下载目录）在隔离 USERPROFILE 下必须存在。
+  for (const directory of ['AppData/Roaming', 'AppData/Local', 'Downloads'])
     mkdirSync(join(verifyHome, directory), { recursive: true })
   let child
   let timedOut = false
