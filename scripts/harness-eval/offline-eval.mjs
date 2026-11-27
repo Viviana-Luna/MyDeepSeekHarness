@@ -453,10 +453,13 @@ async function buildSqlStdinFailureMessage(runShell, queryRun, queries) {
     const nodePath = process.execPath.replaceAll("'", "''")
     const probe = await runShell(
       [
+        `$Error.Clear()`,
+        `Write-Output ("PS=" + $PSVersionTable.PSVersion.ToString() + " IN_REDIR=" + [Console]::IsInputRedirected)`,
         `'SELECT ''quote'' FROM items;' | mydsh.cmd db query --connection-id eval-pg --sql-stdin`,
-        `Write-Output ("CMD_EXIT=" + $LASTEXITCODE)`,
+        `Write-Output ("CMD_OK=" + $? + " CMD_EXIT=" + $LASTEXITCODE + " ERR=" + ($Error | Out-String).Trim())`,
+        `$Error.Clear()`,
         `'hello-pipe' | & '${nodePath}' -e "let s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>console.log('NODE_GOT='+JSON.stringify(s)))"`,
-        `Write-Output ("NODE_EXIT=" + $LASTEXITCODE)`,
+        `Write-Output ("NODE_OK=" + $? + " NODE_EXIT=" + $LASTEXITCODE + " ERR=" + ($Error | Out-String).Trim())`,
       ].join('; '),
     ).catch(error => ({ error: String(error) }))
     winProbe = ` | winProbe=${JSON.stringify(probe)}`

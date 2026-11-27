@@ -2397,16 +2397,36 @@ async function main(): Promise<void> {
     if (!VERIFY_BACKGROUND) {
       app.focus({ steal: true })
       focusPrimaryWindow(win)
-      win.webContents.focus()
     }
+    win.webContents.focus()
+    // 上一步的 mouseMove 会将 Chromium 切回指针模式；需先发键盘事件再聚焦手柄，才能稳定触发 :focus-visible。
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' })
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' })
+    await new Promise(resolve => {
+      setTimeout(resolve, 50)
+    })
     await win.webContents.executeJavaScript(
       `document.querySelector('[aria-label="调整对话内容宽度（右侧）"]').focus()`,
     )
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Right' })
     win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Right' })
-    await new Promise(resolve => {
-      setTimeout(resolve, 200)
-    })
+    // 手柄伪元素存在 180ms 透明度过渡；离屏或 CI 高负载下轮询等待宽度与显影稳定，避免固定 200ms 竞态。
+    await win.webContents.executeJavaScript(`(async () => {
+      const targetWidth = ${JSON.stringify(widePresentation?.width ?? 0)}
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        const list = document.querySelector('#conversation-view ol')
+        const handle = document.querySelector('[aria-label="调整对话内容宽度（右侧）"]')
+        if (
+          list &&
+          handle &&
+          list.getBoundingClientRect().width > targetWidth &&
+          Number(getComputedStyle(handle, '::before').opacity) > 0
+        ) {
+          return
+        }
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+    })()`)
     const resizedPresentation = await readPresentation()
     console.log('desktop-shell-verify-local: conversation-presentation', {
       defaultPresentation,
