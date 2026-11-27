@@ -158,6 +158,31 @@ export async function verifyPlanReview(
   console.log('desktop-shell-verify-local: plan-history', historyReady)
 }
 
+async function waitForPermissionDialogSettled(win: BrowserWindow): Promise<boolean> {
+  return (await win.webContents.executeJavaScript(`(async () => {
+    const inMotion = node =>
+      typeof node.className === 'string' &&
+      /(?:^|\\s)ant-[^\\s]+-(?:appear|enter|leave)(?:-(?:prepare|start|active))?(?:\\s|$)/.test(node.className)
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const dialog = document.querySelector('[role="dialog"]')
+      if (dialog instanceof HTMLElement && !inMotion(dialog)) {
+        const running = dialog.getAnimations({ subtree: true })
+          .some(animation => animation.playState !== 'finished' && animation.effect?.getComputedTiming().iterations !== Infinity)
+        const rect = dialog.getBoundingClientRect()
+        const surface = dialog.querySelector('.mydsh-glass-dialog')
+        if (!running && rect.width <= 441 && Math.abs(rect.left + rect.width / 2 - innerWidth / 2) < 2
+          && Math.abs(rect.top + rect.height / 2 - innerHeight / 2) < 20 && rect.top > 0 && rect.bottom < innerHeight
+          && surface && getComputedStyle(surface).backdropFilter.includes('blur')
+          && !document.querySelector('[aria-label="选择访问模式"]') && dialog.contains(document.activeElement)) {
+          return true
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    return false
+  })()`)) as boolean
+}
+
 export async function verifyPermissionDialog(
   win: BrowserWindow,
   appearance: (scheme: 'light' | 'dark') => void,
@@ -184,17 +209,8 @@ export async function verifyPermissionDialog(
         await win.webContents.executeJavaScript('new Promise(resolve => setTimeout(resolve, 150))')
         await clickTrustedElement(win, 'button[aria-label="访问模式，当前：工作区内修改"]')
         await clickTrustedElement(win, `[role="menuitemradio"][aria-label="${mode}"]`)
-        await win.webContents.executeJavaScript('new Promise(resolve => setTimeout(resolve, 350))')
-        const ready = await win.webContents.executeJavaScript(`(() => {
-        const dialog = document.querySelector('[role="dialog"]')
-        const rect = dialog?.getBoundingClientRect()
-        const surface = dialog?.querySelector('.mydsh-glass-dialog')
-        return rect && rect.width <= 441 && Math.abs(rect.left + rect.width / 2 - innerWidth / 2) < 2
-          && Math.abs(rect.top + rect.height / 2 - innerHeight / 2) < 20 && rect.top > 0 && rect.bottom < innerHeight
-          && surface && getComputedStyle(surface).backdropFilter.includes('blur')
-          && !document.querySelector('[aria-label="选择访问模式"]') && dialog.contains(document.activeElement)
-      })()`)
-        if (!ready) throw new Error('独立权限弹窗的居中、焦点或菜单关闭验收失败')
+        if (!(await waitForPermissionDialogSettled(win)))
+          throw new Error('独立权限弹窗的居中、焦点或菜单关闭验收失败')
         await capture(`verify-permission-${slug}-${sample.width}-${sample.scheme}.png`)
         if (mode === '自动审核提权') {
           const safe = await win.webContents.executeJavaScript(`(() => {
@@ -227,7 +243,11 @@ export async function verifyPermissionDialog(
           }
         }
         await clickTrustedElement(win, '[role="dialog"] button[aria-label="取消"]')
-        await win.webContents.executeJavaScript('new Promise(resolve => setTimeout(resolve, 350))')
+        await win.webContents.executeJavaScript(`(async () => {
+          for (let attempt = 0; attempt < 100 && document.querySelector('[role="dialog"]') !== null; attempt += 1) {
+            await new Promise(resolve => setTimeout(resolve, 25))
+          }
+        })()`)
       }
     /* oxlint-enable no-await-in-loop */
   } finally {

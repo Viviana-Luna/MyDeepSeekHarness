@@ -233,6 +233,9 @@ const VERIFY_BACKGROUND =
   !process.argv.includes('--verify-foreground') &&
   !process.argv.includes('--verify-directory-picker')
 if (VERIFY_BACKGROUND && process.platform === 'darwin') app.setActivationPolicy('prohibited')
+// Windows 后台离屏验收在无独立 GPU 的 CI 虚拟机上容易反复触发 Chromium GPU 进程崩溃直至中止；
+// 按 Electron 离屏渲染要求关闭硬件加速改用软件合成，不影响主进程 DirectComposition 背景校验。
+if (VERIFY_BACKGROUND && process.platform === 'win32') app.disableHardwareAcceleration()
 const VERIFY_TOTAL_TIMEOUT_MS = 230_000
 const VERIFY_DEADLINE =
   VERIFY_MODE && !VERIFY_INTERACTIVE ? Date.now() + VERIFY_TOTAL_TIMEOUT_MS : undefined
@@ -3130,69 +3133,122 @@ async function main(): Promise<void> {
     if (!commandLifecycleReady)
       throw new Error('没有观察到真实 command/run 与 command/done 生命周期')
 
-    const permissionMenuReady = (await win.webContents.executeJavaScript(`(async () => {
+    const permissionMenuResult = (await win.webContents.executeJavaScript(`(async () => {
       const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
+      const wait = async (check, attempts = 100) => {
+        for (let attempt = 0; attempt < attempts; attempt += 1) {
+          const value = check()
+          if (value) return value
+          await sleep(25)
+        }
+        return null
+      }
+      const inMotion = node =>
+        typeof node.className === 'string'
+        && /(?:^|\\s)ant-[^\\s]+-(?:appear|enter|leave)(?:-(?:prepare|start|active))?(?:\\s|$)/.test(node.className)
       const composer = document.querySelector('#composer')
       const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
       valueSetter?.call(composer, '权限切换时保留这条草稿')
       composer.dispatchEvent(new Event('input', { bubbles: true }))
       await sleep(40)
-      let trigger
-      for (let attempt = 0; attempt < 80; attempt += 1) {
-        trigger = document.querySelector('.composer-card button[aria-label="访问模式，当前：工作区内修改"]')
-        if (trigger instanceof HTMLButtonElement && !trigger.disabled) break
-        await sleep(25)
-      }
-      if (!(trigger instanceof HTMLButtonElement)) return false
+      const trigger = await wait(() => {
+        const button = document.querySelector('.composer-card button[aria-label="访问模式，当前：工作区内修改"]')
+        return button instanceof HTMLButtonElement && !button.disabled ? button : null
+      }, 80)
+      if (!(trigger instanceof HTMLButtonElement)) return { ok: false, stage: 'trigger' }
       trigger.click()
-      await sleep(60)
-      const menu = document.querySelector('[role="menu"][aria-label="选择访问模式"]')
-      const full = menu?.querySelector('button[aria-label="完全权限"]')
-      if (!(menu instanceof HTMLElement) || !(full instanceof HTMLButtonElement)) return false
+      const full = await wait(() => {
+        const menu = document.querySelector('[role="menu"][aria-label="选择访问模式"]')
+        const item = menu?.querySelector('button[aria-label="完全权限"]')
+        return menu instanceof HTMLElement && item instanceof HTMLButtonElement ? item : null
+      }, 60)
+      if (!(full instanceof HTMLButtonElement)) return { ok: false, stage: 'menu' }
       full.click()
-      await sleep(60)
-      await sleep(300)
-      const dialog = document.querySelector('[role="dialog"]')
-      const confirmation = [...(dialog?.querySelectorAll('button') ?? [])].find(button => button.textContent?.includes('启用完全权限'))
-      const acknowledgement = dialog?.querySelector('input[type="checkbox"]')
-      const rect = dialog?.getBoundingClientRect()
-      const ready = confirmation instanceof HTMLButtonElement && confirmation.disabled
-        && acknowledgement instanceof HTMLInputElement && !acknowledgement.checked
-        && document.querySelector('[aria-label="选择访问模式"]') === null
-        && rect.top >= 8 && rect.bottom <= innerHeight - 8 && Math.abs(rect.left + rect.width / 2 - innerWidth / 2) < 2
-        && Math.abs(rect.top + rect.height / 2 - innerHeight / 2) < 20
-        && dialog.contains(document.activeElement)
-      dialog?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true, cancelable: true }))
-      await sleep(400)
-      if (!ready || document.querySelector('[aria-label="选择访问模式"]') !== null
-        || document.querySelector('[role="dialog"]') !== null || document.activeElement !== trigger
-        || trigger.getAttribute('aria-label') !== '访问模式，当前：工作区内修改') return false
-      trigger.click()
-      await sleep(40)
-      document.querySelector('button[aria-label="完全权限"]').click()
-      await sleep(350)
-      const confirmedDialog = document.querySelector('.ant-modal[role="dialog"]')
-      confirmedDialog.querySelector('input[type="checkbox"]').click()
-      await sleep(40)
-      ;[...confirmedDialog.querySelectorAll('button')].find(button => button.textContent.includes('启用完全权限')).click()
-      for (let attempt = 0; attempt < 80; attempt += 1) {
-        await sleep(25)
-        if (trigger.getAttribute('aria-label') === '访问模式，当前：完全权限' && !trigger.disabled) break
+      const ready = await wait(() => {
+        const dialog = document.querySelector('[role="dialog"]')
+        if (!(dialog instanceof HTMLElement) || inMotion(dialog)) return false
+        const running = dialog.getAnimations({ subtree: true })
+          .some(animation => animation.playState !== 'finished' && animation.effect?.getComputedTiming().iterations !== Infinity)
+        if (running) return false
+        const confirmation = [...dialog.querySelectorAll('button')].find(button => button.textContent?.includes('启用完全权限'))
+        const acknowledgement = dialog.querySelector('input[type="checkbox"]')
+        const rect = dialog.getBoundingClientRect()
+        return confirmation instanceof HTMLButtonElement && confirmation.disabled
+          && acknowledgement instanceof HTMLInputElement && !acknowledgement.checked
+          && document.querySelector('[aria-label="选择访问模式"]') === null
+          && rect.top >= 8 && rect.bottom <= innerHeight - 8 && Math.abs(rect.left + rect.width / 2 - innerWidth / 2) < 2
+          && Math.abs(rect.top + rect.height / 2 - innerHeight / 2) < 20
+          && dialog.contains(document.activeElement)
+      }, 100)
+      if (!ready) {
+        const dialog = document.querySelector('[role="dialog"]')
+        return {
+          ok: false,
+          stage: 'open-dialog',
+          hasDialog: dialog instanceof HTMLElement,
+          dialogClass: dialog?.className ?? null,
+          activeTag: document.activeElement?.tagName ?? null,
+          menuOpen: document.querySelector('[aria-label="选择访问模式"]') !== null,
+        }
       }
+      document.querySelector('[role="dialog"]')?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true, cancelable: true }),
+      )
+      const cancelled = await wait(() =>
+        document.querySelector('[aria-label="选择访问模式"]') === null
+        && document.querySelector('[role="dialog"]') === null
+        && document.activeElement === trigger
+        && trigger.getAttribute('aria-label') === '访问模式，当前：工作区内修改', 100)
+      if (!cancelled) {
+        return {
+          ok: false,
+          stage: 'cancel-dialog',
+          hasDialog: document.querySelector('[role="dialog"]') !== null,
+          activeTag: document.activeElement?.tagName ?? null,
+          triggerLabel: trigger.getAttribute('aria-label'),
+        }
+      }
+      trigger.click()
+      const reopenFull = await wait(() => document.querySelector('button[aria-label="完全权限"]'), 60)
+      if (!(reopenFull instanceof HTMLButtonElement)) return { ok: false, stage: 'reopen-menu' }
+      reopenFull.click()
+      const confirmedDialog = await wait(() => {
+        const dialog = document.querySelector('.ant-modal[role="dialog"]')
+        return dialog instanceof HTMLElement && !inMotion(dialog) && dialog.querySelector('input[type="checkbox"]')
+          ? dialog
+          : null
+      }, 100)
+      if (!(confirmedDialog instanceof HTMLElement)) return { ok: false, stage: 'reopen-dialog' }
+      confirmedDialog.querySelector('input[type="checkbox"]').click()
+      const confirmButton = await wait(() => {
+        const button = [...confirmedDialog.querySelectorAll('button')].find(item => item.textContent?.includes('启用完全权限'))
+        return button instanceof HTMLButtonElement && !button.disabled ? button : null
+      }, 60)
+      if (!(confirmButton instanceof HTMLButtonElement)) return { ok: false, stage: 'confirm-button' }
+      confirmButton.click()
+      await wait(() => trigger.getAttribute('aria-label') === '访问模式，当前：完全权限' && !trigger.disabled, 80)
       const switched = trigger.getAttribute('aria-label') === '访问模式，当前：完全权限'
         && document.querySelector('.composer-command-state') === null
         && document.querySelector('[aria-label="消息队列"]') === null
         && !document.querySelector('.composer-tools').textContent.includes('待处理')
         && composer.value === '权限切换时保留这条草稿'
       trigger.click()
-      await sleep(40)
-      document.querySelector('button[aria-label="工作区内修改"]').click()
-      for (let attempt = 0; attempt < 80 && trigger.getAttribute('aria-label') !== '访问模式，当前：工作区内修改'; attempt += 1) await sleep(25)
+      const workspaceItem = await wait(() => document.querySelector('button[aria-label="工作区内修改"]'), 60)
+      if (workspaceItem instanceof HTMLButtonElement) workspaceItem.click()
+      await wait(() => trigger.getAttribute('aria-label') === '访问模式，当前：工作区内修改', 80)
       valueSetter?.call(composer, '')
       composer.dispatchEvent(new Event('input', { bubbles: true }))
-      return switched && trigger.getAttribute('aria-label') === '访问模式，当前：工作区内修改'
-    })()`)) as boolean
-    if (!permissionMenuReady) throw new Error('权限投影、目录、风险确认或取消后的权限保持验收失败')
+      return {
+        ok: switched && trigger.getAttribute('aria-label') === '访问模式，当前：工作区内修改',
+        stage: switched ? 'restore-mode' : 'switch-full',
+        triggerLabel: trigger.getAttribute('aria-label'),
+      }
+    })()`)) as { ok: boolean; stage?: string }
+    const permissionMenuReady = permissionMenuResult.ok
+    if (!permissionMenuReady)
+      throw new Error(
+        `权限投影、目录、风险确认或取消后的权限保持验收失败：${JSON.stringify(permissionMenuResult)}`,
+      )
     console.log('desktop-shell-verify-local: permission-menu', permissionMenuReady)
     await verifyPermissionDialog(
       win,
