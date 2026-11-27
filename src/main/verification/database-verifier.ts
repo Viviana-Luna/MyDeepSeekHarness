@@ -5,11 +5,7 @@ import type { DatabaseProfile } from '../../../packages/connections/database/typ
 import { clickTrustedElement, emulateVerificationMedia } from './desktop-verifier.ts'
 import { verifyDatabaseHome } from './database-home-verifier.ts'
 import { verifyDatabaseAccess } from './database-access-verifier.ts'
-import {
-  pollRenderer,
-  waitForMediaFeature,
-  waitForViewportSettled,
-} from './verification-wait.ts'
+import { pollRenderer, waitForMediaFeature, waitForViewportSettled } from './verification-wait.ts'
 
 /** 同一真实工作区完成直连、结构、查询、取消及 SSH 通道，数据仅来自临时夹具。 */
 export async function verifyDatabaseWorkspace(
@@ -255,7 +251,8 @@ export async function verifyDatabaseWorkspace(
       })()`,
       condition: 'state.ok === true',
     })
-    if (!layout.ok) throw new Error(`数据库导航没有位于左浮岛或主区发生溢出：${JSON.stringify(layout)}`)
+    if (!layout.ok)
+      throw new Error(`数据库导航没有位于左浮岛或主区发生溢出：${JSON.stringify(layout)}`)
     images.push(await capture(`verify-database-${width}-${scheme}.png`))
   }
   await emulateVerificationMedia(win, [

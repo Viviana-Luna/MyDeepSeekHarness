@@ -2,11 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { BrowserWindow } from 'electron'
 import { clickTrustedElement, emulateVerificationMedia } from './desktop-verifier.ts'
-import {
-  pollRenderer,
-  waitForMediaFeature,
-  waitForViewportSettled,
-} from './verification-wait.ts'
+import { pollRenderer, waitForMediaFeature, waitForViewportSettled } from './verification-wait.ts'
 
 /** 通过真实 renderer 与安装服务验收，不读取或改动用户的插件目录。 */
 export async function verifyPluginManager(

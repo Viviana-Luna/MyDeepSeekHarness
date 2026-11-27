@@ -101,7 +101,9 @@ export async function verifyWindowControls(
   const boundsRestored = await pollCondition(
     () => {
       const current = win.getBounds()
-      return Math.abs(current.width - normal.width) <= 1 && Math.abs(current.height - normal.height) <= 1
+      return (
+        Math.abs(current.width - normal.width) <= 1 && Math.abs(current.height - normal.height) <= 1
+      )
     },
     { timeoutMs: 1_500 },
   )

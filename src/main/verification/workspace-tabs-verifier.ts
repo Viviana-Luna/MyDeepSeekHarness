@@ -631,7 +631,11 @@ export async function verifyWorkspaceTabs(
       y: browserDrag.y + 120,
     })
     await wait(`document.querySelector('.tab-drag-card[data-preview-kind="browser"]')`)
-    if (!(await Promise.all(guests.map(guest => waitForGuestVisibility(guest, false, 2_000)))).every(Boolean))
+    if (
+      !(await Promise.all(guests.map(guest => waitForGuestVisibility(guest, false, 2_000)))).every(
+        Boolean,
+      )
+    )
       throw new Error('原生网页遮挡拖拽预览')
     images.push(await capture('verify-workbench-browser-drag.png'))
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' })
@@ -643,11 +647,19 @@ export async function verifyWorkspaceTabs(
       clickCount: 1,
     })
     await wait(`!document.querySelector('.tab-drag-card')`)
-    if (!(await Promise.all(guests.map(guest => waitForGuestVisibility(guest, true, 2_000)))).every(Boolean))
+    if (
+      !(await Promise.all(guests.map(guest => waitForGuestVisibility(guest, true, 2_000)))).every(
+        Boolean,
+      )
+    )
       throw new Error('取消拖拽后原生网页没有恢复')
     await click('[aria-label="平铺选择标签"]')
     await wait(`document.querySelector('.tab-overview')?.checkVisibility()`)
-    if (!(await Promise.all(guests.map(guest => waitForGuestVisibility(guest, false, 2_000)))).every(Boolean))
+    if (
+      !(await Promise.all(guests.map(guest => waitForGuestVisibility(guest, false, 2_000)))).every(
+        Boolean,
+      )
+    )
       throw new Error('原生网页遮挡平铺窗口')
     await click('.tab-overview .ant-modal-close')
     await wait(`!document.querySelector('.tab-overview')?.checkVisibility()`)

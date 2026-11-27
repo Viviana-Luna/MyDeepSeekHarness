@@ -1,11 +1,7 @@
 import type { BrowserWindow } from 'electron'
 import type { DesktopSessionFrame } from '../../shared/session-live.ts'
 import { clickTrustedElement, emulateVerificationMedia } from './desktop-verifier.ts'
-import {
-  pollRenderer,
-  waitForMediaFeature,
-  waitForViewportSettled,
-} from './verification-wait.ts'
+import { pollRenderer, waitForMediaFeature, waitForViewportSettled } from './verification-wait.ts'
 
 /** 在隔离的真实窗口覆盖长计划、响应失败、阅读关闭和窄屏降级。 */
 export async function verifyPlanReview(

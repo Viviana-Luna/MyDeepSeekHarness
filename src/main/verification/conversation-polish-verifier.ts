@@ -8,11 +8,7 @@ import {
   verifyToolOutputReveal,
 } from './conversation-fluid-verifier.ts'
 import { verifyMarkdownBlocks, verifyMarkdownContrast } from './conversation-markdown-verifier.ts'
-import {
-  pollRenderer,
-  waitForMediaFeature,
-  waitForViewportSettled,
-} from './verification-wait.ts'
+import { pollRenderer, waitForMediaFeature, waitForViewportSettled } from './verification-wait.ts'
 
 interface ConversationPolishOptions {
   sessionId: string
@@ -428,7 +424,9 @@ async function verifyPagedReplyStatus(win: BrowserWindow, options: ConversationP
         condition: 'state.ok === true',
       })
       if (!active.ok) {
-        throw new Error(`尾页回复被误判为停止：${String(width)} ${scheme} ${JSON.stringify(active)}`)
+        throw new Error(
+          `尾页回复被误判为停止：${String(width)} ${scheme} ${JSON.stringify(active)}`,
+        )
       }
       await options.capture(`verify-paged-reply-${String(width)}-${scheme}.png`)
     }

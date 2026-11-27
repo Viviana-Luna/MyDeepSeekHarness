@@ -2,11 +2,7 @@
 import type { BrowserWindow } from 'electron'
 import type { DesktopSessionFrame } from '../../shared/session-live.ts'
 import { emulateVerificationMedia } from './desktop-verifier.ts'
-import {
-  pollRenderer,
-  waitForMediaFeature,
-  waitForViewportSettled,
-} from './verification-wait.ts'
+import { pollRenderer, waitForMediaFeature, waitForViewportSettled } from './verification-wait.ts'
 
 /** Markdown 排版验收所需的会话发布、主题切换与截图回调。 */
 export interface MarkdownBlocksOptions {
@@ -137,9 +133,18 @@ export async function verifyMarkdownBlocks(
     },
     {
       type: 'assistant/message',
-      data: { turn: 1, step: 1, message: { content: [{ type: 'text', text: MARKDOWN_SAMPLE_TEXT }] } },
+      data: {
+        turn: 1,
+        step: 1,
+        message: { content: [{ type: 'text', text: MARKDOWN_SAMPLE_TEXT }] },
+      },
     },
-  ].map((event, seq) => ({ ...event, seq, time: 1_700_000_000_000 + seq * 100 }))
+  ].map((event, seq) => ({
+    type: event.type,
+    data: event.data,
+    seq,
+    time: 1_700_000_000_000 + seq * 100,
+  }))
   options.emit({
     type: 'session/snapshot',
     sessionId: options.sessionId,

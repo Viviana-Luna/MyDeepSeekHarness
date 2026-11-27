@@ -2,11 +2,7 @@ import { lstatSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, type BrowserWindow } from 'electron'
 import { clickTrustedElement, emulateVerificationMedia } from './desktop-verifier.ts'
-import {
-  pollRenderer,
-  waitForMediaFeature,
-  waitForViewportSettled,
-} from './verification-wait.ts'
+import { pollRenderer, waitForMediaFeature, waitForViewportSettled } from './verification-wait.ts'
 
 const hostCard = (name: string) =>
   `[aria-label="全部主机"] [aria-label=${JSON.stringify(`连接 ${name}`)}]`
@@ -279,7 +275,8 @@ export async function verifySshWorkspace(
       })()`,
       condition: 'state.ok === true',
     })
-    if (!layout.ok) throw new Error(`SSH 界面布局、描边或终端区域验收失败：${JSON.stringify(layout)}`)
+    if (!layout.ok)
+      throw new Error(`SSH 界面布局、描边或终端区域验收失败：${JSON.stringify(layout)}`)
     images.push(await capture(`verify-ssh-${width}-${scheme}.png`))
   }
   await wait(

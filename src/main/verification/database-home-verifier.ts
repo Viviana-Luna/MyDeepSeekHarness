@@ -2,11 +2,7 @@
 import type { BrowserWindow } from 'electron'
 import { clickTrustedElement, emulateVerificationMedia } from './desktop-verifier.ts'
 import { verifyDatabaseNavigation } from './database-navigation-verifier.ts'
-import {
-  pollRenderer,
-  waitForMediaFeature,
-  waitForViewportSettled,
-} from './verification-wait.ts'
+import { pollRenderer, waitForMediaFeature, waitForViewportSettled } from './verification-wait.ts'
 
 async function verifyDatabaseHomeViewports(
   win: BrowserWindow,
@@ -41,7 +37,8 @@ async function verifyDatabaseHomeViewports(
       })()`,
       condition: 'state.ok === true',
     })
-    if (!fits.ok) throw new Error(`数据库首页在 ${width} ${scheme} 下溢出或左栏丢失：${JSON.stringify(fits)}`)
+    if (!fits.ok)
+      throw new Error(`数据库首页在 ${width} ${scheme} 下溢出或左栏丢失：${JSON.stringify(fits)}`)
     images.push(await capture(`verify-database-home-${width}-${scheme}.png`))
   }
   /* oxlint-enable no-await-in-loop */
@@ -90,7 +87,8 @@ export async function verifyDatabaseHome({
     probe: DATABASE_HOME_CONTENT_PROBE,
     condition: 'state.ok === true',
   })
-  if (!content.ok) throw new Error(`数据库首页未展示实际连接与成功查询历史：${JSON.stringify(content)}`)
+  if (!content.ok)
+    throw new Error(`数据库首页未展示实际连接与成功查询历史：${JSON.stringify(content)}`)
   await verifyDatabaseNavigation(win)
   const images = await verifyDatabaseHomeViewports(win, appearance, capture)
   win.setSize(1280, 800)

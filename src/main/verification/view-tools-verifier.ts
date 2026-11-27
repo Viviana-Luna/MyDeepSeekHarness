@@ -1,11 +1,7 @@
 /** 主进程在隔离窗口验收 Git 底栏与正文滚动；恢复尺寸与媒体状态，主题偏好由调用方恢复。 */
 import type { BrowserWindow } from 'electron'
 import { clickTrustedElement, emulateVerificationMedia } from './desktop-verifier.ts'
-import {
-  pollRenderer,
-  waitForMediaFeature,
-  waitForViewportSettled,
-} from './verification-wait.ts'
+import { pollRenderer, waitForMediaFeature, waitForViewportSettled } from './verification-wait.ts'
 
 const toolbar = '.work-tab-panel:not([hidden]) .diff-toolbar'
 

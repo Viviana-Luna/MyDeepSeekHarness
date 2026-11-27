@@ -36,7 +36,8 @@ export async function verifyDatabaseNavigation(win: BrowserWindow): Promise<void
     condition: 'state.ok === true',
     timeoutMs: 2_000,
   })
-  if (!layout.ok) throw new Error(`数据库侧栏的顶部操作或底部搜索位置不正确：${JSON.stringify(layout)}`)
+  if (!layout.ok)
+    throw new Error(`数据库侧栏的顶部操作或底部搜索位置不正确：${JSON.stringify(layout)}`)
   await click('[aria-label="新增数据库分组"]')
   await wait(`document.querySelector('[aria-label="数据库分组名称"]')?.checkVisibility()`)
   await fill('[aria-label="数据库分组名称"]', '验收分组')

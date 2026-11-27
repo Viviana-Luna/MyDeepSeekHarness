@@ -2,11 +2,7 @@
 /* oxlint-disable no-await-in-loop -- 同一窗口的尺寸、主题与截图必须顺序验收。 */
 import type { BrowserWindow } from 'electron'
 import { clickTrustedElement, emulateVerificationMedia } from './desktop-verifier.ts'
-import {
-  pollRenderer,
-  waitForMediaFeature,
-  waitForViewportSettled,
-} from './verification-wait.ts'
+import { pollRenderer, waitForMediaFeature, waitForViewportSettled } from './verification-wait.ts'
 
 interface AccessVerification {
   win: BrowserWindow

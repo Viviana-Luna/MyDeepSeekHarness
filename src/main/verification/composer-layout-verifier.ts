@@ -1,10 +1,6 @@
 import type { BrowserWindow } from 'electron'
 import { emulateVerificationMedia } from './desktop-verifier.ts'
-import {
-  pollRenderer,
-  waitForMediaFeature,
-  waitForViewportSettled,
-} from './verification-wait.ts'
+import { pollRenderer, waitForMediaFeature, waitForViewportSettled } from './verification-wait.ts'
 
 /** 用实际图片粘贴链路检查多图密度、输入空间和删除操作，不写入用户会话。 */
 export async function verifyComposerLayout(

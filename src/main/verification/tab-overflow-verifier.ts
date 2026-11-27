@@ -1,10 +1,6 @@
 import type { BrowserWindow } from 'electron'
 import { clickTrustedElement, emulateVerificationMedia } from './desktop-verifier.ts'
-import {
-  pollRenderer,
-  waitForMediaFeature,
-  waitForViewportSettled,
-} from './verification-wait.ts'
+import { pollRenderer, waitForMediaFeature, waitForViewportSettled } from './verification-wait.ts'
 
 /** 打开真实会话标签，覆盖多标签边缘、Windows 滚轮和键盘；只操作隔离验收数据。 */
 export async function verifyTabOverflow(
@@ -89,8 +85,7 @@ export async function verifyTabOverflow(
         })
         const geometry = polled.value
         console.log('desktop-shell-verify-local: tab-overflow', { width, scheme, ...geometry })
-        if (!polled.ok)
-          throw new Error('多标签外框与滚动入口验收失败：' + JSON.stringify(polled))
+        if (!polled.ok) throw new Error('多标签外框与滚动入口验收失败：' + JSON.stringify(polled))
         await capture(`verify-tab-overflow-${String(width)}-${scheme}.png`)
       }
     const point = (await win.webContents.executeJavaScript(
@@ -105,7 +100,8 @@ export async function verifyTabOverflow(
       condition: `state.scrollLeft > 1 && state.selected === ${JSON.stringify(added.at(-1))}`,
       timeoutMs: 2_000,
     })
-    if (!wheel.ok) throw new Error(`Windows 普通滚轮未横向滚动标签，或误切换当前标签：${JSON.stringify(wheel)}`)
+    if (!wheel.ok)
+      throw new Error(`Windows 普通滚轮未横向滚动标签，或误切换当前标签：${JSON.stringify(wheel)}`)
     await capture('verify-tab-overflow-middle.png')
     const variants = (await win.webContents.executeJavaScript(`(()=>{
       const strip=document.querySelector('.session-tabs')
@@ -122,11 +118,16 @@ export async function verifyTabOverflow(
       condition: 'state > 0',
       timeoutMs: 1_500,
     })
-    if (!scrolledRight.ok) throw new Error(`减少动态模式下滚动按钮无效：${JSON.stringify(scrolledRight)}`)
+    if (!scrolledRight.ok)
+      throw new Error(`减少动态模式下滚动按钮无效：${JSON.stringify(scrolledRight)}`)
     await win.webContents.executeJavaScript(
       `(()=>{const tab=document.querySelector('.session-tab-unit:last-child .session-tab-shell:last-child .session-tab');tab.focus();tab.dispatchEvent(new KeyboardEvent('keydown',{key:'Home',bubbles:true,cancelable:true}))})()`,
     )
-    const keyboard = await pollRenderer<{ focused: boolean; scrollLeft: number; selected: string | null }>(win, {
+    const keyboard = await pollRenderer<{
+      focused: boolean
+      scrollLeft: number
+      selected: string | null
+    }>(win, {
       probe: `(()=>{
         const strip=document.querySelector('.session-tabs'), tab=document.querySelector('.session-tab-unit:first-child .session-tab-shell:first-child .session-tab')
         return {
@@ -138,7 +139,8 @@ export async function verifyTabOverflow(
       condition: `state.focused && state.scrollLeft <= 1 && state.selected === ${JSON.stringify(added.at(-1))}`,
       timeoutMs: 2_000,
     })
-    if (!keyboard.ok) throw new Error(`键盘浏览没有显示完整标签，或提前切换了会话：${JSON.stringify(keyboard)}`)
+    if (!keyboard.ok)
+      throw new Error(`键盘浏览没有显示完整标签，或提前切换了会话：${JSON.stringify(keyboard)}`)
     await win.webContents.executeJavaScript(
       `document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true,cancelable:true}))`,
     )
@@ -166,7 +168,8 @@ export async function verifyTabOverflow(
       condition: `state === 'none'`,
       timeoutMs: 1_500,
     })
-    if (!maskCleared.ok) throw new Error(`高对比度模式不应淡出标签文字：${JSON.stringify(maskCleared)}`)
+    if (!maskCleared.ok)
+      throw new Error(`高对比度模式不应淡出标签文字：${JSON.stringify(maskCleared)}`)
     await capture('verify-tab-overflow-accessible.png')
     console.log('desktop-shell-verify-local: tab-overflow-input', {
       wheel: wheel.ok,

@@ -1,11 +1,7 @@
 /** 主进程检查隔离窗口中的空会话，避免预设栏撑破浮岛或遮挡输入区。 */
 import type { BrowserWindow } from 'electron'
 import { emulateVerificationMedia } from './desktop-verifier.ts'
-import {
-  pollRenderer,
-  waitForMediaFeature,
-  waitForViewportSettled,
-} from './verification-wait.ts'
+import { pollRenderer, waitForMediaFeature, waitForViewportSettled } from './verification-wait.ts'
 
 const PRESET_MOTION_SCRIPT = `(async () => {
   const group = [...document.querySelectorAll('[aria-label="Agent 预设"]')]

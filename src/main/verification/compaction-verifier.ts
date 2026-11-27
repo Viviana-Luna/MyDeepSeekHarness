@@ -2,11 +2,7 @@ import type { BrowserWindow } from 'electron'
 import type { DesktopSessionFrame } from '../../shared/session-live.ts'
 import { clickTrustedElement, emulateVerificationMedia } from './desktop-verifier.ts'
 import { readVerificationProjection } from './session-projection-fixture.ts'
-import {
-  pollRenderer,
-  waitForMediaFeature,
-  waitForViewportSettled,
-} from './verification-wait.ts'
+import { pollRenderer, waitForMediaFeature, waitForViewportSettled } from './verification-wait.ts'
 
 /** 仅向隔离验收会话注入投影和失败事件，不读取或修改用户会话。 */
 export async function verifyCompactionReadings(
@@ -103,7 +99,9 @@ export async function verifyCompactionReadings(
         condition: 'state.ok === true',
       })
       if (!waiting.ok) {
-        throw new Error(`原生压缩等待状态、历史区分、面板描边或布局验收失败：${JSON.stringify(waiting)}`)
+        throw new Error(
+          `原生压缩等待状态、历史区分、面板描边或布局验收失败：${JSON.stringify(waiting)}`,
+        )
       }
       await capture(`verify-compaction-waiting-${sample.width}-${sample.scheme}.png`)
       if (sample.width === 1280 && sample.scheme === 'dark') {
@@ -120,7 +118,9 @@ export async function verifyCompactionReadings(
           await emulateVerificationMedia(win, [...features])
           await waitForMediaFeature(
             win,
-            name === 'accessible' ? '(forced-colors: active)' : '(prefers-reduced-transparency: reduce)',
+            name === 'accessible'
+              ? '(forced-colors: active)'
+              : '(prefers-reduced-transparency: reduce)',
           )
           const visible = await pollRenderer<{ visible: boolean; hasText: boolean }>(win, {
             probe: `(() => {
@@ -130,7 +130,8 @@ export async function verifyCompactionReadings(
             condition: 'state.visible && state.hasText',
             timeoutMs: 1_500,
           })
-          if (!visible.ok) throw new Error(`压缩读数在无障碍降级下不可见：${JSON.stringify(visible)}`)
+          if (!visible.ok)
+            throw new Error(`压缩读数在无障碍降级下不可见：${JSON.stringify(visible)}`)
           await capture(`verify-compaction-${name}.png`)
         }
         await emulateVerificationMedia(win)
@@ -194,7 +195,8 @@ export async function verifyCompactionReadings(
       })()`,
       condition: 'state.ok === true',
     })
-    if (!failure.ok) throw new Error(`压缩失败及恢复方式未进入真实对话视图：${JSON.stringify(failure)}`)
+    if (!failure.ok)
+      throw new Error(`压缩失败及恢复方式未进入真实对话视图：${JSON.stringify(failure)}`)
     await capture('verify-compaction-failure.png')
     console.log('desktop-shell-verify-local: compaction-readings', {
       overflow: true,
