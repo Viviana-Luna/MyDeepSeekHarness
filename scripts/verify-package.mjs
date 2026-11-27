@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { PRODUCT_BUNDLE_ID, PRODUCT_NAME, PRODUCT_SLUG } from '../lib/shared/product.js'
 import { parseRuntimeBundleManifest } from '../lib/main/runtime/runtime-install.js'
+import { formatHdiutilErrorDetail, runHdiutilWithRetry } from './macos-hdiutil.mjs'
 
 /** 校验随包核心的完整闭包，不能只凭入口存在就宣称离线安装可用。 */
 function verifyCoreBundle(bundlePath, applicationVersion, failures) {
@@ -100,19 +101,22 @@ function findUnsafeSymlinks(rootPath) {
   return unsafeLinks
 }
 
-function verifyDmgApplication(dmgPath, failures) {
+async function verifyDmgApplication(dmgPath, failures) {
   const mountPath = mkdtempSync(join(tmpdir(), 'mydsh-dmg-verify-'))
   let mounted = false
 
   try {
     try {
-      execFileSync(
-        '/usr/bin/hdiutil',
-        ['attach', '-readonly', '-nobrowse', '-mountpoint', mountPath, dmgPath],
-        { stdio: 'pipe' },
-      )
-    } catch {
-      failures.push('无法以只读方式挂载 DMG 进行应用验收')
+      await runHdiutilWithRetry([
+        'attach',
+        '-readonly',
+        '-nobrowse',
+        '-mountpoint',
+        mountPath,
+        dmgPath,
+      ])
+    } catch (error) {
+      failures.push(`无法以只读方式挂载 DMG 进行应用验收：${formatHdiutilErrorDetail(error)}`)
       return
     }
     mounted = true
@@ -146,10 +150,10 @@ function verifyDmgApplication(dmgPath, failures) {
   } finally {
     if (mounted) {
       try {
-        execFileSync('/usr/bin/hdiutil', ['detach', mountPath], { stdio: 'pipe' })
+        await runHdiutilWithRetry(['detach', mountPath])
         mounted = false
-      } catch {
-        failures.push('DMG 验收挂载点清理失败')
+      } catch (error) {
+        failures.push(`DMG 验收挂载点清理失败：${formatHdiutilErrorDetail(error)}`)
       }
     }
     if (!mounted) rmSync(mountPath, { recursive: true, force: true })
@@ -296,11 +300,11 @@ if (process.argv.includes('--made')) {
   if (!existsSync(dmgPath)) failures.push(`缺少发行产物：${baseName}.dmg`)
   if (existsSync(dmgPath)) {
     try {
-      execFileSync('/usr/bin/hdiutil', ['verify', dmgPath], { stdio: 'pipe' })
-    } catch {
-      failures.push('DMG 镜像完整性校验失败')
+      await runHdiutilWithRetry(['verify', dmgPath])
+    } catch (error) {
+      failures.push(`DMG 镜像完整性校验失败：${formatHdiutilErrorDetail(error)}`)
     }
-    verifyDmgApplication(dmgPath, failures)
+    await verifyDmgApplication(dmgPath, failures)
   }
 }
 
