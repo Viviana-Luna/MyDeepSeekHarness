@@ -94,19 +94,29 @@ export function makeWellKnownSid(api: Win32Bindings, type: number): NativePtr {
 }
 
 /**
- * Merge one full-access allow ACE for `sidPtr` into the token's DEFAULT DACL
- * — the DACL every NEW object the token holder creates (without an explicit
- * security descriptor) takes. The restricted token inherits the user's
- * default DACL verbatim, which names no restricting SID: a new anonymous pipe
- * (child stdio) therefore fails the write pass-2 check at creation
- * (ERROR_ACCESS_DENIED; Node surfaces it as spawn EPERM), breaking every
- * piped-stdio grandchild spawn. The merged ACE names a RESTRICTING SID (the
- * write SID under workspace-write, Everyone under read-only), so each new
- * object's own DACL passes pass-2 while object creation itself stays gated by
- * the parent container's DACL (files outside the granted trees remain
- * uncreatable). Fails closed: any Win32 failure throws before the spawn.
+ * Merge full-access allow ACEs for the token user and `sidPtr` into the
+ * token's DEFAULT DACL — the DACL every NEW object the token holder creates
+ * (without an explicit security descriptor) takes.
+ *
+ * The restricted token inherits the caller's default DACL verbatim:
+ *  - Pass 2 (`WRITE_RESTRICTED`): the inherited DACL names no restricting SID,
+ *    so a new anonymous pipe (child stdio) fails pass-2 (`ERROR_ACCESS_DENIED`).
+ *    Merging `sidPtr` (the private temp SID under workspace-write, or Everyone
+ *    under read-only) satisfies pass-2 while keeping parent-container ACLs intact.
+ *  - Pass 1 (elevated Administrator / `LUA_TOKEN` hosts such as Windows CI):
+ *    an elevated token's default DACL grants only `BUILTIN\Administrators` and
+ *    `NT AUTHORITY\SYSTEM`, without `TokenUser`. `LUA_TOKEN` turns
+ *    `BUILTIN\Administrators` into `USE_FOR_DENY_ONLY` without rewriting the
+ *    default DACL, and `sidPtr` is not in the normal SID list — so pass-1 also
+ *    fails `CreatePipe` with `ERROR_ACCESS_DENIED` (which PowerShell then falls
+ *    back from via `ShellExecute`, silently dropping stdin and `$LASTEXITCODE`).
+ *    Merging `TokenUser` (`GENERIC_ALL`) restores standard non-elevated pass-1
+ *    semantics without adding it to `SidsToRestrict`, preserving sibling-session
+ *    and read-only write isolation.
+ *
+ * Fails closed: any Win32 failure throws before the spawn.
  * @param api - the binding table.
- * @param token - the restricted token to adjust (requires TOKEN_ADJUST_DEFAULT).
+ * @param token - the restricted token to adjust (requires TOKEN_QUERY | TOKEN_ADJUST_DEFAULT).
  * @param sidPtr - the restricting SID whose full-access ACE joins the default DACL.
  */
 export function setTokenDefaultDaclGrant(api: Win32Bindings, token: NativePtr, sidPtr: NativePtr): void {
@@ -122,13 +132,35 @@ export function setTokenDefaultDaclGrant(api: Win32Bindings, token: NativePtr, s
   if (currentDacl === null) {
     throw new Error('setTokenDefaultDaclGrant: the token carries no default DACL to extend')
   }
+  // MyDSH：在提权管理员宿主上 LUA_TOKEN 会禁用默认 DACL 中的 Administrators 且不含当前用户 SID；
+  // 需同时把 TokenUser（Pass 1）与受限能力 SID（Pass 2）合并进默认 DACL，防止子进程 CreatePipe 报拒绝访问。
+  encodeUint32(neededSlot, 0)
+  api.getTokenInformation(token, abi.TokenUser, null, 0, neededSlot) // expected to fail with ERROR_INSUFFICIENT_BUFFER
+  const userNeeded = decodeUint32(neededSlot)
+  if (userNeeded === 0) throwLastError(api, 'GetTokenInformation', 'TokenUser size query')
+  if (userNeeded < abi.SID_AND_ATTRIBUTES_SIZE) {
+    throwWin32(api, 'GetTokenInformation', api.getLastError(), `implausible TokenUser size ${userNeeded}`)
+  }
+  const userBuffer = Buffer.alloc(userNeeded)
+  if (api.getTokenInformation(token, abi.TokenUser, userBuffer, userBuffer.length, neededSlot) === 0) {
+    throwLastError(api, 'GetTokenInformation', 'TokenUser')
+  }
+  const userSidPtr = decodePtrAt(userBuffer, 0)
+  if (userSidPtr === null) throwWin32(api, 'GetTokenInformation', api.getLastError(), 'null TokenUser SID')
+  const entries = Buffer.concat([
+    buildExplicitAccess(userSidPtr, abi.GRANT_ACCESS, abi.GENERIC_ALL),
+    buildExplicitAccess(sidPtr, abi.GRANT_ACCESS, abi.FILE_ALL_ACCESS),
+  ])
   const newDaclSlot = allocPtrSlot()
   const result = api.setEntriesInAclW(
-    1,
-    buildExplicitAccess(sidPtr, abi.GRANT_ACCESS, abi.FILE_ALL_ACCESS),
+    2,
+    entries,
     currentDacl,
     newDaclSlot,
   )
+  // 保持两块原生缓冲区存活至 SetEntriesInAclW 返回，避免其中的 currentDacl / userSidPtr 悬空。
+  void buffer.byteLength
+  void userBuffer.byteLength
   if (result !== abi.ERROR_SUCCESS) throwWin32(api, 'SetEntriesInAclW', result, 'default DACL merge')
   const newDacl = decodePtr(newDaclSlot)
   if (newDacl === null) throwWin32(api, 'SetEntriesInAclW', result, 'null merged default DACL')

@@ -446,27 +446,6 @@ async function verifyScreenshotAndApprovalFlows(ctx, runShell, handle, installed
   }
 }
 
-async function buildSqlStdinFailureMessage(runShell, queryRun, queries) {
-  const capturedQueries = queries.map(item => ({ ...item }))
-  let winProbe = ''
-  if (process.platform === 'win32') {
-    const nodePath = process.execPath.replaceAll("'", "''")
-    const probe = await runShell(
-      [
-        `$Error.Clear()`,
-        `Write-Output ("PS=" + $PSVersionTable.PSVersion.ToString() + " IN_REDIR=" + [Console]::IsInputRedirected)`,
-        `'SELECT ''quote'' FROM items;' | mydsh.cmd db query --connection-id eval-pg --sql-stdin`,
-        `Write-Output ("CMD_OK=" + $? + " CMD_EXIT=" + $LASTEXITCODE + " ERR=" + ($Error | Out-String).Trim())`,
-        `$Error.Clear()`,
-        `'hello-pipe' | & '${nodePath}' -e "let s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>console.log('NODE_GOT='+JSON.stringify(s)))"`,
-        `Write-Output ("NODE_OK=" + $? + " NODE_EXIT=" + $LASTEXITCODE + " ERR=" + ($Error | Out-String).Trim())`,
-      ].join('; '),
-    ).catch(error => ({ error: String(error) }))
-    winProbe = ` | winProbe=${JSON.stringify(probe)}`
-  }
-  return `mydsh --sql-stdin 多行查询失败：${JSON.stringify(queryRun)} | queries=${JSON.stringify(capturedQueries)}${winProbe}`
-}
-
 async function verifySandboxCliAndSecurity(ctx, tempHome, queries, installedIds) {
   await registerEvalVisionAdapter(ctx)
   const handle = await ctx.agents.create({
@@ -508,7 +487,9 @@ async function verifySandboxCliAndSecurity(ctx, tempHome, queries, installedIds)
         : `cat <<'SQL' | mydsh db query --connection-id eval-pg --sql-stdin\nSELECT 'quote', "$identifier", $1 FROM items;\nSQL`
     const queryRun = await runShell(sqlCmd)
     if (queryRun.exitCode !== 0 || queries.length !== 1 || !queries[0].sql.includes("'quote'")) {
-      throw new Error(await buildSqlStdinFailureMessage(runShell, queryRun, queries))
+      throw new Error(
+        `mydsh --sql-stdin 多行查询失败：${JSON.stringify(queryRun)} | queries=${JSON.stringify(queries)}`,
+      )
     }
 
     await verifyScreenshotAndApprovalFlows(ctx, runShell, handle, installedIds)

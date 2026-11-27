@@ -80,7 +80,6 @@
     "src/main/verification/composer-layout-verifier.ts",
     "src/main/verification/database-verifier.ts",
     "src/main/verification/desktop-verifier.ts",
-    "src/main/verification/interaction-polish-verifier.ts",
     "src/main/verification/navigation-verifier.ts",
     "src/main/verification/plan-review-verifier.ts",
     "src/main/verification/plugin-manager-verifier.ts",

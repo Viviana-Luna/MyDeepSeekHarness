@@ -57,6 +57,7 @@ MyDSH 是独立应用，保留来源和许可证不代表 DeepSeek 对此应用�
 ## Windows 适配记录
 
 - `manifest.json` 的 `backports` 固定 Windows ACL 修复提交，`scripts/core/patches/windows-acl-delete.patch` 保留相对原基线的完整补丁，覆盖 Low integrity、工作区/临时目录 Low 标签及父目录 FILE_DELETE_CHILD 防护，不能拆开移植。
+- `sandbox-windows-acl/token.ts` 的 `setTokenDefaultDaclGrant` 同时向受限令牌的默认 DACL 合并当前 `TokenUser`（`GENERIC_ALL`，满足 Pass 1）与受限能力 SID（`FILE_ALL_ACCESS`，满足 Pass 2），避免提权管理员宿主（如 Windows CI 的 `runneradmin`）在 `LUA_TOKEN` 禁用 `BUILTIN\Administrators` 后使沙箱内子进程 `CreatePipe` 报 `ERROR_ACCESS_DENIED`，从而触发 PowerShell `ShellExecute` 回退静默丢弃管道输入与退出码。该修复不向 `SidsToRestrict` 添加用户 SID，保持同工作区会话间隔离与 `read-only` 边界不变。
 - `packages/runtime/subprocess.mjs` 经 Cordis 内置项替换子进程提供方，只为固定 ACL runner 注入应用 Node 模式。原 ordinary runner 与 PTC 继续使用既有 MyDSH 启动适配。ACL runner 进入 PTY 时由随包 PowerShell 承载控制台，解决 Electron GUI 可执行文件尚未接入时 ConPTY 已退出的问题；全部参数逐个转义，监督和清理仍归 DSH 子进程服务。
 - `subprocess-local` 等待异步 ConPTY 分配 PID 后再捕获进程身份；输出订阅早于等待，取消和失败沿用统一释放路径。桌面终端和插件转换命令复用该服务。Windows 选用 node-pty 随包 ConPTY DLL，进程树清理后释放原生句柄；`scripts/core/patch-node-pty.mjs` 对固定 npm 版本 `1.2.0-beta.15` 的 `lib/windowsPtyAgent.js` 加入输出线程的兜底释放，避免没有尾部输出时泄漏。补丁在构建时严格匹配版本及原文，原许可证保留，修改后文件进入核心摘要。
 - `pwsh-local/resolve.ts` 优先读取 MyDSH 固定的 PowerShell 路径，persistent terminal 与 Agent executor 共用解析逻辑。随包工具来源与许可证另见 `packages/runtime/windows-tools.json`。

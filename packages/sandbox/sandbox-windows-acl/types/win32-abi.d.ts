@@ -35,6 +35,8 @@ export declare const LUA_TOKEN = 4;
 export declare const WRITE_RESTRICTED = 8;
 /** WELL_KNOWN_SID_TYPE value for Everyone. */
 export declare const WinWorldSid = 1;
+/** TOKEN_INFORMATION_CLASS value for the token user SID. */
+export declare const TokenUser = 1;
 /** TOKEN_INFORMATION_CLASS value for token groups. */
 export declare const TokenGroups = 2;
 /** TOKEN_INFORMATION_CLASS value for the token default DACL. */
@@ -61,6 +63,8 @@ export declare const MAX_PATH = 260;
 export declare const ERROR_SUCCESS = 0;
 /** Win32 error reported when an immediate byte-range lock cannot be obtained. */
 export declare const ERROR_LOCK_VIOLATION = 33;
+/** Generic all access bit (maps to each kernel object type's full access mask). */
+export declare const GENERIC_ALL = 268435456;
 /** Generic read access bit. */
 export declare const GENERIC_READ = 2147483648;
 /** Generic write access bit. */

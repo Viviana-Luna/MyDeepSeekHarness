@@ -1,9 +1,26 @@
+/** 交互细节真实窗口验收：覆盖标签边缘挤压动画以及消息操作悬浮、键盘焦点与触屏降级。 */
 import type { BrowserWindow } from 'electron'
 import type { DesktopSessionFrame } from '../../shared/session-live.ts'
 import { clickTrustedElement, emulateVerificationMedia } from './desktop-verifier.ts'
 
 const settle = (win: BrowserWindow) =>
   win.webContents.executeJavaScript('new Promise(resolve => setTimeout(resolve, 200))')
+
+/** 在离屏或高负载 Chromium 中轮询等待 CSS 过渡收束，避免固定延时导致的伪失败。 */
+async function waitForCondition<T>(
+  win: BrowserWindow,
+  expression: string,
+  predicate: (value: T) => boolean,
+): Promise<T> {
+  let latest = (await win.webContents.executeJavaScript(expression)) as T
+  /* oxlint-disable no-await-in-loop -- 串行轮询当前窗口的渲染计算样式。 */
+  for (let attempt = 0; attempt < 60 && !predicate(latest); attempt += 1) {
+    await win.webContents.executeJavaScript('new Promise(resolve => setTimeout(resolve, 25))')
+    latest = (await win.webContents.executeJavaScript(expression)) as T
+  }
+  /* oxlint-enable no-await-in-loop */
+  return latest
+}
 
 /** 逐帧检查边缘挤压和中途反向，避免仅检查最终位置掩盖被裁切的动画。 */
 export async function verifyTabEdgeMotion(win: BrowserWindow): Promise<void> {
@@ -89,11 +106,22 @@ export async function verifyMessageActionReveal(
         appearance(scheme)
         win.webContents.sendInputEvent({ type: 'mouseMove', x: 1, y: 1 })
         await win.webContents.executeJavaScript('document.activeElement?.blur()')
-        await settle(win)
-        const initial = (await win.webContents.executeJavaScript(`(() => {
-        const rows=[...document.querySelectorAll('.main-island [aria-label="消息操作"]')]
-        return { count: rows.length, hidden: rows.every(row=>getComputedStyle(row).opacity==='0' && getComputedStyle(row).pointerEvents==='none'), heights: rows.map(row=>row.parentElement.getBoundingClientRect().height) }
-      })()`)) as { count: number; hidden: boolean; heights: number[] }
+        const initial = await waitForCondition<{
+          count: number
+          hidden: boolean
+          heights: number[]
+        }>(
+          win,
+          `(() => {
+            const rows=[...document.querySelectorAll('.main-island [aria-label="消息操作"]')]
+            return {
+              count: rows.length,
+              hidden: rows.every(row=>getComputedStyle(row).opacity==='0' && getComputedStyle(row).pointerEvents==='none'),
+              heights: rows.map(row=>row.parentElement.getBoundingClientRect().height),
+            }
+          })()`,
+          state => state.count === 2 && state.hidden,
+        )
         // 会话信息已不再作为右栏入口（见 docs/renderer.md），这里只检查消息操作本身。
         if (initial.count !== 2 || !initial.hidden)
           throw new Error('消息操作排版验收失败：' + JSON.stringify(initial))
@@ -110,12 +138,29 @@ export async function verifyMessageActionReveal(
             nodeId,
             forcedPseudoClasses: ['hover'],
           })
-        await settle(win)
-        const hovered = await win.webContents.executeJavaScript(`(() => {
-        const rows=[...document.querySelectorAll('.main-island [aria-label="消息操作"]')]
-        return rows.every((row,index)=>getComputedStyle(row).opacity==='1' && getComputedStyle(row).pointerEvents==='auto' && row.parentElement.getBoundingClientRect().height===${JSON.stringify(initial.heights)}[index])
-      })()`)
-        if (!hovered) throw new Error('悬浮显示消息操作时发生布局跳动或按钮不可用')
+        // 消息操作行存在 120ms 透明度过渡；离屏窗口按轮询等待过渡完成并复核行高不跳动。
+        const hovered = await waitForCondition<{
+          ok: boolean
+          rows: Array<{ opacity: string; pointerEvents: string; height: number; expected: number }>
+        }>(
+          win,
+          `(() => {
+            const expected=${JSON.stringify(initial.heights)}
+            const rows=[...document.querySelectorAll('.main-island [aria-label="消息操作"]')].map((row,index)=>({
+              opacity: getComputedStyle(row).opacity,
+              pointerEvents: getComputedStyle(row).pointerEvents,
+              height: row.parentElement.getBoundingClientRect().height,
+              expected: expected[index],
+            }))
+            return {
+              ok: rows.length === expected.length && rows.every(item=>item.opacity==='1' && item.pointerEvents==='auto' && Math.abs(item.height-item.expected)<0.5),
+              rows,
+            }
+          })()`,
+          state => state.ok,
+        )
+        if (!hovered.ok)
+          throw new Error('悬浮显示消息操作时发生布局跳动或按钮不可用：' + JSON.stringify(hovered))
         await capture(`verify-message-actions-${width}-${scheme}.png`)
         for (const nodeId of nodeIds)
           await debug.sendCommand('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: [] })
@@ -124,9 +169,10 @@ export async function verifyMessageActionReveal(
         await win.webContents.executeJavaScript(
           `document.querySelector('.main-island [aria-label="消息操作"] button').focus()`,
         )
-        await settle(win)
-        const focused = await win.webContents.executeJavaScript(
+        const focused = await waitForCondition<boolean>(
+          win,
           `getComputedStyle(document.activeElement.parentElement).opacity==='1' && document.activeElement.matches(':focus-visible')`,
+          Boolean,
         )
         if (!focused) throw new Error('键盘聚焦没有显示消息操作')
         await win.webContents.executeJavaScript('document.activeElement.blur()')
@@ -136,9 +182,10 @@ export async function verifyMessageActionReveal(
       enabled: true,
       maxTouchPoints: 1,
     })
-    await settle(win)
-    const touchReady = await win.webContents.executeJavaScript(
+    const touchReady = await waitForCondition<boolean>(
+      win,
       `!matchMedia('(hover: hover) and (pointer: fine)').matches && [...document.querySelectorAll('.main-island [aria-label="消息操作"]')].every(row=>getComputedStyle(row).opacity==='1')`,
+      Boolean,
     )
     if (!touchReady) throw new Error('触屏模式无法访问消息操作')
     console.log('desktop-shell-verify-local: message-action-reveal', {
