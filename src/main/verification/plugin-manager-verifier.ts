@@ -138,7 +138,9 @@ export async function verifyPluginManager(
     await click('.plugin-manager__detail .ant-btn-dangerous')
     await wait(`document.querySelector('.ant-modal-footer .ant-btn-primary')`)
     await click('.ant-modal-footer .ant-btn:not(.ant-btn-primary)')
-    await wait(`!document.querySelector('.ant-modal-wrap')?.checkVisibility()`)
+    await wait(
+      `[...document.querySelectorAll('.ant-modal-wrap')].every(element=>!element.checkVisibility())`,
+    )
     if (
       !(await win.webContents.executeJavaScript(
         `document.documentElement.dataset.pluginManagerFixture==='active'`,

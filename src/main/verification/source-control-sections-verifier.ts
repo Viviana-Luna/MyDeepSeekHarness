@@ -230,47 +230,166 @@ export async function verifySourceControlSections(
   })
 }
 
+const bulkUnstageTrigger = '.navigation-island button[aria-label="取消暂存全部更改"]'
+const bulkUnstageCancel = '.ant-modal-footer button[aria-label="返回"]'
+const bulkUnstageConfirm = '.ant-modal-footer button[aria-label="确认取消暂存"]'
+
+async function waitForBulkUnstageModalClosed(win: BrowserWindow, stage: string): Promise<void> {
+  const closed = await pollRenderer<{
+    openDialogs: number
+    visibleWraps: number
+    leavingModals: number
+  }>(win, {
+    probe: `(() => {
+      const leavePattern = /(?:^|\\s)[^\\s]+-leave(?:-(?:prepare|start|active))?(?:\\s|$)/
+      const visibleWraps = [...document.querySelectorAll('.ant-modal-wrap')].filter(node =>
+        node instanceof HTMLElement && node.checkVisibility()
+      ).length
+      const openDialogs = [...document.querySelectorAll('.ant-modal, [role="dialog"]')].filter(node =>
+        node instanceof HTMLElement && node.checkVisibility()
+      ).length
+      const leavingModals = [...document.querySelectorAll('.ant-modal, .ant-modal-wrap, .ant-modal-mask')].filter(node =>
+        node instanceof HTMLElement && typeof node.className === 'string' && leavePattern.test(node.className)
+      ).length
+      return { openDialogs, visibleWraps, leavingModals }
+    })()`,
+    condition: 'state.openDialogs === 0 && state.visibleWraps === 0 && state.leavingModals === 0',
+    timeoutMs: 3_000,
+    intervalMs: 25,
+  })
+  if (!closed.ok) {
+    throw new Error(`${stage}后确认弹窗未彻底关闭并退场：${JSON.stringify(closed)}`)
+  }
+}
+
+async function waitForBulkUnstageModalReady(win: BrowserWindow): Promise<void> {
+  const ready = await pollRenderer<{
+    ready: boolean
+    found: boolean
+    disabled: boolean
+    inMotion: boolean
+    runningAnimations: number
+    opacity: number | null
+  }>(win, {
+    probe: `(() => {
+      const motionPattern = /(?:^|\\s)ant-[^\\s]+-(?:appear|enter|leave)(?:-(?:prepare|start|active))?(?:\\s|$)/
+      const button = [...document.querySelectorAll(${JSON.stringify(bulkUnstageConfirm)})].find(node => {
+        if (!(node instanceof HTMLButtonElement) || !node.checkVisibility()) return false
+        const rect = node.getBoundingClientRect()
+        return rect.width > 0 && rect.height > 0
+      })
+      if (!(button instanceof HTMLButtonElement)) {
+        return { ready: false, found: false, disabled: false, inMotion: false, runningAnimations: 0, opacity: null }
+      }
+      const modal = button.closest('.ant-modal')
+      const inMotion = modal instanceof HTMLElement
+        && typeof modal.className === 'string'
+        && motionPattern.test(modal.className)
+      const runningAnimations = modal instanceof HTMLElement && typeof modal.getAnimations === 'function'
+        ? modal.getAnimations({ subtree: true }).filter(animation =>
+            animation.playState !== 'finished' &&
+            animation.effect?.getComputedTiming().iterations !== Infinity
+          ).length
+        : 0
+      const parsedOpacity = modal instanceof HTMLElement ? Number.parseFloat(getComputedStyle(modal).opacity) : 1
+      const opacity = Number.isNaN(parsedOpacity) ? null : parsedOpacity
+      const settled = !button.disabled && !inMotion && runningAnimations === 0 && (opacity === null || opacity >= 0.99)
+      return { ready: settled, found: true, disabled: button.disabled, inMotion, runningAnimations, opacity }
+    })()`,
+    condition: 'state.ready === true',
+    timeoutMs: 3_000,
+    intervalMs: 25,
+  })
+  if (!ready.ok) {
+    throw new Error(`确认取消暂存弹窗未完成入场并就绪：${JSON.stringify(ready)}`)
+  }
+}
+
+async function confirmStaleBulkUnstage(
+  win: BrowserWindow,
+): Promise<'remote-rejected' | 'watcher-auto-closed'> {
+  let modalVanishedBeforeClick = false
+  try {
+    await clickTrustedElement(win, bulkUnstageConfirm)
+  } catch (error) {
+    // 慢速环境下 GitWatcherService 可能在 restage() 后抢先推送 git-changed，
+    // 触发 ChangesLeftPanel 因 summary 变化而自动关闭过期的确认弹窗，属于预期防线。
+    if (!(error instanceof Error) || !error.message.startsWith('找不到可点击的验收目标：')) {
+      throw error
+    }
+    modalVanishedBeforeClick = true
+  }
+  const outcome = await pollRenderer<{
+    busy: string | null
+    alertText: string
+    noticeText: string
+    stillStaged: boolean
+    workingDirty: boolean
+    modalClosed: boolean
+  }>(win, {
+    probe: `(() => {
+      const leavePattern = /(?:^|\\s)[^\\s]+-leave(?:-(?:prepare|start|active))?(?:\\s|$)/
+      const panel = document.querySelector('.navigation-island .source-control-navigation')
+      const alert = document.querySelector('.project-workspace-alert [role="alert"]')
+      const notice = panel?.querySelector('.scm-operation-notice')
+      const openDialogs = [...document.querySelectorAll('.ant-modal, .ant-modal-wrap, [role="dialog"]')].filter(node =>
+        node instanceof HTMLElement && node.checkVisibility()
+      ).length
+      const leavingModals = [...document.querySelectorAll('.ant-modal, .ant-modal-wrap, .ant-modal-mask')].filter(node =>
+        node instanceof HTMLElement && typeof node.className === 'string' && leavePattern.test(node.className)
+      ).length
+      return {
+        busy: panel?.getAttribute('aria-busy') ?? null,
+        alertText: alert?.textContent ?? '',
+        noticeText: notice?.textContent ?? '',
+        stillStaged: panel?.querySelector('[aria-label="取消暂存 scratch.md"]') !== null,
+        workingDirty: panel?.querySelector('[aria-label="暂存 scratch.md"]') !== null,
+        modalClosed: openDialogs === 0 && leavingModals === 0,
+      }
+    })()`,
+    // Remote 拒绝或自动刷新关闭弹窗两条防线都必须确保弹窗彻底退场、暂存区未被误取消且无成功提示。
+    condition: `state.busy === 'false' && state.modalClosed && state.stillStaged && !state.workingDirty && !state.noticeText.includes('已取消全部暂存') && (state.alertText.includes('Git 状态已变化') || state.alertText === '')`,
+    timeoutMs: 3_000,
+    intervalMs: 25,
+  })
+  if (!outcome.ok) {
+    throw new Error(
+      `过期的确认未按预期拦截或状态未收敛：${JSON.stringify({ modalVanishedBeforeClick, outcome })}`,
+    )
+  }
+  return outcome.value.alertText.includes('Git 状态已变化')
+    ? 'remote-rejected'
+    : 'watcher-auto-closed'
+}
+
 /** 在隔离仓库确认取消暂存须经过确认，且索引变化后须重新确认。 */
 export async function verifyBulkUnstage(
   win: BrowserWindow,
   restage: () => Promise<void>,
 ): Promise<void> {
-  const trigger = '.navigation-island button[aria-label="取消暂存全部更改"]'
   const staged = () =>
     win.webContents.executeJavaScript(
       `document.querySelector('.navigation-island button[aria-label="取消暂存 scratch.md"]') !== null`,
     )
-  await clickTrustedElement(win, trigger)
+  await clickTrustedElement(win, bulkUnstageTrigger)
+  await waitForBulkUnstageModalReady(win)
   if (!(await staged())) throw new Error('确认前已取消暂存')
-  await clickTrustedElement(win, '.ant-modal-footer button[aria-label="返回"]')
+  await clickTrustedElement(win, bulkUnstageCancel)
+  await waitForBulkUnstageModalClosed(win, '点击返回取消')
   if (!(await staged())) throw new Error('返回后暂存状态发生变化')
-  await clickTrustedElement(win, trigger)
+  await clickTrustedElement(win, bulkUnstageTrigger)
+  // 先等第二个确认弹窗彻底落稳再触发 restage()，避免弹窗入场动画与 GitWatcherService 防抖重叠。
+  await waitForBulkUnstageModalReady(win)
   await restage()
-  await clickTrustedElement(win, '.ant-modal-footer button[aria-label="确认取消暂存"]')
-  const rejected = await pollRenderer<{
-    busy: string | null
-    alertText: string
-    stillStaged: boolean
-  }>(win, {
-    probe: `(() => {
-      const panel = document.querySelector('.navigation-island .source-control-navigation')
-      const alert = document.querySelector('.project-workspace-alert [role="alert"]')
-      return {
-        busy: panel?.getAttribute('aria-busy') ?? null,
-        alertText: alert?.textContent ?? '',
-        stillStaged: panel?.querySelector('[aria-label="取消暂存 scratch.md"]') !== null,
-      }
-    })()`,
-    condition: `state.busy === 'false' && state.alertText.includes('Git 状态已变化') && state.stillStaged`,
-    timeoutMs: 3_000,
-    intervalMs: 25,
-  })
-  if (!rejected.ok) {
-    throw new Error(`过期的确认通过 Remote 取消了新暂存版本：${JSON.stringify(rejected)}`)
+  const staleMode = await confirmStaleBulkUnstage(win)
+  console.log('desktop-shell-verify-local: bulk-unstage-stale', { mode: staleMode })
+  if (staleMode === 'remote-rejected') {
+    await clickTrustedElement(win, '.project-workspace-alert button[aria-label="关闭提示"]')
   }
-  await clickTrustedElement(win, '.project-workspace-alert button[aria-label="关闭提示"]')
-  await clickTrustedElement(win, trigger)
-  await clickTrustedElement(win, '.ant-modal-footer button[aria-label="确认取消暂存"]')
+  await clickTrustedElement(win, bulkUnstageTrigger)
+  await waitForBulkUnstageModalReady(win)
+  await clickTrustedElement(win, bulkUnstageConfirm)
+  await waitForBulkUnstageModalClosed(win, '最终确认取消暂存')
 }
 
 /** 通过更改标题的键盘菜单刷新 Git，验证无需切换右侧比较范围。 */
