@@ -2,7 +2,7 @@
   "name": "mydsh",
   "productName": "MyDSH",
   "description": "MyDSH：基于 Cordis 的独立插件化 Agent 桌面工作台",
-  "version": "0.1.0-preview.6",
+  "version": "0.1.0-preview.7",
   "private": true,
   "type": "module",
   "main": "lib/main/index.js",
