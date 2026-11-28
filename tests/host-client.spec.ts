@@ -1,3 +1,6 @@
+/**
+ * 主进程 Host RPC 客户端白名单、载荷边界校验与返回值收窄单元测试。
+ */
 import { describe, expect, it, vi } from 'vitest'
 
 import {
@@ -297,24 +300,24 @@ describe('DSH Host 会话控制白名单', () => {
     })
 
     await expect(
-      respondDshInteraction(
-        new URL('http://127.0.0.1:3080/'),
-        'client-1',
-        'event-approval',
-        { kind: 'result', value: 'allowed-once' },
+      respondDshInteraction({
+        targetUrl: new URL('http://127.0.0.1:3080/'),
+        clientId: 'client-1',
+        eventId: 'event-approval',
+        outcome: { kind: 'result', value: 'allowed-once' },
         fetchImpl,
-        'dsh-auth=secret',
-      ),
+        cookie: 'dsh-auth=secret',
+      }),
     ).resolves.toEqual({ accepted: true })
     await expect(
-      respondDshInteraction(
-        new URL('http://127.0.0.1:3080/'),
-        'client-1',
-        'event-question',
-        { kind: 'result', value: { answers: [{ id: 'city', selected: ['北京'] }] } },
+      respondDshInteraction({
+        targetUrl: new URL('http://127.0.0.1:3080/'),
+        clientId: 'client-1',
+        eventId: 'event-question',
+        outcome: { kind: 'result', value: { answers: [{ id: 'city', selected: ['北京'] }] } },
         fetchImpl,
-        'dsh-auth=secret',
-      ),
+        cookie: 'dsh-auth=secret',
+      }),
     ).resolves.toEqual({ accepted: true })
 
     expect(requests).toEqual([

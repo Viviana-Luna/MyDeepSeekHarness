@@ -81,7 +81,7 @@ export async function buildDesktopServices(toolchain, destination) {
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
-  const toolchain = resolve(process.argv[2] ?? join(root, 'lib/mydsh-runtime/payload'))
+  const toolchain = resolve(process.argv[2] ?? root)
   const destination = resolve(process.argv[3] ?? join(root, 'lib/desktop-services'))
   await buildDesktopServices(toolchain, destination)
   console.log(`桌面核心服务与 Remote 契约已构建：${destination}`)

@@ -107,6 +107,20 @@ export function pickTargetDisplay(
   return primary
 }
 
+/** Windows 平台将单个原生物理像素矩形换算为 Electron 逻辑 DIP，macOS 与无 DPI 换算环境保持原值。 */
+export function normalizeNativeRectForPlatform(rect: LogicalRect): LogicalRect {
+  if (process.platform !== 'win32' || typeof screen.screenToDipRect !== 'function') {
+    return { ...rect }
+  }
+  const dip = screen.screenToDipRect(null, {
+    x: Math.round(rect.x),
+    y: Math.round(rect.y),
+    width: Math.max(1, Math.round(rect.width)),
+    height: Math.max(1, Math.round(rect.height)),
+  })
+  return { x: dip.x, y: dip.y, width: dip.width, height: dip.height }
+}
+
 /** Windows 平台将原生物理像素坐标矩形统一换算为 Electron 逻辑 DIP，macOS 与无 DPI 换算环境保持原值。 */
 export function normalizeNativeWindowsForPlatform(
   windows: readonly ComputerUseWindowInfo[],
@@ -114,18 +128,10 @@ export function normalizeNativeWindowsForPlatform(
   if (process.platform !== 'win32' || typeof screen.screenToDipRect !== 'function') {
     return [...windows]
   }
-  return windows.map(win => {
-    const dip = screen.screenToDipRect(null, {
-      x: Math.round(win.bounds.x),
-      y: Math.round(win.bounds.y),
-      width: Math.max(1, Math.round(win.bounds.width)),
-      height: Math.max(1, Math.round(win.bounds.height)),
-    })
-    return {
-      ...win,
-      bounds: { x: dip.x, y: dip.y, width: dip.width, height: dip.height },
-    }
-  })
+  return windows.map(win => ({
+    ...win,
+    bounds: normalizeNativeRectForPlatform(win.bounds),
+  }))
 }
 
 /** Windows 平台将原生 `GetCursorPos` 物理坐标换算为逻辑 DIP 坐标。 */
@@ -152,21 +158,38 @@ export function toNativePointForPlatform(point: { x: number; y: number }): {
   return { x: phys.x, y: phys.y }
 }
 
+function computeConstrainedThumbnailSize(
+  bounds: { width: number; height: number },
+  scaleFactor: number,
+  maxLongEdge?: number,
+): { width: number; height: number } {
+  const factor = Math.min(2, Math.max(1, scaleFactor))
+  let width = Math.max(320, Math.round(bounds.width * factor))
+  let height = Math.max(240, Math.round(bounds.height * factor))
+  if (maxLongEdge !== undefined && Number.isFinite(maxLongEdge) && maxLongEdge > 0) {
+    const cap = Math.max(320, Math.min(2048, Math.round(maxLongEdge)))
+    const longEdge = Math.max(width, height)
+    if (longEdge > cap) {
+      const ratio = cap / longEdge
+      width = Math.max(1, Math.round(width * ratio))
+      height = Math.max(1, Math.round(height * ratio))
+    }
+  }
+  return { width, height }
+}
+
 /** 优先通过 `desktopCapturer` 独立窗口通道抓取后台非焦点窗口本体画面，不被前方 MyDSH 遮挡。 */
 export async function captureIndependentWindowThumbnail(
   targetWindow: ComputerUseWindowInfo,
   scaleFactor: number,
   signal: AbortSignal,
+  maxLongEdge?: number,
 ): Promise<Electron.NativeImage | null> {
   if (targetWindow.windowId <= 0) return null
-  const factor = Math.min(2, Math.max(1, scaleFactor))
   try {
     const sources = await desktopCapturer.getSources({
       types: ['window'],
-      thumbnailSize: {
-        width: Math.max(320, Math.round(targetWindow.bounds.width * factor)),
-        height: Math.max(240, Math.round(targetWindow.bounds.height * factor)),
-      },
+      thumbnailSize: computeConstrainedThumbnailSize(targetWindow.bounds, scaleFactor, maxLongEdge),
     })
     signal.throwIfAborted()
     const prefix = `window:${targetWindow.windowId}:`
@@ -179,18 +202,19 @@ export async function captureIndependentWindowThumbnail(
   }
 }
 
-/** 截取指定逻辑显示器的完整屏幕画面。 */
+/** 截取指定逻辑显示器的完整屏幕画面；无需子窗口裁剪时直接按 `maxLongEdge` 请求 GPU 侧缩放。 */
 export async function captureDisplayThumbnail(
   display: ComputerUseDisplayInfo,
   signal: AbortSignal,
+  maxLongEdge?: number,
 ): Promise<Electron.NativeImage> {
-  const factor = Math.min(2, display.scaleFactor)
   const sources = await desktopCapturer.getSources({
     types: ['screen'],
-    thumbnailSize: {
-      width: Math.max(320, Math.round(display.bounds.width * factor)),
-      height: Math.max(240, Math.round(display.bounds.height * factor)),
-    },
+    thumbnailSize: computeConstrainedThumbnailSize(
+      display.bounds,
+      display.scaleFactor,
+      maxLongEdge,
+    ),
   })
   signal.throwIfAborted()
   const exact = sources.find(item => item.display_id === String(display.id))
@@ -240,7 +264,7 @@ async function callNativeWindowCapture(
   return null
 }
 
-/** 抓取目标窗口或显示器原图：macOS 优先使用全异步 ScreenCaptureKit 去阴影截帧，其次回退到桌面裁剪。 */
+/** 抓取目标窗口或显示器原图：macOS 使用异步 ScreenCaptureKit，Windows 使用异步 PrintWindow + WIC，不可用时回退到桌面裁剪。 */
 export async function captureTargetImage(input: {
   addon: ComputerUseNativeAddon | null
   display: ComputerUseDisplayInfo
@@ -255,10 +279,17 @@ export async function captureTargetImage(input: {
 }> {
   const { addon, display, targetWindow, maxLongEdge = 1280, signal } = input
   if (targetWindow) {
-    const sck = await callNativeWindowCapture(addon, targetWindow.windowId, maxLongEdge)
+    const nativeCapture = await callNativeWindowCapture(addon, targetWindow.windowId, maxLongEdge)
     signal.throwIfAborted()
-    if (sck && sck.png.byteLength > 0 && sck.bounds.width >= 8 && sck.bounds.height >= 8) {
-      return { rawPng: sck.png, windowClip: sck.bounds, captureMethod: 'screencapturekit' }
+    if (nativeCapture && nativeCapture.png.byteLength > 0) {
+      const normalizedBounds = normalizeNativeRectForPlatform(nativeCapture.bounds)
+      if (normalizedBounds.width >= 8 && normalizedBounds.height >= 8) {
+        return {
+          rawPng: nativeCapture.png,
+          windowClip: normalizedBounds,
+          captureMethod: process.platform === 'win32' ? 'win32-printwindow' : 'screencapturekit',
+        }
+      }
     }
   }
   if (targetWindow) {
@@ -266,6 +297,7 @@ export async function captureTargetImage(input: {
       targetWindow,
       display.scaleFactor,
       signal,
+      maxLongEdge,
     )
     if (independent) {
       return {
@@ -275,7 +307,11 @@ export async function captureTargetImage(input: {
       }
     }
   }
-  const screenImg = await captureDisplayThumbnail(display, signal)
+  const screenImg = await captureDisplayThumbnail(
+    display,
+    signal,
+    targetWindow ? undefined : maxLongEdge,
+  )
   if (!targetWindow) return { image: screenImg, captureMethod: 'desktop-capturer-screen' }
   const cropped = cropWindowFromThumbnail(screenImg, display.bounds, targetWindow.bounds)
   return { image: cropped.image, windowClip: cropped.clip, captureMethod: 'screen-crop' }

@@ -49,17 +49,11 @@ out/make/mydsh-macOS-arm64-<package.json version>.dmg
 
 macOS App 与 Windows 应用目录均携带完整初始核心，不要求用户首次联网下载。构建时 `build:runtime` 按 `docs/upstream/dsh/manifest.json` 记录的 `packages/`、`vendor/` 模块及 `packages/runtime/roster.json` 的业务组合生成离线依赖闭包，包含 Cordis、内置业务插件、TypeScript、构建器和固定版本包管理器。
 
-`lib/mydsh-runtime` 中的 `manifest.json` 记录平台、架构、应用版本、API 版本、数据格式版本及每个文件的大小、SHA-256 和执行权限；`payload` 是对应文件树。打包后这份初始核心位于 macOS 的 `MyDSH.app/Contents/Resources/mydsh-runtime` 或 Windows 的 `resources/mydsh-runtime`，原生库和工具链不放进 ASAR。制品不得依赖指向开发机 `node_modules` 的符号链接。ad-hoc 签名可能改写原生文件，打包脚本在签名后重新计算资源清单并封装应用签名，验收按最终文件校验摘要。
+`lib/mydsh-runtime` 中的 `manifest.json` 记录平台、架构、应用版本、API 版本、数据格式版本、`archive: "runtime.asar"` 以及每个磁盘物理文件的大小、SHA-256 和执行权限。构建阶段会自动剔除 `.pdb` 调试符号、`.map` 映射、C/C++ 构建中间产物与跨架构预编译库，并将约九千八百个纯 JS/JSON 模块流式归档进单个 `runtime.asar`，仅将原生二进制（`.node` / `.exe` / `.dll`）及插件转换所需的 TypeScript 类型包解包至 `runtime.asar.unpacked/`，Windows 物理文件总数由两万余个降至约一千四百余个，显著缩短安装包解压与杀毒扫描耗时。打包后这份核心资源位于 macOS 的 `MyDSH.app/Contents/Resources/mydsh-runtime` 或 Windows 的 `resources/mydsh-runtime`。制品不得依赖指向开发机 `node_modules` 的符号链接。ad-hoc 签名可能改写原生文件，打包脚本在签名后重新计算资源清单并封装应用签名，验收按最终文件校验摘要。
 
-首次启动取得单实例锁后，将核心安装到 `~/.mydsh/runtime/<应用版本>`。安装器先在暂存目录复制并校验，再原子切换；取消、中断和失败保留既有核心与用户数据。下次启动只加载应用清单指定的版本。数据格式不兼容时拒绝启动，不能用旧核心猜测读取新数据。
+启动取得单实例锁后，主进程核对核心清单版本、平台架构、`runtime.asar` 及 `data/format.json` 数据格式门禁，随即由 `utilityProcess` 直接从应用资源目录 `mydsh-runtime/runtime.asar/entry.js` 就地加载核心，无需再向 `~/.mydsh/runtime` 复制文件树。数据格式不兼容时拒绝启动，不能用旧核心猜测读取新数据。
 
-安装或复用成功后，安装器清理其他版本的核心目录，避免升级残留累积磁盘占用：只删除带安装回执的目录，用户手工放入的陌生内容保留；旧目录先原子改名为 `.trash-` 待删标记再递归删除，清理中途退出留下的残留下次启动按前缀收走。清理失败只记录告警，不阻断本次启动。
-
-对照 DSH 的 Cordis 启动路径，MyDSH 继续等待业务服务就绪后才进入工作台，后台失败与退出仍有界释放本应用资源。Windows 的主要额外耗时来自约两万个核心文件的完整性检查与复制：改为最多 16 项并发，小文件直接读取摘要，进度最多每 100ms 通知一次；首次安装仍检查源与目标，后续启动仍逐文件校验 SHA-256。取消或失败先等待所有并发操作结束，再回滚和清理。
-
-同一核心包的本机隔离基准中，核心首次安装由 47.8 秒降到 11.6 秒，复用已有核心的检查由 13.2 秒降到 3.4 秒。这是核心安装阶段的测量，不包含 Electron、插件和工作台加载，也不保证每次启动耗时相同。真实运行日志分别记录 `coreInstall`、`coreLoad` 和 `total` 毫秒数。
-
-核心文件每次启动仍核对全部 SHA-256。校验和安装最多同时处理 16 个文件，小文件直接读取，父目录创建共享进行中的操作；进度通知最多每 100ms 更新一次，阶段开始和完成必定发送。发生失败或取消后，等待全部在途工作结束再回滚和删除暂存目录，不能有后台复制继续写入已清理的路径。主进程输出核心检查／安装、后台加载与总启动耗时，便于区分首次安装与后续启动；加载继续采用固定 DSH 的 Cordis 装配、就绪后通知与有界退出机制，不加载 DSH CLI 或外部 profile。
+对从旧版升级而来的用户目录，准备器会自动清理 `~/.mydsh/runtime/` 下带 `.mydsh-install.json` 回执的历史核心副本及 `.trash-` 待删目录，释放磁盘空间；用户手工放入的无回执目录保持原样，清理失败只记录告警而不阻断本次启动。真实运行日志分别记录 `coreInstall`、`coreLoad` 和 `total` 毫秒数；加载继续采用固定 DSH 的 Cordis 装配、就绪后通知与有界退出机制，不加载 DSH CLI 或外部 profile。
 
 新版应用提供相应核心版本，不单独查询核心在线更新。用户扩展位于 `~/.mydsh/plugins`，可独立安装、升级或停用；变更占用运行任务或未保存内容时延迟处理。应用更新不得覆盖 `data`、`config` 和用户转换工作区。
 
@@ -77,9 +71,9 @@ macOS App 与 Windows 应用目录均携带完整初始核心，不要求用户�
 
 Windows 四边与四个可见圆弧必须显示对应的系统缩放光标，并能真实拖动缩放。直边命中宽度为 8 DIP，四角按到圆弧的距离命中；同步处理 Chromium 内容子窗口的原生命中和悬停，避免只有父 HWND 的测试通过。100% 与 150% 均须完成实际鼠标验收；启动小窗、最大化及全屏不保留缩放区，实色与高对比度仍能正常缩放。背景视觉、父窗口回调与内容子窗口回调分别按窗口生命周期清理。
 
-Windows 原生背景构建需要 Visual Studio C++ Build Tools 与包含 C++/WinRT 的 Windows SDK；稳定 Node-API 头文件是开发依赖，模块使用静态 CRT，不要求用户安装编译器或 Node。安装包验收需要开发机安装完整 7-Zip（`7z.exe`，Windows CI 镜像已提供），应用自身不依赖它。
+Windows 原生圆角与缩放模块构建需要 Visual Studio C++ Build Tools 与 Windows SDK；稳定 Node-API 头文件是开发依赖，模块使用静态 CRT，不要求用户安装编译器或 Node。安装包验收需要开发机安装完整 7-Zip（`7z.exe`，Windows CI 镜像已提供），应用自身不依赖它。
 
-Windows 首版固定 x64，沿用 Electron 主进程、utilityProcess、Remote/Typert/Gateway 与独立用户目录。窗口使用右侧三个自定义按钮；Windows 11 22H2 起使用与 18px 外缘共用几何裁剪的原生 HostBackdrop 模糊背景，系统减少透明、高对比度或合成不可用时释放原生视觉并使用实色。整窗 Acrylic 不受 `SetWindowRgn` 的可见裁剪约束，不能继续将其与自定义圆角叠加使用。命中区域不能截断圆弧的抗锯齿覆盖；前景按原生像素尺寸裁剪，消除分数缩放时的视口取整误差。macOS 继续使用原生按钮与透明窗口。后台验收检查画布 alpha、明暗主题、布局、裁剪投影、降级与自定义关闭保护；Windows 离屏页可能仍按 1 倍绘制，不能替代实际分数缩放验收。前台 `--foreground` 验收严格核对前景与原生窗口像素对齐，并触发真实最小化、最大化与还原；`verify:window` 额外检查实际桌面四段完整圆弧、单像素覆盖、圆弧外颜色泄漏与背景释放。
+Windows 首版固定 x64，沿用 Electron 主进程、utilityProcess、Remote/Typert/Gateway 与独立用户目录。窗口使用右侧三个自定义按钮；Windows 11 22H2 起采用原生 DWM `DWMWCP_ROUND`（8 DIP）硬件圆角与系统级 `mica` 背景材质，不向 HWND 设置破坏 DirectComposition 硬件翻转的 `SetWindowRgn`，也不挂载整页 `body clip-path` 或自定义实时高斯模糊树，确保窗口化与最大化均维持满帧合成；系统减少透明、高对比度或合成不可用时降级为实色画布并继续保留非最大化原生圆角。macOS 继续使用原生按钮与透明窗口。后台验收检查画布 alpha、明暗主题、布局、降级与自定义关闭保护；`verify:window` 额外检查无自定义 `HRGN`、DWM 四角硬件裁切、8 向缩放热区与窗口销毁清理。
 
 ```sh
 pnpm install --frozen-lockfile
@@ -92,7 +86,7 @@ pnpm run verify:package:win -- --made
 pnpm run verify:package:win -- --made --foreground
 ```
 
-应用目录为 `out/MyDSH-win32-x64/`，安装包为 `out/mydsh-Windows-x64-<版本>.exe`。NSIS 安装器使用当前用户权限，不提升权限、不修改系统 PATH，卸载保留 `~/.mydsh` 与用户数据。默认不签名、不发布；公开发行前仍需在独立 Windows 11 测试账户中验收安装、覆盖升级和卸载。
+应用目录为 `out/MyDSH-win32-x64/`，安装包为 `out/mydsh-Windows-x64-<版本>.exe`。NSIS 安装器采用按当前用户权限运行的交互向导，跳过“所有用户 / 仅当前用户”选择页并直接允许自定义安装路径（默认 `%LOCALAPPDATA%\Programs\MyDSH`，覆盖升级、同版本重装或降级时自动预填上次选择的目录；若所选路径未包含 `MyDSH` 子目录则自动附加 `\MyDSH` 以防卸载误删同级文件）。覆盖安装前会自动检测目标目录及旧安装目录中运行中的 MyDSH 并提示关闭，同时对跨盘符覆盖升级跳过不可跨卷的临时重命名直接清理旧程序文件；完成页提供可选的“运行 MyDSH”复选框（静默安装不自启），全程不提升权限、不修改系统 PATH，卸载和覆盖安装均保留 `~/.mydsh` 与用户数据。默认不签名、不发布；公开发行前仍需在独立 Windows 11 测试账户中验收安装、覆盖升级和卸载。
 
 `packages/runtime/windows-tools.json` 固定官方 PowerShell ZIP 与标准 MinGit 的版本、下载地址、SHA-256 和许可证。只在构建阶段下载并校验，运行时不联网安装；所有解压文件、许可和工具清单一起进入核心摘要。第三方 npm 包保留必要的 `src`（例如 koffi 的实际入口），不做全局源码目录裁剪。Agent Shell、持久 Shell 和默认用户终端使用同一个随包 PowerShell；应用 Git 调用使用随包绝对路径。用户配置的项目任务仍由自己的可执行文件与环境决定。
 

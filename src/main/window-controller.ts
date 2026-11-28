@@ -77,20 +77,20 @@ export function installWindowController(options: {
   }
   const updateComposition = (): void => {
     if (disposed || win.isDestroyed() || platform !== 'win32') return
-    const acrylic =
+    const useMica =
       backdropSupported &&
       !backdropFailed &&
       !nativeTheme.prefersReducedTransparency &&
       !nativeTheme.shouldUseHighContrastColors &&
       !nativeTheme.inForcedColorsMode
-    const next = acrylic ? 'acrylic' : 'opaque'
+    const next: DesktopCanvasComposition = useMica ? 'mica' : 'opaque'
     try {
-      // 保留普通可缩放窗口，由 Windows 合成背景；不使用受限的透明分层窗口。
-      if (backdropSupported) win.setBackgroundMaterial(acrylic ? 'acrylic' : 'none')
+      // 使用系统级缓存壁纸的原生 Mica 材质，避免每帧实时采样模糊桌面造成窗口化掉帧。
+      if (backdropSupported) win.setBackgroundMaterial(useMica ? 'mica' : 'none')
       win.setBackgroundColor(
-        acrylic ? '#00000000' : nativeTheme.shouldUseDarkColors ? '#101113' : '#f3f4f6',
+        useMica ? '#00000000' : nativeTheme.shouldUseDarkColors ? '#101113' : '#f3f4f6',
       )
-      background.setEnabled(acrylic)
+      background.setEnabled(useMica)
       canvasComposition = next
     } catch (error) {
       backdropFailed = true

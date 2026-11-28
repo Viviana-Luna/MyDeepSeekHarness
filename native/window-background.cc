@@ -1,4 +1,5 @@
-// 单独裁剪 Windows 背景；可见圆弧与直边使用独立的原生缩放命中区域。
+// Windows 11 原生 DWM 硬件圆角同步与无厚边框窗口 8 向边缘/圆角缩放命中子类化。
+// 不创建自定义 WinRT HostBackdropBrush 合成树，避免每帧桌面高斯模糊重采样与离屏裁剪开销。
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #define UNICODE
@@ -7,11 +8,6 @@
 #include <windowsx.h>
 #include <commctrl.h>
 #include <dwmapi.h>
-#include <DispatcherQueue.h>
-#include <windows.ui.composition.interop.h>
-#include <winrt/Windows.System.h>
-#include <winrt/Windows.UI.Composition.h>
-#include <winrt/Windows.UI.Composition.Desktop.h>
 #include <node_api.h>
 #include <algorithm>
 #include <cmath>
@@ -21,6 +17,14 @@
 #include <stdexcept>
 #include <string>
 
+#ifndef DWMWA_WINDOW_CORNER_PREFERENCE
+#define DWMWA_WINDOW_CORNER_PREFERENCE 33
+#endif
+
+static constexpr int kDwmCornerDefault = 0;
+static constexpr int kDwmCornerDoNotRound = 1;
+static constexpr int kDwmCornerRound = 2;
+
 // 稳定 Node-API 从当前宿主取址，避免将模块绑定到 node.exe 或特定 Electron 文件名。
 template<class T> T nodeApi(const char* name) {
   auto address = GetProcAddress(GetModuleHandleW(nullptr), name);
@@ -28,24 +32,6 @@ template<class T> T nodeApi(const char* name) {
   return reinterpret_cast<T>(address);
 }
 #define CALL(name, ...) nodeApi<decltype(&name)>(#name)(__VA_ARGS__)
-
-using namespace winrt::Windows::UI::Composition;
-using namespace winrt::Windows::UI::Composition::Desktop;
-using namespace winrt::Windows::System;
-
-struct Background {
-  Compositor compositor{nullptr};
-  DesktopWindowTarget target{nullptr};
-  SpriteVisual sprite{nullptr};
-  CompositionRoundedRectangleGeometry geometry{nullptr};
-  ~Background() noexcept {
-    try { if (target) target.Root(nullptr); } catch (...) {}
-    target = nullptr;
-    sprite = nullptr;
-    geometry = nullptr;
-    compositor = nullptr;
-  }
-};
 
 struct State;
 struct ResizeWindow {
@@ -62,14 +48,11 @@ struct ResizeWindow {
 };
 
 struct State {
-  std::map<HWND, std::unique_ptr<Background>> backgrounds;
+  std::set<HWND> activeWindows;
   std::map<HWND, std::unique_ptr<ResizeWindow>> resizeWindows;
-  DispatcherQueueController queue{nullptr};
   ~State() noexcept {
     resizeWindows.clear();
-    backgrounds.clear();
-    try { if (queue) queue.ShutdownQueueAsync(); } catch (...) {}
-    queue = nullptr;
+    activeWindows.clear();
   }
 };
 
@@ -112,11 +95,15 @@ static LRESULT resizeHit(HWND window, LPARAM position, const ResizeWindow& resiz
   if (x < 0 || y < 0 || x >= width || y >= height) return HTNOWHERE;
   // 使用同步更新的缩放因子，避免拖拽缩放瞬间物理宽度与滞后 logicalWidth 错配导致热区畸变。
   double scale = resize.scale;
-  // 8 DIP 小于画布留白；圆角处按到圆弧的距离命中，不占用浮岛内的控件。
-  double edge = 8 * scale, radius = resize.radius * scale;
-  bool left = x < radius, right = x >= width - radius;
-  bool top = y < radius, bottom = y >= height - radius;
-  if ((left || right) && (top || bottom)) {
+  // 8 DIP 小于画布留白；圆角内按到圆弧的距离命中，沿边留出 12 DIP 对角热区方便触控板抓取。
+  double edge = 8.0 * scale;
+  double radius = resize.radius * scale;
+  double cornerSpan = std::max(radius, 12.0 * scale);
+  bool inCornerArcX = x < radius || x >= width - radius;
+  bool inCornerArcY = y < radius || y >= height - radius;
+  if (inCornerArcX && inCornerArcY) {
+    bool left = x < radius;
+    bool top = y < radius;
     double dx = x - (left ? radius : width - radius);
     double dy = y - (top ? radius : height - radius);
     double distance = radius - std::hypot(dx, dy);
@@ -124,6 +111,11 @@ static LRESULT resizeHit(HWND window, LPARAM position, const ResizeWindow& resiz
       return top ? (left ? HTTOPLEFT : HTTOPRIGHT) : (left ? HTBOTTOMLEFT : HTBOTTOMRIGHT);
     }
     return HTNOWHERE;
+  }
+  bool nearLeft = x < cornerSpan, nearRight = x >= width - cornerSpan;
+  bool nearTop = y < cornerSpan, nearBottom = y >= height - cornerSpan;
+  if ((nearLeft || nearRight) && (nearTop || nearBottom) && (x < edge || x >= width - edge || y < edge || y >= height - edge)) {
+    return nearTop ? (nearLeft ? HTTOPLEFT : HTTOPRIGHT) : (nearLeft ? HTBOTTOMLEFT : HTBOTTOMRIGHT);
   }
   if (x < edge) return HTLEFT;
   if (x >= width - edge) return HTRIGHT;
@@ -185,10 +177,18 @@ static LRESULT CALLBACK resizeProcedure(HWND window, UINT message, WPARAM wParam
     auto owner = resize->owner;
     RemoveWindowSubclass(window, resizeProcedure, id);
     owner->resizeWindows.erase(window);
+    owner->activeWindows.erase(window);
     return DefSubclassProc(window, message, wParam, lParam);
   }
   if (message == WM_PARENTNOTIFY && LOWORD(wParam) == WM_CREATE) attachResizeChild(reinterpret_cast<HWND>(lParam), *resize);
-  if (message == WM_NCHITTEST) return hitThroughSubclass(window, wParam, lParam, *resize);
+  // Chromium 子窗口带 WS_EX_NOPARENTNOTIFY 且在最小化还原后会重建，需在窗口还原/显隐及空集合命中时补挂子类化。
+  if ((message == WM_SIZE && wParam != SIZE_MINIMIZED) || (message == WM_SHOWWINDOW && wParam != FALSE)) {
+    attachResizeChildren(*resize);
+  }
+  if (message == WM_NCHITTEST) {
+    if (resize->children.empty()) attachResizeChildren(*resize);
+    return hitThroughSubclass(window, wParam, lParam, *resize);
+  }
   if (message == WM_SETCURSOR && resizeCursor(*resize)) return TRUE;
   if ((message == WM_MOUSEMOVE || message == WM_NCMOUSEMOVE) && !GetCapture() && resizeCursor(*resize)) return 0;
   return DefSubclassProc(window, message, wParam, lParam);
@@ -236,6 +236,18 @@ static napi_value fail(napi_env env, const std::string& message) {
   return nullptr;
 }
 
+static void applyWindowCornerPreference(HWND window, int preference) {
+  HRESULT hr = DwmSetWindowAttribute(
+      window,
+      DWMWA_WINDOW_CORNER_PREFERENCE,
+      &preference,
+      sizeof(preference));
+  // 低于 Windows 11 Build 22000 的环境可能不支持属性 33，忽略 E_INVALIDARG 降级为系统默认矩形窗口。
+  if (FAILED(hr) && hr != E_INVALIDARG) {
+    throw std::runtime_error("设置原生 DWM 窗口圆角属性失败");
+  }
+}
+
 static napi_value updateResize(napi_env env, napi_callback_info info) {
   try {
     napi_value values[4];
@@ -272,6 +284,7 @@ static napi_value updateResize(napi_env env, napi_callback_info info) {
     resize.logicalWidth = logicalWidth;
     resize.scale = scale;
     resize.enabled = enabled;
+    applyWindowCornerPreference(window, radius > 0.0 ? kDwmCornerRound : kDwmCornerDoNotRound);
     if (!attachResizeChildren(resize)) throw std::runtime_error("无法同步 Chromium 窗口缩放命中检测");
     return undefined(env);
   } catch (const std::exception& error) { return fail(env, error.what()); }
@@ -281,7 +294,15 @@ static napi_value disposeResize(napi_env env, napi_callback_info info) {
   try {
     napi_value value;
     auto state = arguments(env, info, 1, &value);
-    state->resizeWindows.erase(parseHandle(env, value));
+    HWND window = parseHandle(env, value);
+    if (state->resizeWindows.erase(window) > 0 && !state->activeWindows.contains(window) && IsWindow(window)) {
+      int preference = kDwmCornerDefault;
+      DwmSetWindowAttribute(
+          window,
+          DWMWA_WINDOW_CORNER_PREFERENCE,
+          &preference,
+          sizeof(preference));
+    }
     return undefined(env);
   } catch (const std::exception& error) { return fail(env, error.what()); }
 }
@@ -307,13 +328,10 @@ static napi_value resizeChildCount(napi_env env, napi_callback_info info) {
 }
 
 static napi_value update(napi_env env, napi_callback_info info) {
-  State* state = nullptr;
-  HWND window = nullptr;
-  bool updatingBackground = false;
   try {
     napi_value values[3];
-    state = arguments(env, info, 3, values);
-    window = parseHandle(env, values[0]);
+    auto state = arguments(env, info, 3, values);
+    HWND window = parseHandle(env, values[0]);
     requireOwnedWindow(window);
     double radius = 0, logicalWidth = 0;
     if (CALL(napi_get_value_double, env, values[1], &radius) != napi_ok
@@ -322,62 +340,10 @@ static napi_value update(napi_env env, napi_callback_info info) {
         || !std::isfinite(logicalWidth) || logicalWidth <= 0 || logicalWidth > 100000) {
       throw std::runtime_error("窗口圆角或尺寸无效");
     }
-    RECT bounds{};
-    if (!GetClientRect(window, &bounds)) throw std::runtime_error("无法读取原生窗口尺寸");
-    if (bounds.right <= bounds.left || bounds.bottom <= bounds.top) return undefined(env);
-    updatingBackground = true;
-    auto found = state->backgrounds.find(window);
-    if (found == state->backgrounds.end()) {
-      if (!DispatcherQueue::GetForCurrentThread()) {
-        DispatcherQueueOptions options{sizeof(DispatcherQueueOptions), DQTYPE_THREAD_CURRENT, DQTAT_COM_NONE};
-        winrt::check_hresult(CreateDispatcherQueueController(options,
-          reinterpret_cast<ABI::Windows::System::IDispatcherQueueController**>(winrt::put_abi(state->queue))));
-      }
-      auto background = std::make_unique<Background>();
-      background->compositor = Compositor();
-      auto interop = background->compositor.as<ABI::Windows::UI::Composition::Desktop::ICompositorDesktopInterop>();
-      // 与 Chromium 共用 HWND，背景放在内容下面，不创建第二个窗口。
-      winrt::check_hresult(interop->CreateDesktopWindowTarget(window, false,
-        reinterpret_cast<ABI::Windows::UI::Composition::Desktop::IDesktopWindowTarget**>(winrt::put_abi(background->target))));
-      background->sprite = background->compositor.CreateSpriteVisual();
-      background->geometry = background->compositor.CreateRoundedRectangleGeometry();
-      background->sprite.Clip(background->compositor.CreateGeometricClip(background->geometry));
-      background->sprite.Brush(background->compositor.CreateHostBackdropBrush());
-      background->target.Root(background->sprite);
-      found = state->backgrounds.emplace(window, std::move(background)).first;
-    }
-    auto& background = *found->second;
-    float width = static_cast<float>(bounds.right - bounds.left);
-    float height = static_cast<float>(bounds.bottom - bounds.top);
-    // 按实际像素与 Electron DIP 的比例换算，包含验收的强制缩放和跨显示器移动。
-    float corner = static_cast<float>(radius * width / logicalWidth);
-    background.sprite.Size({width, height});
-    background.geometry.Size({width, height});
-    background.geometry.CornerRadius({corner, corner});
-    BOOL host = TRUE;
-    int none = DWMSBT_NONE;
-    winrt::check_hresult(DwmSetWindowAttribute(window, DWMWA_USE_HOSTBACKDROPBRUSH, &host, sizeof(host)));
-    // Electron 保持透明的普通窗口绘制；关闭不受圆角约束的整窗系统背景，旧版系统不支持该属性时忽略 E_INVALIDARG。
-    HRESULT backdropHr = DwmSetWindowAttribute(window, DWMWA_SYSTEMBACKDROP_TYPE, &none, sizeof(none));
-    if (FAILED(backdropHr) && backdropHr != E_INVALIDARG) winrt::check_hresult(backdropHr);
-    MARGINS margins{-1, -1, -1, -1};
-    winrt::check_hresult(DwmExtendFrameIntoClientArea(window, &margins));
-    napi_value geometry;
-    if (CALL(napi_create_object, env, &geometry) != napi_ok) throw std::runtime_error("无法描述原生窗口几何");
-    for (auto [name, number] : {std::pair{"width", static_cast<double>(width)},
-         std::pair{"height", static_cast<double>(height)}, std::pair{"radius", static_cast<double>(corner)}}) {
-      napi_value value;
-      if (CALL(napi_create_double, env, number, &value) != napi_ok
-          || CALL(napi_set_named_property, env, geometry, name, value) != napi_ok) {
-        throw std::runtime_error("无法描述原生窗口几何");
-      }
-    }
-    return geometry;
-  } catch (const winrt::hresult_error& error) {
-    if (updatingBackground) state->backgrounds.erase(window);
-    return fail(env, "原生背景合成失败：" + winrt::to_string(error.message()));
+    applyWindowCornerPreference(window, radius > 0.0 ? kDwmCornerRound : kDwmCornerDoNotRound);
+    state->activeWindows.insert(window);
+    return undefined(env);
   } catch (const std::exception& error) {
-    if (updatingBackground) state->backgrounds.erase(window);
     return fail(env, error.what());
   }
 }
@@ -387,14 +353,13 @@ static napi_value dispose(napi_env env, napi_callback_info info) {
     napi_value value;
     auto state = arguments(env, info, 1, &value);
     HWND window = parseHandle(env, value);
-    // closed 事件触发时 HWND 已失效；仍按已登记的归属释放全部视觉资源。
-    auto found = state->backgrounds.find(window);
-    if (found != state->backgrounds.end()) {
-      state->backgrounds.erase(found);
-      if (IsWindow(window)) {
-        BOOL host = FALSE;
-        DwmSetWindowAttribute(window, DWMWA_USE_HOSTBACKDROPBRUSH, &host, sizeof(host));
-      }
+    if (state->activeWindows.erase(window) > 0 && !state->resizeWindows.contains(window) && IsWindow(window)) {
+      int preference = kDwmCornerDefault;
+      DwmSetWindowAttribute(
+          window,
+          DWMWA_WINDOW_CORNER_PREFERENCE,
+          &preference,
+          sizeof(preference));
     }
     return undefined(env);
   } catch (const std::exception& error) { return fail(env, error.what()); }
@@ -404,7 +369,7 @@ static napi_value activeCount(napi_env env, napi_callback_info info) {
   try {
     auto state = arguments(env, info, 0, nullptr);
     napi_value result;
-    CALL(napi_create_uint32, env, static_cast<uint32_t>(state->backgrounds.size()), &result);
+    CALL(napi_create_uint32, env, static_cast<uint32_t>(state->activeWindows.size()), &result);
     return result;
   } catch (const std::exception& error) { return fail(env, error.what()); }
 }

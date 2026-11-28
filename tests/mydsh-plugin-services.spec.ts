@@ -90,6 +90,7 @@ async function prepareToolchain(temporary: string): Promise<string> {
     process.platform === 'win32' ? 'junction' : 'dir',
   )
   await cp('packages/runtime/plugin-typert.mjs', path.join(directory, 'plugin-typert.js'))
+  await cp('packages/runtime/canonical-path.mjs', path.join(directory, 'canonical-path.mjs'))
   await writeFile(path.join(directory, 'package.json'), '{"type":"module"}')
   return directory
 }

@@ -23,7 +23,9 @@ function verifyCoreBundle(bundlePath, applicationVersion, failures) {
       JSON.parse(readFileSync(join(bundlePath, 'manifest.json'), 'utf8')),
     )
     if (manifest.version !== applicationVersion) throw new Error('核心版本与应用版本不匹配')
-    const pending = [join(bundlePath, 'payload')]
+    const isArchived = typeof manifest.archive === 'string' && manifest.archive.length > 0
+    const physicalRoot = isArchived ? bundlePath : join(bundlePath, 'payload')
+    const pending = [physicalRoot]
     const remaining = new Set(Object.keys(manifest.files))
     while (pending.length) {
       const directory = pending.pop()
@@ -34,7 +36,8 @@ function verifyCoreBundle(bundlePath, applicationVersion, failures) {
           pending.push(path)
           continue
         }
-        const name = relative(join(bundlePath, 'payload'), path)
+        const name = relative(physicalRoot, path).split(/[\\/]/).join('/')
+        if (isArchived && name === 'manifest.json') continue
         const expected = manifest.files[name]
         if (!entry.isFile() || !expected) throw new Error(`核心存在清单外内容：${name}`)
         const bytes = readFileSync(path)
@@ -49,6 +52,11 @@ function verifyCoreBundle(bundlePath, applicationVersion, failures) {
       }
     }
     if (remaining.size) throw new Error(`核心缺少文件：${remaining.values().next().value}`)
+    const asarEntries = isArchived
+      ? new Set(
+          listPackage(join(bundlePath, manifest.archive)).map(entry => entry.replaceAll('\\', '/')),
+        )
+      : null
     for (const name of [
       '@deepseek-ai/cordis',
       '@deepseek-ai/dsh-agent-loop',
@@ -61,8 +69,10 @@ function verifyCoreBundle(bundlePath, applicationVersion, failures) {
       '@mydsh/computer-use',
       '@vscode/ripgrep',
     ]) {
-      if (!manifest.files[`node_modules/${name}/package.json`])
-        throw new Error(`核心缺少必要模块 ${name}`)
+      const hasModule = asarEntries
+        ? asarEntries.has(`/node_modules/${name}/package.json`)
+        : Boolean(manifest.files[`node_modules/${name}/package.json`])
+      if (!hasModule) throw new Error(`核心缺少必要模块 ${name}`)
     }
     for (const name of ['LICENSE', 'manifest.json', 'README.zh.md']) {
       if (!manifest.files[`licenses/deepseek-harness/${name}`])
@@ -170,11 +180,11 @@ const executablePath = join(applicationPath, 'Contents', 'MacOS', PRODUCT_NAME)
 const coreBundlePath = join(applicationPath, 'Contents', 'Resources', 'mydsh-runtime')
 const runtimeNodePtyPath = join(
   coreBundlePath,
-  'payload/node_modules/@mydsh/desktop-services/node_modules/node-pty/build/Release',
+  'runtime.asar.unpacked/node_modules/@mydsh/desktop-services/node_modules/node-pty/build/Release',
 )
 const ripgrepPath = join(
   coreBundlePath,
-  'payload/node_modules',
+  'runtime.asar.unpacked/node_modules',
   `@vscode/ripgrep-darwin-${arch}`,
   'bin/rg',
 )
@@ -223,7 +233,9 @@ if (failures.length === 0) {
   if (!entries.includes('/package.json') || !entries.includes('/lib/main/index.js')) {
     failures.push('ASAR 缺少运行时入口')
   }
-  if (!existsSync(join(coreBundlePath, 'payload/node_modules/@vscode/ripgrep/LICENSE')))
+  if (
+    !existsSync(join(coreBundlePath, 'runtime.asar.unpacked/node_modules/@vscode/ripgrep/LICENSE'))
+  )
     failures.push('离线核心缺少 Ripgrep 许可证')
   if (!entries.includes('/node_modules/yaml/package.json'))
     failures.push('ASAR 缺少数据导入所需的 YAML 解析依赖')

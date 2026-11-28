@@ -1,5 +1,4 @@
 import type { DesktopColorScheme } from '../../shared/appearance.ts'
-import { DESKTOP_WINDOW_CORNER_RADIUS } from '../../shared/window.ts'
 
 export interface StartupScreenSnapshot {
   phase: string
@@ -73,7 +72,6 @@ export function createStartupScreenDocument(
     * { box-sizing: border-box; }
     html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
     body { -webkit-app-region: drag; color: var(--ink); }
-    :root[data-platform="win32"] body { clip-path: inset(0 var(--window-clip-right, 0px) var(--window-clip-bottom, 0px) 0 round var(--window-clip-radius, ${DESKTOP_WINDOW_CORNER_RADIUS}px)); }
     .launch-window {
       position: relative;
       width: 100%;

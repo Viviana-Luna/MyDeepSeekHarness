@@ -3,462 +3,405 @@
  */
 import { writeFileSync } from 'node:fs'
 import { readTrafficLightLayout } from '../../window-controls.ts'
-import { nearPanelValue } from '../host-verify-context.ts'
 import {
   captureVerifiedPage,
   clickTrustedElement,
   dragTrustedElementHorizontally,
 } from '../desktop-verifier.ts'
-import { verifyWindowControls } from '../window-verifier.ts'
+import { nearPanelValue } from '../host-verify-context.ts'
 import { seedComposerReadings } from '../session-projection-fixture.ts'
-import { type LocalVerifyState, assertSuiteInvariants, ensureInitialShellSampled } from './state.ts'
+import { verifyWindowControls } from '../window-verifier.ts'
 import {
-  PANELS_SCRIPT_1,
-  PANELS_SCRIPT_2,
-  PANELS_SCRIPT_3,
-  PANELS_SCRIPT_4,
-  PANELS_SCRIPT_5,
-} from './panels-scripts.ts'
+  COLLAPSED_SIDEBAR_BOUNDS_PROBE,
+  DIVIDER_DRAG_LINE_ACTIVE_PROBE,
+  DIVIDER_DRAG_LINE_CLEARED_PROBE,
+  NON_CONVERSATION_COMPOSER_VISIBILITY_PROBE,
+  PANEL_GEOMETRY_SAMPLE_PROBE,
+} from './panels-probes.ts'
+import {
+  assertSuiteInvariants,
+  ensureInitialShellSampled,
+  type LocalVerifyState,
+  type PanelGeometrySample,
+} from './state.ts'
 
-/** 执行 panels 验收套件第 1 阶段。 */
-export async function runPanelsStep1(bag: LocalVerifyState): Promise<void> {
-  bag.readPanelGeometry = async () =>
-    bag.bridge.win.webContents.executeJavaScript(PANELS_SCRIPT_1) as Promise<null | {
-      viewportWidth: number
-      navigationVisible: boolean
-      informationVisible: boolean
-      navigationWidth: number
-      informationWidth: number
-      mainHeight: number
-      composerHeight: number
-      mainLeft: number
-      mainRight: number
-      composerLeft: number
-      composerRight: number
-      navigationGap: number
-      informationGap: number
-      composerTop: number
-      composerContained: boolean
-      composerGap: number
-      composerOverlayReady: boolean
-      composerFooterBottomGap: number
-      composerReadingsSpan: number
-      composerDividerTop: number
-      composerDividerBottom: number
-      resizeCornerCenterX: number | null
-      resizeCornerCenterY: number | null
-      resizeCornerOpacity: number | null
-      viewTabsLeft: number
-      viewTabsRight: number
-      viewTabsWidth: number
-      navigationLabel: string | null
-      informationLabel: string | null
-    }>
-  bag.panelGeometryInitial = await bag.readPanelGeometry()
-  await clickTrustedElement(bag.bridge.win, '.panel-divider--navigation .panel-divider__capsule')
-  bag.navigationCollapsed = await bag.readPanelGeometry()
+async function ensurePanelsComposerReadings(state: LocalVerifyState): Promise<void> {
+  const existing = (await state.bridge.win.webContents.executeJavaScript(
+    `document.querySelector('[data-composer-readings]') !== null`,
+  )) as boolean
+  if (existing) return
+  const activeSessionId = (await state.bridge.win.webContents.executeJavaScript(
+    `document.querySelector('.composer-card')?.getAttribute('data-session-id') ?? null`,
+  )) as string | null
+  if (activeSessionId === null || activeSessionId === '') return
+  await seedComposerReadings(state.bridge.win, activeSessionId, frame => {
+    state.bridge.win.webContents.send(state.bridge.hostChannels.sessionFrame, frame)
+  })
 }
 
-/** 执行 panels 验收套件第 2 阶段。 */
-export async function runPanelsStep2(bag: LocalVerifyState): Promise<void> {
-  bag.collapsedHeaderBounds = (await bag.bridge.win.webContents.executeJavaScript(
-    PANELS_SCRIPT_2,
-  )) as {
-    windowEdge: number
-    sessionTabsVisible: boolean
-    sidebarTop: number
-    sidebarBottom: number
-    mainTop: number
-    chromeTop: number
-    chromeBottom: number
-    searchHidden: boolean
-    chromeRight: number
-    railTop: number
-    railBottom: number
-    railLeft: number
-    railRight: number
-    railWidth: number
-    modeRailWidth: number
-    railBackground: string
-    settingsLeft: number
-    settingsRight: number
-    settingsBottom: number
-  }
+async function verifyCollapsedSidebarClearance(state: LocalVerifyState): Promise<void> {
+  state.readPanelGeometry = async () =>
+    state.bridge.win.webContents.executeJavaScript(
+      PANEL_GEOMETRY_SAMPLE_PROBE,
+    ) as Promise<PanelGeometrySample | null>
+  state.panelGeometryInitial = await state.readPanelGeometry()
+  await clickTrustedElement(state.bridge.win, '.panel-divider--navigation .panel-divider__capsule')
+  state.navigationCollapsed = await state.readPanelGeometry()
+
+  const bounds = (await state.bridge.win.webContents.executeJavaScript(
+    COLLAPSED_SIDEBAR_BOUNDS_PROBE,
+  )) as Record<string, any>
+  state.collapsedHeaderBounds = bounds
   const topClearanceValid =
-    process.platform === 'win32' && !bag.collapsedHeaderBounds.sessionTabsVisible
-      ? nearPanelValue(
-          bag.collapsedHeaderBounds.sidebarTop,
-          bag.collapsedHeaderBounds.windowEdge,
-        ) && nearPanelValue(bag.collapsedHeaderBounds.mainTop, bag.collapsedHeaderBounds.windowEdge)
-      : bag.collapsedHeaderBounds.sidebarTop > bag.collapsedHeaderBounds.chromeBottom
+    process.platform === 'win32' && !bounds.sessionTabsVisible
+      ? nearPanelValue(bounds.sidebarTop, bounds.windowEdge) &&
+        nearPanelValue(bounds.mainTop, bounds.windowEdge)
+      : bounds.sidebarTop > bounds.chromeBottom
+  const trafficLightsOutOfBounds = readTrafficLightLayout(state.bridge.win).some(
+    button =>
+      button.y < bounds.chromeTop ||
+      button.y + button.height > bounds.chromeBottom ||
+      Math.abs(button.y + button.height / 2 - (bounds.chromeTop + bounds.chromeBottom) / 2) > 1,
+  )
   if (
-    readTrafficLightLayout(bag.bridge.win).some(
-      button =>
-        button.y < bag.collapsedHeaderBounds.chromeTop ||
-        button.y + button.height > bag.collapsedHeaderBounds.chromeBottom ||
-        Math.abs(
-          button.y +
-            button.height / 2 -
-            (bag.collapsedHeaderBounds.chromeTop + bag.collapsedHeaderBounds.chromeBottom) / 2,
-        ) > 1,
-    ) ||
+    trafficLightsOutOfBounds ||
     !topClearanceValid ||
-    !bag.collapsedHeaderBounds.searchHidden ||
-    !nearPanelValue(bag.collapsedHeaderBounds.railTop, bag.collapsedHeaderBounds.sidebarTop) ||
-    !nearPanelValue(
-      bag.collapsedHeaderBounds.railBottom,
-      bag.collapsedHeaderBounds.sidebarBottom,
-    ) ||
-    !nearPanelValue(bag.collapsedHeaderBounds.railWidth, bag.collapsedHeaderBounds.modeRailWidth) ||
-    bag.collapsedHeaderBounds.railBackground === 'rgba(0, 0, 0, 0)' ||
-    !nearPanelValue(
-      bag.collapsedHeaderBounds.settingsBottom,
-      bag.collapsedHeaderBounds.railBottom - 10,
-    ) ||
-    !nearPanelValue(
-      bag.collapsedHeaderBounds.settingsLeft + bag.collapsedHeaderBounds.settingsRight,
-      bag.collapsedHeaderBounds.railLeft + bag.collapsedHeaderBounds.railRight,
-    )
-  )
+    !bounds.searchHidden ||
+    !nearPanelValue(bounds.railTop, bounds.sidebarTop) ||
+    !nearPanelValue(bounds.railBottom, bounds.sidebarBottom) ||
+    !nearPanelValue(bounds.railWidth, bounds.modeRailWidth) ||
+    bounds.railBackground === 'rgba(0, 0, 0, 0)' ||
+    !nearPanelValue(bounds.settingsBottom, bounds.railBottom - 10) ||
+    !nearPanelValue(bounds.settingsLeft + bounds.settingsRight, bounds.railLeft + bounds.railRight)
+  ) {
     throw new Error('收起侧栏后红绿灯、顶栏收放、搜索隐藏状态、菜单宽度、设置位置或栏位材质不正确')
-  await verifyWindowControls(bag.bridge.win, false)
+  }
+  await verifyWindowControls(state.bridge.win, false)
   writeFileSync(
-    bag.bridge.artifactPath('verify-sidebar-collapsed.png'),
-    (await captureVerifiedPage(bag.bridge.win)).toPNG(),
+    state.bridge.artifactPath('verify-sidebar-collapsed.png'),
+    (await captureVerifiedPage(state.bridge.win)).toPNG(),
   )
-  // 左右栏同时收起且顶栏隐藏时，Windows 三枚窗口控制按钮应落入主浮岛顶缘并与右侧悬浮胶囊准确对齐。
-  if (process.platform === 'win32' && !bag.collapsedHeaderBounds.sessionTabsVisible) {
-    await clickTrustedElement(bag.bridge.win, '.panel-divider--information .panel-divider__capsule')
-    await bag.readPanelGeometry()
-    await verifyWindowControls(bag.bridge.win, false)
-    writeFileSync(
-      bag.bridge.artifactPath('verify-both-collapsed.png'),
-      (await captureVerifiedPage(bag.bridge.win)).toPNG(),
+
+  if (process.platform === 'win32' && !bounds.sessionTabsVisible) {
+    await clickTrustedElement(
+      state.bridge.win,
+      '.panel-divider--information .panel-divider__capsule',
     )
-    await clickTrustedElement(bag.bridge.win, '.panel-divider--information .panel-divider__capsule')
-    await bag.readPanelGeometry()
+    await state.readPanelGeometry()
+    await verifyWindowControls(state.bridge.win, false)
+    writeFileSync(
+      state.bridge.artifactPath('verify-both-collapsed.png'),
+      (await captureVerifiedPage(state.bridge.win)).toPNG(),
+    )
+    await clickTrustedElement(
+      state.bridge.win,
+      '.panel-divider--information .panel-divider__capsule',
+    )
+    await state.readPanelGeometry()
   }
 }
 
-/** 执行 panels 验收套件第 3 阶段。 */
-export async function runPanelsStep3(bag: LocalVerifyState): Promise<void> {
-  bag.navigationCollapsedReady =
-    bag.navigationCollapsed !== null &&
-    !bag.navigationCollapsed.navigationVisible &&
+async function verifySidePanelCapsuleToggle(state: LocalVerifyState): Promise<void> {
+  state.navigationCollapsedReady =
+    state.navigationCollapsed !== null &&
+    !state.navigationCollapsed.navigationVisible &&
     nearPanelValue(
-      bag.navigationCollapsed.mainLeft,
-      bag.initial.windowEdge + bag.initial.modeRailWidth + 2 + bag.initial.windowGap,
+      state.navigationCollapsed.mainLeft,
+      state.initial.windowEdge + state.initial.modeRailWidth + 2 + state.initial.windowGap,
     ) &&
-    bag.navigationCollapsed.composerContained &&
-    bag.navigationCollapsed.navigationLabel === '展开项目面板'
-  await clickTrustedElement(bag.bridge.win, '.panel-divider--navigation .panel-divider__capsule')
-  bag.navigationExpanded = await bag.readPanelGeometry()
-  bag.navigationExpandedReady =
-    bag.navigationExpanded !== null &&
-    bag.navigationExpanded.navigationVisible &&
-    nearPanelValue(bag.navigationExpanded.navigationWidth, 260) &&
-    nearPanelValue(bag.navigationExpanded.navigationGap, bag.initial.windowGap) &&
-    bag.navigationExpanded.navigationLabel === '收起项目面板'
-  await clickTrustedElement(bag.bridge.win, '.panel-divider--information .panel-divider__capsule')
-  bag.informationCollapsed = await bag.readPanelGeometry()
-  bag.informationCollapsedReady =
-    bag.informationCollapsed !== null &&
-    !bag.informationCollapsed.informationVisible &&
+    state.navigationCollapsed.composerContained &&
+    state.navigationCollapsed.navigationLabel === '展开项目面板'
+  await clickTrustedElement(state.bridge.win, '.panel-divider--navigation .panel-divider__capsule')
+  state.navigationExpanded = await state.readPanelGeometry()
+  state.navigationExpandedReady =
+    state.navigationExpanded !== null &&
+    state.navigationExpanded.navigationVisible &&
+    nearPanelValue(state.navigationExpanded.navigationWidth, 260) &&
+    nearPanelValue(state.navigationExpanded.navigationGap, state.initial.windowGap) &&
+    state.navigationExpanded.navigationLabel === '收起项目面板'
+
+  await clickTrustedElement(state.bridge.win, '.panel-divider--information .panel-divider__capsule')
+  state.informationCollapsed = await state.readPanelGeometry()
+  state.informationCollapsedReady =
+    state.informationCollapsed !== null &&
+    !state.informationCollapsed.informationVisible &&
     nearPanelValue(
-      bag.informationCollapsed.mainRight,
-      bag.informationCollapsed.viewportWidth - bag.initial.windowEdge,
+      state.informationCollapsed.mainRight,
+      state.informationCollapsed.viewportWidth - state.initial.windowEdge,
     ) &&
-    bag.informationCollapsed.composerContained &&
-    nearPanelValue(bag.informationCollapsed.composerReadingsSpan, 26) &&
-    bag.informationCollapsed.informationLabel === '展开右侧浮岛'
-  await clickTrustedElement(bag.bridge.win, '.panel-divider--information .panel-divider__capsule')
-  bag.informationExpanded = await bag.readPanelGeometry()
-  bag.informationExpandedReady =
-    bag.informationExpanded !== null &&
-    bag.informationExpanded.informationVisible &&
-    nearPanelValue(bag.informationExpanded.composerReadingsSpan, 26) &&
-    nearPanelValue(bag.informationExpanded.informationWidth, 260) &&
-    nearPanelValue(bag.informationExpanded.informationGap, bag.initial.windowGap) &&
-    bag.informationExpanded.informationLabel === '收起右侧浮岛'
-  bag.panelCollapseReady =
-    bag.navigationCollapsedReady &&
-    bag.navigationExpandedReady &&
-    bag.informationCollapsedReady &&
-    bag.informationExpandedReady
-  bag.navigationDragPoint = (await bag.bridge.win.webContents.executeJavaScript(`(() => {
-      const divider = document.querySelector('.panel-divider--navigation')
-      if (!(divider instanceof HTMLElement)) return null
-      const rect = divider.getBoundingClientRect()
-      return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + 28) }
-    })()`)) as null | { x: number; y: number }
-  if (bag.navigationDragPoint === null) throw new Error('找不到导航面板拖动热区')
-  bag.bridge.win.webContents.sendInputEvent({ type: 'mouseMove', ...bag.navigationDragPoint })
+    state.informationCollapsed.composerContained &&
+    nearPanelValue(state.informationCollapsed.composerReadingsSpan, 26) &&
+    state.informationCollapsed.informationLabel === '展开右侧浮岛'
+
+  await clickTrustedElement(state.bridge.win, '.panel-divider--information .panel-divider__capsule')
+  state.informationExpanded = await state.readPanelGeometry()
+  state.informationExpandedReady =
+    state.informationExpanded !== null &&
+    state.informationExpanded.informationVisible &&
+    nearPanelValue(state.informationExpanded.composerReadingsSpan, 26) &&
+    nearPanelValue(state.informationExpanded.informationWidth, 260) &&
+    nearPanelValue(state.informationExpanded.informationGap, state.initial.windowGap) &&
+    state.informationExpanded.informationLabel === '收起右侧浮岛'
+
+  state.panelCollapseReady =
+    state.navigationCollapsedReady &&
+    state.navigationExpandedReady &&
+    state.informationCollapsedReady &&
+    state.informationExpandedReady
 }
 
-/** 执行 panels 验收套件第 4 阶段。 */
-export async function runPanelsStep4(bag: LocalVerifyState): Promise<void> {
-  bag.bridge.win.webContents.sendInputEvent({
-    type: 'mouseDown',
-    ...bag.navigationDragPoint,
-    button: 'left',
-    clickCount: 1,
-  })
-  bag.bridge.win.webContents.sendInputEvent({
-    type: 'mouseMove',
-    x: bag.navigationDragPoint.x + 36,
-    y: bag.navigationDragPoint.y,
-    movementX: 36,
-    movementY: 0,
-  })
-  bag.waitForPanelGeometry = async (
-    predicate: (
-      geometry: NonNullable<Awaited<ReturnType<typeof bag.readPanelGeometry>>>,
-    ) => boolean,
-  ) => {
-    let latest = await bag.readPanelGeometry()
+async function resetDividerByHomeKey(state: LocalVerifyState, selector: string): Promise<void> {
+  await state.bridge.win.webContents.executeJavaScript(`(() => {
+    const target = document.querySelector(${JSON.stringify(selector)})
+    if (!(target instanceof HTMLElement)) return false
+    target.focus()
+    return target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
+  })()`)
+}
+
+async function verifyNavigationDividerDrag(state: LocalVerifyState): Promise<void> {
+  state.waitForPanelGeometry = async predicate => {
+    let latest = await state.readPanelGeometry()
     /* oxlint-disable no-await-in-loop -- 串行轮询当前窗口的面板几何直到目标尺寸落稳。 */
     for (let attempt = 0; attempt < 60; attempt += 1) {
       if (latest !== null && predicate(latest)) return latest
       await new Promise(resolve => {
         setTimeout(resolve, 25)
       })
-      latest = await bag.readPanelGeometry()
+      latest = await state.readPanelGeometry()
     }
     /* oxlint-enable no-await-in-loop */
     return latest
   }
-  bag.dragLineActive = (await bag.bridge.win.webContents.executeJavaScript(
-    PANELS_SCRIPT_3,
-  )) as boolean
-  bag.bridge.win.webContents.sendInputEvent({
-    type: 'mouseUp',
-    x: bag.navigationDragPoint.x + 36,
-    y: bag.navigationDragPoint.y,
+
+  const navigationDragPoint = (await state.bridge.win.webContents.executeJavaScript(`(() => {
+    const divider = document.querySelector('.panel-divider--navigation')
+    if (!(divider instanceof HTMLElement)) return null
+    const rect = divider.getBoundingClientRect()
+    return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + 28) }
+  })()`)) as null | { x: number; y: number }
+  if (navigationDragPoint === null) throw new Error('找不到导航面板拖动热区')
+
+  state.bridge.win.webContents.sendInputEvent({ type: 'mouseMove', ...navigationDragPoint })
+  state.bridge.win.webContents.sendInputEvent({
+    type: 'mouseDown',
+    ...navigationDragPoint,
     button: 'left',
     clickCount: 1,
   })
-  bag.bridge.win.webContents.sendInputEvent({
+  state.bridge.win.webContents.sendInputEvent({
     type: 'mouseMove',
-    x: bag.navigationDragPoint.x + 72,
-    y: bag.navigationDragPoint.y,
+    x: navigationDragPoint.x + 36,
+    y: navigationDragPoint.y,
+    movementX: 36,
+    movementY: 0,
   })
-  bag.dragLineCleared = (await bag.bridge.win.webContents.executeJavaScript(
-    PANELS_SCRIPT_4,
+  state.dragLineActive = (await state.bridge.win.webContents.executeJavaScript(
+    DIVIDER_DRAG_LINE_ACTIVE_PROBE,
   )) as boolean
-  bag.panelDragLineReady = bag.dragLineActive && bag.dragLineCleared
-  bag.navigationResized = await bag.waitForPanelGeometry(
+  state.bridge.win.webContents.sendInputEvent({
+    type: 'mouseUp',
+    x: navigationDragPoint.x + 36,
+    y: navigationDragPoint.y,
+    button: 'left',
+    clickCount: 1,
+  })
+  state.bridge.win.webContents.sendInputEvent({
+    type: 'mouseMove',
+    x: navigationDragPoint.x + 72,
+    y: navigationDragPoint.y,
+  })
+  state.dragLineCleared = (await state.bridge.win.webContents.executeJavaScript(
+    DIVIDER_DRAG_LINE_CLEARED_PROBE,
+  )) as boolean
+  state.panelDragLineReady = state.dragLineActive && state.dragLineCleared
+  state.navigationResized = await state.waitForPanelGeometry(
     geometry => geometry.navigationWidth >= 295 && geometry.navigationWidth <= 297,
   )
-  await bag.bridge.win.webContents.executeJavaScript(`(() => {
-      const divider = document.querySelector('.panel-divider--navigation')
-      if (!(divider instanceof HTMLElement)) return false
-      divider.focus()
-      return divider.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
-    })()`)
-}
-
-/** 执行 panels 验收套件第 5 阶段。 */
-export async function runPanelsStep5(bag: LocalVerifyState): Promise<void> {
-  bag.navigationReset = await bag.waitForPanelGeometry(geometry =>
+  await resetDividerByHomeKey(state, '.panel-divider--navigation')
+  state.navigationReset = await state.waitForPanelGeometry(geometry =>
     nearPanelValue(geometry.navigationWidth, 260),
   )
-  await dragTrustedElementHorizontally(bag.bridge.win, '.panel-divider--information', -36)
-  bag.informationResized = await bag.waitForPanelGeometry(
+}
+
+async function verifyInformationAndComposerDividerDrag(state: LocalVerifyState): Promise<void> {
+  await dragTrustedElementHorizontally(state.bridge.win, '.panel-divider--information', -36)
+  state.informationResized = await state.waitForPanelGeometry(
     geometry => geometry.informationWidth >= 295 && geometry.informationWidth <= 297,
   )
-  await bag.bridge.win.webContents.executeJavaScript(`(() => {
-      const divider = document.querySelector('.panel-divider--information')
-      if (!(divider instanceof HTMLElement)) return false
-      divider.focus()
-      return divider.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
-    })()`)
-  bag.informationReset = await bag.waitForPanelGeometry(geometry =>
+  await resetDividerByHomeKey(state, '.panel-divider--information')
+  state.informationReset = await state.waitForPanelGeometry(geometry =>
     nearPanelValue(geometry.informationWidth, 260),
   )
-  bag.composerDragPoint = (await bag.bridge.win.webContents.executeJavaScript(`(() => {
-      const divider = document.querySelector('.panel-divider--composer')
-      if (!(divider instanceof HTMLElement)) return null
-      const rect = divider.getBoundingClientRect()
-      return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) }
-    })()`)) as null | { x: number; y: number }
-  if (bag.composerDragPoint === null) throw new Error('找不到输入区高度拖动热区')
-  bag.bridge.win.webContents.sendInputEvent({ type: 'mouseMove', ...bag.composerDragPoint })
-  bag.bridge.win.webContents.sendInputEvent({
+
+  const composerDragPoint = (await state.bridge.win.webContents.executeJavaScript(`(() => {
+    const divider = document.querySelector('.panel-divider--composer')
+    if (!(divider instanceof HTMLElement)) return null
+    const rect = divider.getBoundingClientRect()
+    return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) }
+  })()`)) as null | { x: number; y: number }
+  if (composerDragPoint === null) throw new Error('找不到输入区高度拖动热区')
+  state.bridge.win.webContents.sendInputEvent({ type: 'mouseMove', ...composerDragPoint })
+  state.bridge.win.webContents.sendInputEvent({
     type: 'mouseDown',
-    ...bag.composerDragPoint,
+    ...composerDragPoint,
     button: 'left',
     clickCount: 1,
   })
-  bag.bridge.win.webContents.sendInputEvent({
+  state.bridge.win.webContents.sendInputEvent({
     type: 'mouseMove',
-    x: bag.composerDragPoint.x,
-    y: bag.composerDragPoint.y - 36,
+    x: composerDragPoint.x,
+    y: composerDragPoint.y - 36,
     movementX: 0,
     movementY: -36,
   })
-  bag.bridge.win.webContents.sendInputEvent({
+  state.bridge.win.webContents.sendInputEvent({
     type: 'mouseUp',
-    x: bag.composerDragPoint.x,
-    y: bag.composerDragPoint.y - 36,
+    x: composerDragPoint.x,
+    y: composerDragPoint.y - 36,
     button: 'left',
     clickCount: 1,
   })
-  bag.composerResized = await bag.waitForPanelGeometry(
+  state.composerResized = await state.waitForPanelGeometry(
     geometry => geometry.composerHeight >= 147 && geometry.composerHeight <= 149,
+  )
+  await resetDividerByHomeKey(state, '.panel-divider--composer')
+  state.composerReset = await state.waitForPanelGeometry(geometry =>
+    nearPanelValue(geometry.composerHeight, 112),
   )
 }
 
-/** 执行 panels 验收套件第 6 阶段。 */
-export async function runPanelsStep6(bag: LocalVerifyState): Promise<void> {
-  await bag.bridge.win.webContents.executeJavaScript(`(() => {
-      const divider = document.querySelector('.panel-divider--composer')
-      if (!(divider instanceof HTMLElement)) return false
-      divider.focus()
-      return divider.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
-    })()`)
-  bag.composerReset = await bag.waitForPanelGeometry(geometry =>
-    nearPanelValue(geometry.composerHeight, 112),
-  )
-  bag.cornerDragPoint = (await bag.bridge.win.webContents.executeJavaScript(`(() => {
-      const handle = document.querySelector('.panel-resize-corner')
-      if (!(handle instanceof HTMLElement)) return null
-      const rect = handle.getBoundingClientRect()
-      return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) }
-    })()`)) as null | { x: number; y: number }
-  if (bag.cornerDragPoint === null) throw new Error('找不到二维布局拖动柄')
-  bag.bridge.win.webContents.sendInputEvent({ type: 'mouseMove', ...bag.cornerDragPoint })
-  bag.bridge.win.webContents.sendInputEvent({
+async function verifyCornerHandleResize(state: LocalVerifyState): Promise<void> {
+  const cornerDragPoint = (await state.bridge.win.webContents.executeJavaScript(`(() => {
+    const handle = document.querySelector('.panel-resize-corner')
+    if (!(handle instanceof HTMLElement)) return null
+    const rect = handle.getBoundingClientRect()
+    return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) }
+  })()`)) as null | { x: number; y: number }
+  if (cornerDragPoint === null) throw new Error('找不到二维布局拖动柄')
+  state.bridge.win.webContents.sendInputEvent({ type: 'mouseMove', ...cornerDragPoint })
+  state.bridge.win.webContents.sendInputEvent({
     type: 'mouseDown',
-    ...bag.cornerDragPoint,
+    ...cornerDragPoint,
     button: 'left',
     clickCount: 1,
   })
-  bag.bridge.win.webContents.sendInputEvent({
+  state.bridge.win.webContents.sendInputEvent({
     type: 'mouseMove',
-    x: bag.cornerDragPoint.x - 30,
-    y: bag.cornerDragPoint.y - 30,
+    x: cornerDragPoint.x - 30,
+    y: cornerDragPoint.y - 30,
     movementX: -30,
     movementY: -30,
   })
-  bag.bridge.win.webContents.sendInputEvent({
+  state.bridge.win.webContents.sendInputEvent({
     type: 'mouseUp',
-    x: bag.cornerDragPoint.x - 30,
-    y: bag.cornerDragPoint.y - 30,
+    x: cornerDragPoint.x - 30,
+    y: cornerDragPoint.y - 30,
     button: 'left',
     clickCount: 1,
   })
-  bag.cornerResized = await bag.waitForPanelGeometry(
+  state.cornerResized = await state.waitForPanelGeometry(
     geometry =>
       geometry.informationWidth >= 289 &&
       geometry.informationWidth <= 291 &&
       geometry.composerHeight >= 141 &&
       geometry.composerHeight <= 143,
   )
-  await bag.bridge.win.webContents.executeJavaScript(`(() => {
-      const handle = document.querySelector('.panel-resize-corner')
-      if (!(handle instanceof HTMLElement)) return false
-      handle.focus()
-      return handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
-    })()`)
-}
-
-/** 执行 panels 验收套件第 7 阶段。 */
-export async function runPanelsStep7(bag: LocalVerifyState): Promise<void> {
-  bag.cornerReset = await bag.waitForPanelGeometry(
+  await resetDividerByHomeKey(state, '.panel-resize-corner')
+  state.cornerReset = await state.waitForPanelGeometry(
     geometry =>
       nearPanelValue(geometry.informationWidth, 260) &&
       nearPanelValue(geometry.composerHeight, 112),
   )
-  bag.panelResizeReady =
-    bag.navigationResized !== null &&
-    bag.navigationResized.navigationWidth >= 295 &&
-    bag.navigationResized.navigationWidth <= 297 &&
-    nearPanelValue(bag.navigationResized.navigationGap, bag.initial.windowGap) &&
-    bag.navigationReset !== null &&
-    nearPanelValue(bag.navigationReset.navigationWidth, 260) &&
-    bag.informationResized !== null &&
-    bag.informationResized.informationWidth >= 295 &&
-    bag.informationResized.informationWidth <= 297 &&
-    nearPanelValue(bag.informationResized.informationGap, bag.initial.windowGap) &&
-    bag.panelGeometryInitial !== null &&
-    bag.panelGeometryInitial.resizeCornerOpacity === 0 &&
-    nearPanelValue(bag.informationResized.viewTabsLeft, bag.panelGeometryInitial.viewTabsLeft) &&
-    nearPanelValue(bag.informationResized.viewTabsRight, bag.panelGeometryInitial.viewTabsRight) &&
-    nearPanelValue(bag.informationResized.viewTabsWidth, bag.panelGeometryInitial.viewTabsWidth) &&
-    bag.informationReset !== null &&
-    nearPanelValue(bag.informationReset.informationWidth, 260) &&
-    nearPanelValue(bag.informationReset.viewTabsWidth, bag.panelGeometryInitial.viewTabsWidth) &&
-    bag.composerResized !== null &&
-    bag.composerResized.composerHeight >= 147 &&
-    bag.composerResized.composerHeight <= 149 &&
-    bag.composerResized.composerOverlayReady &&
-    bag.composerResized.composerContained &&
-    nearPanelValue(bag.composerResized.composerFooterBottomGap, 10) &&
-    bag.composerResized.mainHeight >= 220 &&
-    bag.composerReset !== null &&
-    nearPanelValue(bag.composerReset.composerHeight, 112) &&
-    nearPanelValue(bag.composerReset.composerDividerTop, bag.composerReset.composerTop - 5) &&
-    bag.cornerResized !== null &&
-    bag.cornerResized.informationWidth >= 289 &&
-    bag.cornerResized.informationWidth <= 291 &&
-    bag.cornerResized.composerHeight >= 141 &&
-    bag.cornerResized.composerHeight <= 143 &&
-    bag.cornerResized.resizeCornerCenterX !== null &&
-    bag.cornerResized.resizeCornerCenterY !== null &&
+}
+
+async function evaluatePanelResizeAndComposerVisibility(state: LocalVerifyState): Promise<void> {
+  state.panelResizeReady =
+    state.navigationResized !== null &&
+    state.navigationResized.navigationWidth >= 295 &&
+    state.navigationResized.navigationWidth <= 297 &&
+    nearPanelValue(state.navigationResized.navigationGap, state.initial.windowGap) &&
+    state.navigationReset !== null &&
+    nearPanelValue(state.navigationReset.navigationWidth, 260) &&
+    state.informationResized !== null &&
+    state.informationResized.informationWidth >= 295 &&
+    state.informationResized.informationWidth <= 297 &&
+    nearPanelValue(state.informationResized.informationGap, state.initial.windowGap) &&
+    state.panelGeometryInitial !== null &&
+    state.panelGeometryInitial.resizeCornerOpacity === 0 &&
     nearPanelValue(
-      bag.cornerResized.resizeCornerCenterX,
-      bag.cornerResized.mainRight + bag.initial.windowGap / 2,
+      state.informationResized.viewTabsLeft,
+      state.panelGeometryInitial.viewTabsLeft,
     ) &&
-    nearPanelValue(bag.cornerResized.resizeCornerCenterY, bag.cornerResized.composerTop - 2.5) &&
-    bag.cornerReset !== null &&
-    nearPanelValue(bag.cornerReset.informationWidth, 260) &&
-    nearPanelValue(bag.cornerReset.composerHeight, 112)
-}
+    nearPanelValue(
+      state.informationResized.viewTabsRight,
+      state.panelGeometryInitial.viewTabsRight,
+    ) &&
+    nearPanelValue(
+      state.informationResized.viewTabsWidth,
+      state.panelGeometryInitial.viewTabsWidth,
+    ) &&
+    state.informationReset !== null &&
+    nearPanelValue(state.informationReset.informationWidth, 260) &&
+    nearPanelValue(
+      state.informationReset.viewTabsWidth,
+      state.panelGeometryInitial.viewTabsWidth,
+    ) &&
+    state.composerResized !== null &&
+    state.composerResized.composerHeight >= 147 &&
+    state.composerResized.composerHeight <= 149 &&
+    state.composerResized.composerOverlayReady &&
+    state.composerResized.composerContained &&
+    nearPanelValue(state.composerResized.composerFooterBottomGap, 10) &&
+    state.composerResized.mainHeight >= 220 &&
+    state.composerReset !== null &&
+    nearPanelValue(state.composerReset.composerHeight, 112) &&
+    nearPanelValue(state.composerReset.composerDividerTop, state.composerReset.composerTop - 5) &&
+    state.cornerResized !== null &&
+    state.cornerResized.informationWidth >= 289 &&
+    state.cornerResized.informationWidth <= 291 &&
+    state.cornerResized.composerHeight >= 141 &&
+    state.cornerResized.composerHeight <= 143 &&
+    state.cornerResized.resizeCornerCenterX !== null &&
+    state.cornerResized.resizeCornerCenterY !== null &&
+    nearPanelValue(
+      state.cornerResized.resizeCornerCenterX,
+      state.cornerResized.mainRight + state.initial.windowGap / 2,
+    ) &&
+    nearPanelValue(
+      state.cornerResized.resizeCornerCenterY,
+      state.cornerResized.composerTop - 2.5,
+    ) &&
+    state.cornerReset !== null &&
+    nearPanelValue(state.cornerReset.informationWidth, 260) &&
+    nearPanelValue(state.cornerReset.composerHeight, 112)
 
-/** 执行 panels 验收套件第 8 阶段。 */
-export async function runPanelsStep8(bag: LocalVerifyState): Promise<void> {
   console.log('desktop-shell-verify-local: panel-geometry', {
-    navigationCollapsedReady: bag.navigationCollapsedReady,
-    navigationExpandedReady: bag.navigationExpandedReady,
-    informationCollapsedReady: bag.informationCollapsedReady,
-    informationExpandedReady: bag.informationExpandedReady,
-    navigationResized: bag.navigationResized,
-    informationResized: bag.informationResized,
-    composerResized: bag.composerResized,
-    composerReset: bag.composerReset,
-    cornerResized: bag.cornerResized,
-    cornerReset: bag.cornerReset,
+    navigationCollapsedReady: state.navigationCollapsedReady,
+    navigationExpandedReady: state.navigationExpandedReady,
+    informationCollapsedReady: state.informationCollapsedReady,
+    informationExpandedReady: state.informationExpandedReady,
+    navigationResized: state.navigationResized,
+    informationResized: state.informationResized,
+    composerResized: state.composerResized,
+    composerReset: state.composerReset,
+    cornerResized: state.cornerResized,
+    cornerReset: state.cornerReset,
   })
-  bag.composerVisibilityReady = (await bag.bridge.win.webContents.executeJavaScript(
-    PANELS_SCRIPT_5,
+  state.composerVisibilityReady = (await state.bridge.win.webContents.executeJavaScript(
+    NON_CONVERSATION_COMPOSER_VISIBILITY_PROBE,
   )) as boolean
-}
-
-async function ensurePanelsComposerReadings(bag: LocalVerifyState): Promise<void> {
-  const existing = (await bag.bridge.win.webContents.executeJavaScript(
-    `document.querySelector('[data-composer-readings]') !== null`,
-  )) as boolean
-  if (existing) return
-  const activeSessionId = (await bag.bridge.win.webContents.executeJavaScript(
-    `document.querySelector('.composer-card')?.getAttribute('data-session-id') ?? null`,
-  )) as string | null
-  if (activeSessionId === null || activeSessionId === '') return
-  await seedComposerReadings(bag.bridge.win, activeSessionId, frame => {
-    bag.bridge.win.webContents.send(bag.bridge.hostChannels.sessionFrame, frame)
-  })
 }
 
 /** 运行 panels 验收套件。 */
-export async function runPanelsSuite(bag: LocalVerifyState): Promise<void> {
-  await ensureInitialShellSampled(bag)
-  await ensurePanelsComposerReadings(bag)
-  await runPanelsStep1(bag)
-  await runPanelsStep2(bag)
-  await runPanelsStep3(bag)
-  await runPanelsStep4(bag)
-  await runPanelsStep5(bag)
-  await runPanelsStep6(bag)
-  await runPanelsStep7(bag)
-  await runPanelsStep8(bag)
-  assertSuiteInvariants('panels', bag)
+export async function runPanelsSuite(state: LocalVerifyState): Promise<void> {
+  await ensureInitialShellSampled(state)
+  await ensurePanelsComposerReadings(state)
+  await verifyCollapsedSidebarClearance(state)
+  await verifySidePanelCapsuleToggle(state)
+  await verifyNavigationDividerDrag(state)
+  await verifyInformationAndComposerDividerDrag(state)
+  await verifyCornerHandleResize(state)
+  await evaluatePanelResizeAndComposerVisibility(state)
+  assertSuiteInvariants('panels', state)
 }

@@ -5,44 +5,36 @@ import { writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { app } from 'electron'
 import { focusPrimaryWindow } from '../../lifecycle/app-lifecycle.ts'
+import { verifyConversationPolish } from '../conversation-polish-verifier.ts'
+import { captureVerifiedPage, clickTrustedElement } from '../desktop-verifier.ts'
 import {
   openRightVerificationPanel,
   waitForColorScheme,
   waitForWindowSize,
 } from '../host-verify-context.ts'
-import { captureVerifiedPage, clickTrustedElement } from '../desktop-verifier.ts'
-import { verifyWorkspaceReview } from '../workspace-review-verifier.ts'
-import { verifySessionLogExport } from '../session-export-verifier.ts'
-import { verifyPluginManager } from '../plugin-manager-verifier.ts'
 import { verifyMessageActionReveal } from '../interaction-polish-verifier.ts'
-import { verifyConversationPolish } from '../conversation-polish-verifier.ts'
-import { type LocalVerifyState, assertSuiteInvariants } from './state.ts'
+import { verifyPluginManager } from '../plugin-manager-verifier.ts'
+import { verifySessionLogExport } from '../session-export-verifier.ts'
+import { verifyWorkspaceReview } from '../workspace-review-verifier.ts'
 import {
-  CONVERSATION_SCRIPT_1,
-  CONVERSATION_SCRIPT_2,
-  CONVERSATION_SCRIPT_3,
-  buildConversationScript4,
-  CONVERSATION_SCRIPT_5,
-  CONVERSATION_SCRIPT_6,
-  CONVERSATION_SCRIPT_7,
-  CONVERSATION_SCRIPT_8,
-} from './conversation-scripts.ts'
+  COLLAPSE_TURN_PROCESS_SUMMARY_PROBE,
+  CONVERSATION_FILE_LINKS_PROBE,
+  CONVERSATION_PRESENTATION_PROBE,
+  EXPAND_TURN_PROCESS_SUMMARY_PROBE,
+  FOCUS_CONVERSATION_WIDTH_HANDLE_PROBE,
+  QUEUE_DOCK_CAPTURE_BOUNDS_PROBE,
+  WAIT_PROJECT_FOCUS_MENU_PROBE,
+  buildWaitConversationWidthExpandedProbe,
+} from './conversation-probes.ts'
+import { assertSuiteInvariants, type LocalVerifyState } from './state.ts'
 
-/** 执行 conversation 验收套件第 1 阶段。 */
-export async function runConversationStep1(bag: LocalVerifyState): Promise<void> {
-  // 隔离验收会话中的排版样本；完成后恢复空历史，不写入 Host 日志。
-  bag.presentationSession = (await bag.bridge.win.webContents.executeJavaScript(
-    `document.querySelector('.composer-card')?.dataset.sessionId`,
-  )) as string
-}
-
-/** 执行 conversation 验收套件第 2 阶段。 */
-export async function runConversationStep2(bag: LocalVerifyState): Promise<void> {
-  bag.presentationEvents = [
+function createPresentationFixtureEvents(): unknown[] {
+  const now = Date.now()
+  return [
     {
       type: 'user/message',
       seq: 0,
-      time: Date.now(),
+      time: now,
       data: {
         turn: 1,
         source: { kind: 'plugin', plugin: 'AGENTS.md', form: 'instructions' },
@@ -52,13 +44,13 @@ export async function runConversationStep2(bag: LocalVerifyState): Promise<void>
     {
       type: 'deliverables/presented',
       seq: 1,
-      time: Date.now(),
+      time: now,
       data: { turn: 1, callId: '验收交付', files: [{ path: 'README.md' }] },
     },
     {
       type: 'assistant/message',
       seq: 2,
-      time: Date.now(),
+      time: now,
       data: {
         turn: 1,
         message: {
@@ -72,7 +64,7 @@ export async function runConversationStep2(bag: LocalVerifyState): Promise<void>
     {
       type: 'tool/call',
       seq: 3,
-      time: Date.now(),
+      time: now,
       data: {
         turn: 1,
         callId: '排版读取',
@@ -83,7 +75,7 @@ export async function runConversationStep2(bag: LocalVerifyState): Promise<void>
     {
       type: 'tool/result',
       seq: 4,
-      time: Date.now(),
+      time: now,
       data: {
         turn: 1,
         message: {
@@ -95,7 +87,7 @@ export async function runConversationStep2(bag: LocalVerifyState): Promise<void>
     {
       type: 'assistant/message',
       seq: 5,
-      time: Date.now(),
+      time: now,
       data: {
         turn: 1,
         message: {
@@ -112,142 +104,136 @@ export async function runConversationStep2(bag: LocalVerifyState): Promise<void>
   ]
 }
 
-/** 执行 conversation 验收套件第 3 阶段。 */
-export async function runConversationStep3(bag: LocalVerifyState): Promise<void> {
-  bag.bridge.win.webContents.send(bag.bridge.hostChannels.sessionFrame, {
+async function seedAndCapturePresentationThemes(state: LocalVerifyState): Promise<void> {
+  state.presentationSession = (await state.bridge.win.webContents.executeJavaScript(
+    `document.querySelector('.composer-card')?.dataset.sessionId`,
+  )) as string
+  state.presentationEvents = createPresentationFixtureEvents()
+  state.bridge.win.webContents.send(state.bridge.hostChannels.sessionFrame, {
     type: 'session/snapshot',
-    sessionId: bag.presentationSession,
+    sessionId: state.presentationSession,
     lastSeq: 5,
     hasMore: false,
-    events: bag.presentationEvents,
+    events: state.presentationEvents,
   })
-  bag.readPresentation = () =>
-    bag.bridge.win.webContents.executeJavaScript(CONVERSATION_SCRIPT_1) as Promise<{
-      width: number
-      modelNameVisible: boolean
-      aligned: boolean
-      spacing: boolean
-      processMetadataHidden: boolean
-      height: number
-      circularSend: boolean
-      typography: boolean
-      handleOpacity: string
-    } | null>
-  bag.defaultPresentation = await bag.readPresentation()
-  bag.presentationScheme = bag.bridge.settingsStore.read().colorScheme
-  bag.captureProjectSelector = async (scheme: 'light' | 'dark') => {
-    await clickTrustedElement(bag.bridge.win, '.project-selector')
-    await bag.bridge.win.webContents.executeJavaScript(CONVERSATION_SCRIPT_2)
+  state.readPresentation = () =>
+    state.bridge.win.webContents.executeJavaScript(CONVERSATION_PRESENTATION_PROBE)
+  state.defaultPresentation = await state.readPresentation()
+  state.presentationScheme = state.bridge.settingsStore.read().colorScheme
+
+  const captureProjectSelector = async (scheme: 'light' | 'dark'): Promise<void> => {
+    await clickTrustedElement(state.bridge.win, '.project-selector')
+    await state.bridge.win.webContents.executeJavaScript(WAIT_PROJECT_FOCUS_MENU_PROBE)
     writeFileSync(
-      bag.bridge.artifactPath('verify-project-selector-' + scheme + '.png'),
-      (await captureVerifiedPage(bag.bridge.win)).toPNG(),
+      state.bridge.artifactPath(`verify-project-selector-${scheme}.png`),
+      (await captureVerifiedPage(state.bridge.win)).toPNG(),
     )
-    await clickTrustedElement(bag.bridge.win, '.project-selector')
-    await bag.bridge.win.webContents.executeJavaScript(`(async () => {
-        for (let attempt = 0; attempt < 80; attempt += 1) {
-          if (document.querySelector('.project-focus-menu') === null) return
-          await new Promise(resolve => setTimeout(resolve, 25))
-        }
-      })()`)
+    await clickTrustedElement(state.bridge.win, '.project-selector')
+    await state.bridge.win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        if (document.querySelector('.project-focus-menu') === null) return
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+    })()`)
   }
-  bag.bridge.settingsController.publish(bag.bridge.settingsStore.update({ colorScheme: 'light' }))
-  await waitForColorScheme(bag.bridge.win, 'light')
-  bag.lightPresentation = await bag.readPresentation()
-  writeFileSync(
-    bag.bridge.artifactPath('verify-body-alignment-light.png'),
-    (await captureVerifiedPage(bag.bridge.win)).toPNG(),
+
+  state.bridge.settingsController.publish(
+    state.bridge.settingsStore.update({ colorScheme: 'light' }),
   )
-  await bag.captureProjectSelector('light')
-  bag.bridge.settingsController.publish(bag.bridge.settingsStore.update({ colorScheme: 'dark' }))
-  await waitForColorScheme(bag.bridge.win, 'dark')
-  bag.darkPresentation = await bag.readPresentation()
+  await waitForColorScheme(state.bridge.win, 'light')
+  state.lightPresentation = await state.readPresentation()
+  writeFileSync(
+    state.bridge.artifactPath('verify-body-alignment-light.png'),
+    (await captureVerifiedPage(state.bridge.win)).toPNG(),
+  )
+  await captureProjectSelector('light')
+
+  state.bridge.settingsController.publish(
+    state.bridge.settingsStore.update({ colorScheme: 'dark' }),
+  )
+  await waitForColorScheme(state.bridge.win, 'dark')
+  state.darkPresentation = await state.readPresentation()
+  writeFileSync(
+    state.bridge.artifactPath('verify-body-alignment-dark.png'),
+    (await captureVerifiedPage(state.bridge.win)).toPNG(),
+  )
+  await captureProjectSelector('dark')
+
+  state.bridge.settingsController.publish(
+    state.bridge.settingsStore.update({ colorScheme: state.presentationScheme }),
+  )
+  await waitForColorScheme(state.bridge.win, state.presentationScheme)
 }
 
-/** 执行 conversation 验收套件第 4 阶段。 */
-export async function runConversationStep4(bag: LocalVerifyState): Promise<void> {
-  writeFileSync(
-    bag.bridge.artifactPath('verify-body-alignment-dark.png'),
-    (await captureVerifiedPage(bag.bridge.win)).toPNG(),
-  )
-  await bag.captureProjectSelector('dark')
-  bag.bridge.settingsController.publish(
-    bag.bridge.settingsStore.update({ colorScheme: bag.presentationScheme }),
-  )
-  await waitForColorScheme(bag.bridge.win, bag.presentationScheme)
-  bag.bridge.win.setSize(1800, 1000)
-  bag.bridge.win.webContents.sendInputEvent({ type: 'mouseMove', x: 2, y: 2 })
-  await bag.bridge.win.webContents.executeJavaScript(
+async function verifyConversationWidthHandleResize(state: LocalVerifyState): Promise<void> {
+  state.bridge.win.setSize(1800, 1000)
+  state.bridge.win.webContents.sendInputEvent({ type: 'mouseMove', x: 2, y: 2 })
+  await state.bridge.win.webContents.executeJavaScript(
     `document.activeElement instanceof HTMLElement && document.activeElement.blur()`,
   )
-  await waitForWindowSize(bag.bridge.win, 1800, 1000)
-  bag.widePresentation = await bag.readPresentation()
-  // macOS 调整窗口尺寸后，键盘验收需要重新取得窗口与 WebContents 焦点。
-  if (!bag.bridge.verifyBackground) {
+  await waitForWindowSize(state.bridge.win, 1800, 1000)
+  state.widePresentation = await state.readPresentation()
+  if (!state.bridge.verifyBackground) {
     app.focus({ steal: true })
-    focusPrimaryWindow(bag.bridge.win)
+    focusPrimaryWindow(state.bridge.win)
   }
-  bag.bridge.win.webContents.focus()
-  // 上一步的 mouseMove 会将 Chromium 切回指针模式；先等待 Tab 真正落到页面再聚焦手柄，
-  // 避免迟到的 Tab 在 handle.focus() 之后切走焦点而让随后的 Right 键失效。
-  bag.bridge.win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' })
-  bag.bridge.win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' })
-  await bag.bridge.win.webContents.executeJavaScript(CONVERSATION_SCRIPT_3)
-  bag.bridge.win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Right' })
-  bag.bridge.win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Right' })
-  // 手柄伪元素存在 180ms 透明度过渡；离屏或 CI 高负载下轮询等待宽度与显影稳定，避免固定 200ms 竞态。
-  await bag.bridge.win.webContents.executeJavaScript(
-    buildConversationScript4(JSON.stringify(bag.widePresentation?.width ?? 0)),
+  state.bridge.win.webContents.focus()
+  state.bridge.win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' })
+  state.bridge.win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' })
+  await state.bridge.win.webContents.executeJavaScript(FOCUS_CONVERSATION_WIDTH_HANDLE_PROBE)
+  state.bridge.win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Right' })
+  state.bridge.win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Right' })
+  await state.bridge.win.webContents.executeJavaScript(
+    buildWaitConversationWidthExpandedProbe(Number(state.widePresentation?.width ?? 0)),
   )
-  bag.resizedPresentation = await bag.readPresentation()
+  state.resizedPresentation = await state.readPresentation()
   console.log('desktop-shell-verify-local: conversation-presentation', {
-    defaultPresentation: bag.defaultPresentation,
-    lightPresentation: bag.lightPresentation,
-    darkPresentation: bag.darkPresentation,
-    widePresentation: bag.widePresentation,
-    resizedPresentation: bag.resizedPresentation,
+    defaultPresentation: state.defaultPresentation,
+    lightPresentation: state.lightPresentation,
+    darkPresentation: state.darkPresentation,
+    widePresentation: state.widePresentation,
+    resizedPresentation: state.resizedPresentation,
   })
+  const samples = [
+    state.defaultPresentation,
+    state.lightPresentation,
+    state.darkPresentation,
+    state.widePresentation,
+    state.resizedPresentation,
+  ]
+  const allSamplesValid = samples.every(
+    sample =>
+      Boolean(sample?.aligned) &&
+      Boolean(sample?.spacing) &&
+      Boolean(sample?.processMetadataHidden) &&
+      Boolean(sample?.circularSend) &&
+      Boolean(sample?.modelNameVisible),
+  )
+  if (
+    !allSamplesValid ||
+    !state.defaultPresentation.typography ||
+    state.defaultPresentation.height !== 112 ||
+    state.widePresentation.handleOpacity !== '0' ||
+    Number(state.resizedPresentation.handleOpacity) === 0 ||
+    state.resizedPresentation.width <= state.widePresentation.width
+  ) {
+    throw new Error('正文排版或输入区宽度联动验收失败')
+  }
+  await state.bridge.win.webContents.executeJavaScript(`(() => {
+    const handle = document.querySelector('[aria-label="调整对话内容宽度（右侧）"]')
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
+    handle.blur()
+  })()`)
 }
 
-/** 执行 conversation 验收套件第 5 阶段。 */
-export async function runConversationStep5(bag: LocalVerifyState): Promise<void> {
-  if (
-    !bag.defaultPresentation?.aligned ||
-    !bag.lightPresentation?.aligned ||
-    !bag.darkPresentation?.aligned ||
-    !bag.widePresentation?.aligned ||
-    !bag.resizedPresentation?.aligned ||
-    ![
-      bag.defaultPresentation,
-      bag.lightPresentation,
-      bag.darkPresentation,
-      bag.widePresentation,
-      bag.resizedPresentation,
-    ].every(
-      value =>
-        value.spacing &&
-        value.processMetadataHidden &&
-        value.circularSend &&
-        value.modelNameVisible,
-    ) ||
-    !bag.defaultPresentation.typography ||
-    bag.defaultPresentation.height !== 112 ||
-    bag.widePresentation.handleOpacity !== '0' ||
-    Number(bag.resizedPresentation.handleOpacity) === 0 ||
-    bag.resizedPresentation.width <= bag.widePresentation.width
-  )
-    throw new Error('正文排版或输入区宽度联动验收失败')
-  await bag.bridge.win.webContents.executeJavaScript(`(() => {
-      const handle = document.querySelector('[aria-label="调整对话内容宽度（右侧）"]')
-      handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
-      handle.blur()
-    })()`)
-  bag.bridge.win.webContents.send(bag.bridge.hostChannels.sessionFrame, {
+async function verifyTurnProcessAndFileLinks(state: LocalVerifyState): Promise<void> {
+  state.bridge.win.webContents.send(state.bridge.hostChannels.sessionFrame, {
     type: 'session/snapshot',
-    sessionId: bag.presentationSession,
+    sessionId: state.presentationSession,
     lastSeq: 6,
     hasMore: false,
     events: [
-      ...bag.presentationEvents,
+      ...state.presentationEvents,
       {
         type: 'turn/end',
         seq: 6,
@@ -256,54 +242,42 @@ export async function runConversationStep5(bag: LocalVerifyState): Promise<void>
       },
     ],
   })
-  bag.processReady = await bag.bridge.win.webContents.executeJavaScript(CONVERSATION_SCRIPT_5)
-  bag.expandedPresentation = await bag.readPresentation()
-}
-
-/** 执行 conversation 验收套件第 6 阶段。 */
-export async function runConversationStep6(bag: LocalVerifyState): Promise<void> {
+  state.processReady = await state.bridge.win.webContents.executeJavaScript(
+    EXPAND_TURN_PROCESS_SUMMARY_PROBE,
+  )
+  state.expandedPresentation = await state.readPresentation()
   writeFileSync(
-    bag.bridge.artifactPath('verify-turn-process-expanded.png'),
-    (await captureVerifiedPage(bag.bridge.win)).toPNG(),
+    state.bridge.artifactPath('verify-turn-process-expanded.png'),
+    (await captureVerifiedPage(state.bridge.win)).toPNG(),
   )
   if (
-    !bag.processReady ||
-    !bag.expandedPresentation?.aligned ||
-    !bag.expandedPresentation.spacing ||
-    !bag.expandedPresentation.processMetadataHidden
-  )
-    throw new Error('过程重新展开后的排版异常：' + JSON.stringify(bag.expandedPresentation))
-  await bag.bridge.win.webContents.executeJavaScript(CONVERSATION_SCRIPT_6)
-  writeFileSync(
-    bag.bridge.artifactPath('verify-turn-process.png'),
-    (await captureVerifiedPage(bag.bridge.win)).toPNG(),
-  )
-  console.log('desktop-shell-verify-local: turn-process', { ready: bag.processReady })
-  bag.messageFilesCheck = (await bag.bridge.win.webContents.executeJavaScript(
-    CONVERSATION_SCRIPT_7,
-  )) as { ready: boolean; stage: string }
-  console.log('desktop-shell-verify-local: message-file-links', bag.messageFilesCheck)
-  if (!bag.messageFilesCheck.ready) {
-    const listItems = async (operation: string, field: string): Promise<unknown> => {
-      try {
-        return (await bag.bridge.win.webContents.executeJavaScript(
-          `globalThis.dshDesktop.host.call(${JSON.stringify(operation)}, {}).then(result => (result.items ?? []).map(item => item[${JSON.stringify(field)}] ?? null).slice(0, 4))`,
-        )) as unknown
-      } catch (error) {
-        return String(error)
-      }
-    }
-    console.log('desktop-shell-verify-local: file-link-cwds', {
-      verifyProject: bag.bridge.verifyProject,
-      sessionCwds: await listItems('listSessions', 'cwd'),
-      workspacePaths: await listItems('listWorkspaces', 'path'),
-    })
+    !state.processReady ||
+    !state.expandedPresentation?.aligned ||
+    !state.expandedPresentation.spacing ||
+    !state.expandedPresentation.processMetadataHidden
+  ) {
+    throw new Error(`过程重新展开后的排版异常：${JSON.stringify(state.expandedPresentation)}`)
   }
-  if (!bag.messageFilesCheck.ready)
-    throw new Error(`对话文件链接与真实文件查看器验收失败：${bag.messageFilesCheck.stage}`)
-  bag.queueSample = (count: number) => ({
+  await state.bridge.win.webContents.executeJavaScript(COLLAPSE_TURN_PROCESS_SUMMARY_PROBE)
+  writeFileSync(
+    state.bridge.artifactPath('verify-turn-process.png'),
+    (await captureVerifiedPage(state.bridge.win)).toPNG(),
+  )
+  console.log('desktop-shell-verify-local: turn-process', { ready: state.processReady })
+
+  state.messageFilesCheck = (await state.bridge.win.webContents.executeJavaScript(
+    CONVERSATION_FILE_LINKS_PROBE,
+  )) as { ready: boolean; stage: string }
+  console.log('desktop-shell-verify-local: message-file-links', state.messageFilesCheck)
+  if (!state.messageFilesCheck.ready) {
+    throw new Error(`对话文件链接与真实文件查看器验收失败：${state.messageFilesCheck.stage}`)
+  }
+}
+
+function buildQueueSample(sessionId: string, count: number) {
+  return {
     items: Array.from({ length: count }, (_, index) => ({
-      id: `${bag.presentationSession}-队列-${String(index)}`,
+      id: `${sessionId}-队列-${String(index)}`,
       placement: 'queued' as const,
       preview:
         index === 0 ? '你应该查询线上数据库的' : '检查查询结果，并保留已有的项目配置与会话记录。',
@@ -313,199 +287,161 @@ export async function runConversationStep6(bag: LocalVerifyState): Promise<void>
     totalCount: count,
     omittedCount: 0,
     truncated: false,
-  })
+  }
 }
 
-/** 执行 conversation 验收套件第 7 阶段。 */
-export async function runConversationStep7(bag: LocalVerifyState): Promise<void> {
-  bag.captureQueue = async (name: string) => {
-    const bounds = await bag.bridge.win.webContents.executeJavaScript(CONVERSATION_SCRIPT_8)
-    const path = bag.bridge.artifactPath(name)
-    writeFileSync(path, (await captureVerifiedPage(bag.bridge.win, bounds)).toPNG())
+async function verifyMessageQueueDockLayouts(state: LocalVerifyState): Promise<void> {
+  const captureQueue = async (name: string): Promise<void> => {
+    const bounds = await state.bridge.win.webContents.executeJavaScript(
+      QUEUE_DOCK_CAPTURE_BOUNDS_PROBE,
+    )
+    const path = state.bridge.artifactPath(name)
+    writeFileSync(path, (await captureVerifiedPage(state.bridge.win, bounds)).toPNG())
     console.log('desktop-shell-verify-queue-capture:', path)
   }
-  bag.bridge.win.webContents.send(bag.bridge.hostChannels.hostFrame, {
+
+  state.bridge.win.webContents.send(state.bridge.hostChannels.hostFrame, {
     type: 'host/session-status',
-    sessionId: bag.presentationSession,
+    sessionId: state.presentationSession,
     running: true,
   })
-}
-
-/** 执行 conversation 验收套件第 8 阶段。 */
-export async function runConversationStep8(bag: LocalVerifyState): Promise<void> {
   try {
-    bag.bridge.win.setSize(1280, 800)
-    bag.bridge.settingsController.publish(bag.bridge.settingsStore.update({ colorScheme: 'dark' }))
-    await waitForWindowSize(bag.bridge.win, 1280, 800)
-    await waitForColorScheme(bag.bridge.win, 'dark')
-    bag.bridge.win.webContents.send(bag.bridge.hostChannels.sessionFrame, {
+    state.bridge.win.setSize(1280, 800)
+    state.bridge.settingsController.publish(
+      state.bridge.settingsStore.update({ colorScheme: 'dark' }),
+    )
+    await waitForWindowSize(state.bridge.win, 1280, 800)
+    await waitForColorScheme(state.bridge.win, 'dark')
+    state.bridge.win.webContents.send(state.bridge.hostChannels.sessionFrame, {
       type: 'session/queue',
-      sessionId: bag.presentationSession,
-      queue: bag.queueSample(1),
+      sessionId: state.presentationSession,
+      queue: buildQueueSample(state.presentationSession, 1),
     })
-    await bag.captureQueue('verify-queue-dark.png')
-    await bag.bridge.win.webContents.executeJavaScript(
+    await captureQueue('verify-queue-dark.png')
+    await state.bridge.win.webContents.executeJavaScript(
       `document.querySelector('[aria-label="消息队列"] button[aria-label="编辑"]').click()`,
     )
-    await bag.captureQueue('verify-queue-edit.png')
-    await bag.bridge.win.webContents.executeJavaScript(
+    await captureQueue('verify-queue-edit.png')
+    await state.bridge.win.webContents.executeJavaScript(
       `document.querySelector('[aria-label="消息队列"] button[aria-label="取消"]').click()`,
     )
-    bag.bridge.settingsController.publish(bag.bridge.settingsStore.update({ colorScheme: 'light' }))
-    bag.bridge.win.setSize(1800, 1000)
-    await waitForWindowSize(bag.bridge.win, 1800, 1000)
-    await waitForColorScheme(bag.bridge.win, 'light')
-    bag.bridge.win.webContents.send(bag.bridge.hostChannels.sessionFrame, {
+    state.bridge.settingsController.publish(
+      state.bridge.settingsStore.update({ colorScheme: 'light' }),
+    )
+    state.bridge.win.setSize(1800, 1000)
+    await waitForWindowSize(state.bridge.win, 1800, 1000)
+    await waitForColorScheme(state.bridge.win, 'light')
+    state.bridge.win.webContents.send(state.bridge.hostChannels.sessionFrame, {
       type: 'session/queue',
-      sessionId: bag.presentationSession,
-      queue: bag.queueSample(3),
+      sessionId: state.presentationSession,
+      queue: buildQueueSample(state.presentationSession, 3),
     })
-    await bag.captureQueue('verify-queue-light-collapsed.png')
-    await bag.bridge.win.webContents.executeJavaScript(
+    await captureQueue('verify-queue-light-collapsed.png')
+    await state.bridge.win.webContents.executeJavaScript(
       `document.querySelector('button[aria-label="展开待处理消息"]').click()`,
     )
-    await bag.captureQueue('verify-queue-light-expanded.png')
-    bag.bridge.win.setSize(900, 720)
-    await waitForWindowSize(bag.bridge.win, 900, 720)
-    await bag.captureQueue('verify-queue-narrow.png')
+    await captureQueue('verify-queue-light-expanded.png')
+    state.bridge.win.setSize(900, 720)
+    await waitForWindowSize(state.bridge.win, 900, 720)
+    await captureQueue('verify-queue-narrow.png')
   } finally {
-    bag.bridge.win.webContents.send(bag.bridge.hostChannels.sessionFrame, {
+    state.bridge.win.webContents.send(state.bridge.hostChannels.sessionFrame, {
       type: 'session/queue',
-      sessionId: bag.presentationSession,
-      queue: bag.queueSample(0),
+      sessionId: state.presentationSession,
+      queue: buildQueueSample(state.presentationSession, 0),
     })
-    bag.bridge.win.webContents.send(bag.bridge.hostChannels.hostFrame, {
+    state.bridge.win.webContents.send(state.bridge.hostChannels.hostFrame, {
       type: 'host/session-status',
-      sessionId: bag.presentationSession,
+      sessionId: state.presentationSession,
       running: false,
     })
-    bag.bridge.settingsController.publish(
-      bag.bridge.settingsStore.update({ colorScheme: bag.presentationScheme }),
+    state.bridge.settingsController.publish(
+      state.bridge.settingsStore.update({ colorScheme: state.presentationScheme }),
     )
-    await waitForColorScheme(bag.bridge.win, bag.presentationScheme)
+    await waitForColorScheme(state.bridge.win, state.presentationScheme)
   }
 }
 
-/** 执行 conversation 验收套件第 9 阶段。 */
-export async function runConversationStep9(bag: LocalVerifyState): Promise<void> {
-  bag.bridge.win.webContents.send(bag.bridge.hostChannels.sessionFrame, {
+async function verifyConversationPolishAndExports(state: LocalVerifyState): Promise<void> {
+  const setScheme = (scheme: 'light' | 'dark'): void => {
+    state.bridge.settingsController.publish(
+      state.bridge.settingsStore.update({ colorScheme: scheme }),
+    )
+  }
+  const saveCapture = async (name: string): Promise<void> => {
+    writeFileSync(
+      state.bridge.artifactPath(name),
+      (await captureVerifiedPage(state.bridge.win)).toPNG(),
+    )
+  }
+  const emitSessionFrame = (frame: unknown): void => {
+    state.bridge.win.webContents.send(state.bridge.hostChannels.sessionFrame, frame)
+  }
+
+  emitSessionFrame({
     type: 'session/snapshot',
-    sessionId: bag.presentationSession,
+    sessionId: state.presentationSession,
     events: [],
     lastSeq: 2,
     hasMore: false,
   })
   await verifyMessageActionReveal(
-    bag.bridge.win,
-    bag.presentationSession,
-    frame => {
-      bag.bridge.win.webContents.send(bag.bridge.hostChannels.sessionFrame, frame)
-    },
-    scheme => {
-      bag.bridge.settingsController.publish(
-        bag.bridge.settingsStore.update({ colorScheme: scheme }),
-      )
-    },
-    async name => {
-      writeFileSync(
-        bag.bridge.artifactPath(name),
-        (await captureVerifiedPage(bag.bridge.win)).toPNG(),
-      )
-    },
+    state.bridge.win,
+    state.presentationSession,
+    emitSessionFrame,
+    setScheme,
+    saveCapture,
   )
-  await verifyConversationPolish(bag.bridge.win, {
-    sessionId: bag.presentationSession,
-    emit: frame => {
-      bag.bridge.win.webContents.send(bag.bridge.hostChannels.sessionFrame, frame)
-    },
+  await verifyConversationPolish(state.bridge.win, {
+    sessionId: state.presentationSession,
+    emit: emitSessionFrame,
     setRunning: running => {
-      bag.bridge.win.webContents.send(bag.bridge.hostChannels.hostFrame, {
+      state.bridge.win.webContents.send(state.bridge.hostChannels.hostFrame, {
         type: 'host/session-status',
-        sessionId: bag.presentationSession,
+        sessionId: state.presentationSession,
         running,
       })
     },
-    appearance: scheme => {
-      bag.bridge.settingsController.publish(
-        bag.bridge.settingsStore.update({ colorScheme: scheme }),
-      )
-    },
+    appearance: setScheme,
     restoreAppearance: () => {
-      bag.bridge.settingsController.publish(
-        bag.bridge.settingsStore.update({ colorScheme: bag.presentationScheme }),
+      state.bridge.settingsController.publish(
+        state.bridge.settingsStore.update({ colorScheme: state.presentationScheme }),
       )
     },
-    capture: async name => {
-      writeFileSync(
-        bag.bridge.artifactPath(name),
-        (await captureVerifiedPage(bag.bridge.win)).toPNG(),
-      )
-    },
+    capture: saveCapture,
   })
-  if (!bag.bridge.supervisor.installed) throw new Error('导出验收缺少已安装核心')
-}
-
-/** 执行 conversation 验收套件第 10 阶段。 */
-export async function runConversationStep10(bag: LocalVerifyState): Promise<void> {
-  if (!bag.bridge.supervisor.installed) throw new Error('导出验收缺少已安装核心')
-  await verifySessionLogExport(bag.bridge.win, {
-    installation: bag.bridge.supervisor.installed,
-    sessionId: bag.presentationSession,
-    emit: frame => {
-      bag.bridge.win.webContents.send(bag.bridge.hostChannels.sessionFrame, frame)
-    },
+  if (!state.bridge.supervisor.installed) throw new Error('导出验收缺少已安装核心')
+  await verifySessionLogExport(state.bridge.win, {
+    installation: state.bridge.supervisor.installed,
+    sessionId: state.presentationSession,
+    emit: emitSessionFrame,
     cancelPending: () =>
-      bag.bridge.getSessionExportController()?.abort(new Error('验收取消会话日志导出')),
+      state.bridge.getSessionExportController()?.abort(new Error('验收取消会话日志导出')),
   })
   await verifyWorkspaceReview(
-    bag.bridge.win,
-    bag.presentationSession,
-    frame => {
-      bag.bridge.win.webContents.send(bag.bridge.hostChannels.sessionFrame, frame)
-    },
-    scheme => {
-      bag.bridge.settingsController.publish(
-        bag.bridge.settingsStore.update({ colorScheme: scheme }),
-      )
-    },
-    async name => {
-      writeFileSync(
-        bag.bridge.artifactPath(name),
-        (await captureVerifiedPage(bag.bridge.win)).toPNG(),
-      )
-    },
-    (id: string) => openRightVerificationPanel(bag.bridge.win, id),
+    state.bridge.win,
+    state.presentationSession,
+    emitSessionFrame,
+    setScheme,
+    saveCapture,
+    (id: string) => openRightVerificationPanel(state.bridge.win, id),
   )
   await verifyPluginManager(
-    bag.bridge.win,
-    join(dirname(bag.bridge.artifactPath('verify-plugin-manager.png')), 'plugin-packages'),
-    scheme => {
-      bag.bridge.settingsController.publish(
-        bag.bridge.settingsStore.update({ colorScheme: scheme }),
-      )
-    },
-    async name => {
-      writeFileSync(
-        bag.bridge.artifactPath(name),
-        (await captureVerifiedPage(bag.bridge.win)).toPNG(),
-      )
-    },
+    state.bridge.win,
+    join(dirname(state.bridge.artifactPath('verify-plugin-manager.png')), 'plugin-packages'),
+    setScheme,
+    saveCapture,
   )
-  bag.bridge.win.setSize(1280, 800)
-  await waitForWindowSize(bag.bridge.win, 1280, 800)
+  state.bridge.win.setSize(1280, 800)
+  await waitForWindowSize(state.bridge.win, 1280, 800)
 }
 
 /** 运行 conversation 验收套件。 */
-export async function runConversationSuite(bag: LocalVerifyState): Promise<void> {
-  await runConversationStep1(bag)
-  await runConversationStep2(bag)
-  await runConversationStep3(bag)
-  await runConversationStep4(bag)
-  await runConversationStep5(bag)
-  await runConversationStep6(bag)
-  await runConversationStep7(bag)
-  await runConversationStep8(bag)
-  await runConversationStep9(bag)
-  await runConversationStep10(bag)
-  assertSuiteInvariants('conversation', bag)
+export async function runConversationSuite(state: LocalVerifyState): Promise<void> {
+  await seedAndCapturePresentationThemes(state)
+  await verifyConversationWidthHandleResize(state)
+  await verifyTurnProcessAndFileLinks(state)
+  await verifyMessageQueueDockLayouts(state)
+  await verifyConversationPolishAndExports(state)
+  assertSuiteInvariants('conversation', state)
 }

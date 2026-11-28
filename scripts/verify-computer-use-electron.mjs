@@ -1,5 +1,6 @@
 /** 运行在真实 Electron 内的系统级 Computer Use 验收脚本：加载真实原生模块并验证权限、窗口、截屏、防自锁与急停清理。 */
 import { app, BrowserWindow } from 'electron'
+import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 import { createAutomationSystem } from '../lib/main/automation/automation-system.js'
 import { createComputerUseDriver } from '../lib/main/automation/computer-use-driver.js'
@@ -18,6 +19,7 @@ function assertNativeExports(addon) {
     'listWindows',
     'focusWindow',
     'captureWindowPng',
+    'captureWindowPngAsync',
     'getUiTree',
     'axPressAt',
     'axSetTextAt',
@@ -32,7 +34,6 @@ function assertNativeExports(addon) {
   ]
   if (process.platform === 'darwin') {
     required.push(
-      'captureWindowPngAsync',
       'getUiTreeAsync',
       'axPressAtAsync',
       'axSetTextAtAsync',
@@ -76,29 +77,114 @@ async function verifyAsyncSelfLockGuards(addon) {
     const focusSelf = addon.focusWindow(process.pid, 0)
     const clickSelf = addon.mouseClick(10, 10, 0, 1, 0, process.pid, 0, false)
     const keySelf = addon.keyTap(0x0d, 0, process.pid, false)
-    if (focusSelf || clickSelf || keySelf) {
+    const emptyCap = await addon.captureWindowPngAsync(0, 1280)
+    if (focusSelf || clickSelf || keySelf || emptyCap !== null) {
       throw new Error(
-        `Windows 原生防自锁门禁异常：${JSON.stringify({ focusSelf, clickSelf, keySelf })}`,
+        `Windows 原生防自锁门禁异常：${JSON.stringify({ focusSelf, clickSelf, keySelf, emptyCap })}`,
       )
     }
-    console.log('[verify-cu] Windows 原生防自锁门禁（GetCurrentProcessId 硬拦截）验收通过。')
+    console.log('[verify-cu] Windows 原生防自锁门禁与异步窗口截帧接口验收通过。')
   }
 }
 
-async function verifyScreenshotPath(system, status) {
-  if (status.permissions.screenRecording) {
+async function verifyWindowsPrintWindowCapture(addon, system, selfWin) {
+  if (process.platform !== 'win32') return
+  selfWin.showInactive()
+  const selfHwnd = Number(selfWin.getNativeWindowHandle().readBigUInt64LE())
+  const selfCap = await addon.captureWindowPngAsync(selfHwnd, 320)
+  selfWin.hide()
+  if (selfCap !== null) {
+    throw new Error('Windows 原生截帧未拦截自身进程 HWND')
+  }
+  const helperScript = [
+    'Add-Type -AssemblyName System.Windows.Forms,System.Drawing',
+    '$f = New-Object Windows.Forms.Form',
+    "$f.Text = 'MyDSH-CU-Target'",
+    '$f.StartPosition = [Windows.Forms.FormStartPosition]::Manual',
+    '$f.Bounds = New-Object Drawing.Rectangle(60, 60, 420, 300)',
+    '$f.BackColor = [Drawing.Color]::FromArgb(24, 190, 123)',
+    '$f.Show(); [Windows.Forms.Application]::DoEvents()',
+    '[Console]::Out.WriteLine("CU_READY:" + $f.Handle.ToInt64()); [Console]::Out.Flush()',
+    'for ($i = 0; $i -lt 150; $i++) { [Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 50 }',
+  ].join('; ')
+  const child = spawn(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-NoLogo', '-Command', helperScript],
+    { windowsHide: false, stdio: ['ignore', 'pipe', 'ignore'] },
+  )
+  try {
+    const targetWid = await new Promise((resolveWid, rejectWid) => {
+      let buf = ''
+      const timer = setTimeout(() => rejectWid(new Error('等待外部测试窗口就绪超时')), 10_000)
+      child.stdout.setEncoding('utf8')
+      child.stdout.on('data', chunk => {
+        buf += chunk
+        const match = /CU_READY:(\d+)/u.exec(buf)
+        if (match) {
+          clearTimeout(timer)
+          resolveWid(Number(match[1]))
+        }
+      })
+      child.once('exit', code => {
+        clearTimeout(timer)
+        rejectWid(new Error(`外部测试窗口提前退出：${String(code)}`))
+      })
+    })
     const shot = await system.handleRuntimeCall(
       'automation.computer.screenshot',
-      {},
+      { windowId: targetWid },
       AbortSignal.timeout(10_000),
     )
-    if (!shot.captureId || shot.bytes <= 100 || shot.width <= 0 || shot.height <= 0) {
-      throw new Error('真实桌面截屏结果无效')
+    if (
+      shot.captureMethod !== 'win32-printwindow' ||
+      !shot.captureId ||
+      shot.bytes <= 100 ||
+      shot.width <= 0 ||
+      shot.height <= 0
+    ) {
+      throw new Error(`Windows PrintWindow+WIC 异步窗口截帧异常：${JSON.stringify(shot)}`)
     }
     console.log(
-      `[verify-cu] 真实屏幕截图通过：captureId=${shot.captureId}, ${shot.width}x${shot.height} (${shot.bytes}B), logical=${shot.logicalSize.width}x${shot.logicalSize.height}`,
+      `[verify-cu] Windows PrintWindow+WIC 异步窗口截帧通过：captureMethod=${shot.captureMethod}, ${shot.width}x${shot.height} (${shot.bytes}B)`,
     )
-    return
+  } finally {
+    try {
+      child.kill()
+    } catch {
+      /* 忽略已退出测试窗口进程。 */
+    }
+  }
+}
+
+async function verifyScreenshotPath(system, status, cursor) {
+  if (status.permissions.screenRecording) {
+    try {
+      const shot = await system.handleRuntimeCall(
+        'automation.computer.screenshot',
+        {},
+        AbortSignal.timeout(10_000),
+      )
+      if (!shot.captureId || shot.bytes <= 100 || shot.width <= 0 || shot.height <= 0) {
+        throw new Error('真实桌面截屏结果无效')
+      }
+      console.log(
+        `[verify-cu] 真实屏幕截图通过：captureId=${shot.captureId}, ${shot.width}x${shot.height} (${shot.bytes}B), logical=${shot.logicalSize.width}x${shot.logicalSize.height}`,
+      )
+      return
+    } catch (error) {
+      const isIsolatedDesktop =
+        process.platform === 'win32' &&
+        status.windows.length === 0 &&
+        cursor.x === 0 &&
+        cursor.y === 0 &&
+        error instanceof Error &&
+        error.message.includes('SCREEN_CAPTURE_EMPTY')
+      if (!isIsolatedDesktop) throw error
+      console.log(
+        '[verify-cu] 当前处于无物理输入桌面的隔离会话（WebRTC SetThreadDesktop 受限），已由 PrintWindow+WIC 异步窗口截帧覆盖校验。',
+      )
+      return
+    }
   }
   let deniedScreen = false
   try {
@@ -188,7 +274,8 @@ async function main() {
     )
 
     await verifyAsyncSelfLockGuards(addon)
-    await verifyScreenshotPath(system, status)
+    await verifyWindowsPrintWindowCapture(addon, system, win)
+    await verifyScreenshotPath(system, status, cursor)
     await verifyVirtualCursorOverlay()
     await system.stopTakeover('验收测试急停')
     if (system.getTakeoverState().active) throw new Error('急停后接管状态未归零')

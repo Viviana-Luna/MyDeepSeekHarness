@@ -3,6 +3,7 @@
  * 不启动 HTTP 服务，不发现外部 DSH，不执行用户旧 profile。
  */
 /* oxlint-disable unicorn/require-post-message-target-origin -- Electron ParentPort 不是浏览器 Window。 */
+import { existsSync } from 'node:fs'
 import { readFile, mkdir } from 'node:fs/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -269,8 +270,21 @@ process.once('SIGINT', () => {
 async function initialize() {
   await mkdir(join(home, 'data'), { recursive: true })
   await protectPrivateDirectory(join(home, 'config'))
+  const isAsarRuntime = directory.toLowerCase().endsWith('.asar')
+  const bundleRoot = isAsarRuntime ? dirname(directory) : directory
+  const unpackedDirectory = isAsarRuntime ? `${directory}.unpacked` : directory
+  const resolvedRgPath = isAsarRuntime
+    ? rgPath.replace(/\.asar(?=[\\/])/iu, '.asar.unpacked')
+    : rgPath
+  const esbuildBinary = join(
+    unpackedDirectory,
+    'node_modules',
+    `@esbuild/${process.platform}-${process.arch}`,
+    process.platform === 'win32' ? 'esbuild.exe' : 'bin/esbuild',
+  )
+  if (existsSync(esbuildBinary)) process.env.ESBUILD_BINARY_PATH = esbuildBinary
   if (process.platform === 'win32') {
-    const tools = join(directory, 'tools')
+    const tools = join(bundleRoot, 'tools')
     process.env.MYDSH_PWSH_EXECUTABLE = join(tools, 'powershell/pwsh.exe')
     // 清除宿主 PowerShell 版本留下的模块搜索路径，固定到随包模块。
     for (const key of Object.keys(process.env))
@@ -284,7 +298,7 @@ async function initialize() {
     process.env.PATH = [
       join(tools, 'powershell'),
       join(tools, 'git/cmd'),
-      join(directory, 'node_modules/@vscode/ripgrep/bin'),
+      dirname(resolvedRgPath),
       inheritedPath,
     ]
       .filter(Boolean)
@@ -401,7 +415,7 @@ async function initialize() {
       inject: ['typert'],
       apply(scope) {
         scope.typert.register(desktopContract)
-        scope.plugin(DesktopServices, { ripgrepPath: rgPath })
+        scope.plugin(DesktopServices, { ripgrepPath: resolvedRgPath })
       },
     })
     .await()

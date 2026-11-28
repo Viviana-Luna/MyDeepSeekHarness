@@ -15,12 +15,13 @@ import { buildDesktopServices } from '../../packages/desktop-services/build.mjs'
 import { buildChatGPT } from '../../packages/llm/llm-chatgpt/build.mjs'
 import { buildUiSdk } from '../../packages/ui-sdk/build.mjs'
 import { patchNodePty } from './patch-node-pty.mjs'
+import { packRuntimeAsar, pruneRuntimeStaging } from './runtime-prune.mjs'
 import { prepareWindowsTools } from './windows-tools.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
 const cachePath = join(root, '.build/runtime-build-cache.json')
 const bundle = join(root, 'lib/mydsh-runtime')
-const payload = join(bundle, 'payload')
+const payload = join(root, '.build/runtime-staging')
 const librariesOnly = process.argv.includes('--libraries-only')
 const forceBuild = process.argv.includes('--force')
 
@@ -215,11 +216,12 @@ function areLibrariesReady(records) {
 
 function isBundleReady(expectedVersion) {
   const manifestFile = join(bundle, 'manifest.json')
-  if (!existsSync(manifestFile) || !existsSync(join(payload, 'entry.js'))) return false
+  if (!existsSync(manifestFile) || !existsSync(join(bundle, 'runtime.asar'))) return false
   try {
     const manifest = JSON.parse(readFileSync(manifestFile, 'utf8'))
     return (
       manifest.version === expectedVersion &&
+      manifest.archive === 'runtime.asar' &&
       manifest.platform === process.platform &&
       manifest.arch === process.arch
     )
@@ -366,7 +368,7 @@ async function installPackageClosure(context, name, sourceDirectory, consumer = 
     dereference: true,
     filter: path => !excluded.includes(relative(canonical, path).split(/[\\/]/u)[0]),
   })
-  if (process.platform === 'win32' && name === 'node-pty' && meta.version !== '1.1.0') {
+  if (process.platform === 'win32' && name === 'node-pty') {
     await patchNodePty(target, meta.version)
   }
   if (records.has(name)) {
@@ -421,6 +423,7 @@ async function copyRuntimeAssetsAndServices(appVersion, context) {
     await cp(join(root, `packages/runtime/${name}.mjs`), join(payload, `${name}.js`))
   }
   await cp(join(root, 'packages/runtime/private-files.mjs'), join(payload, 'private-files.mjs'))
+  await cp(join(root, 'packages/runtime/canonical-path.mjs'), join(payload, 'canonical-path.mjs'))
   await cp(join(root, 'packages/plugin-sdk'), join(payload, 'node_modules/@mydsh/sdk'), {
     recursive: true,
     filter: path =>
@@ -480,18 +483,40 @@ async function bundleDesktopModules(context) {
   })
 }
 
+function stopStagedEsbuild() {
+  try {
+    const requireStaged = createRequire(join(payload, 'package.json'))
+    const stagedEsbuild = requireStaged('esbuild')
+    stagedEsbuild.stop?.()
+  } catch {
+    /* 暂存目录尚未安装 esbuild 或服务未启动时无需停止。 */
+  }
+}
+
+async function removeStagingDirectory() {
+  stopStagedEsbuild()
+  await rm(payload, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
+}
+
 async function writeRuntimeManifest(appVersion, moduleCount) {
-  const sourceNotice = join(payload, 'licenses/deepseek-harness')
+  stopStagedEsbuild()
+  await pruneRuntimeStaging(payload)
+  await rm(bundle, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
+  await mkdir(bundle, { recursive: true })
+  await packRuntimeAsar(payload, join(bundle, 'runtime.asar'))
+  await removeStagingDirectory()
+
+  const sourceNotice = join(bundle, 'licenses/deepseek-harness')
   await mkdir(sourceNotice, { recursive: true })
   for (const name of ['LICENSE', 'manifest.json', 'README.zh.md']) {
     await cp(join(root, 'docs/upstream/dsh', name), join(sourceNotice, name))
   }
-  await prepareWindowsTools(payload)
-  const sortedPaths = (await walk(payload)).toSorted()
-  // 清单键必须是跨平台一致的 / 形式：并发计算文件摘要后按字典序组装。
+  await prepareWindowsTools(bundle)
+  const sortedPaths = (await walk(bundle)).toSorted()
+  // 清单键必须是跨平台一致的 / 形式：并发计算磁盘物理文件摘要后按字典序组装。
   const entries = await runConcurrent(sortedPaths, 32, async path => {
     const [bytes, info] = await Promise.all([readFile(path), stat(path)])
-    const key = relative(payload, path).split(/[\\/]/u).join('/')
+    const key = relative(bundle, path).split(/[\\/]/u).join('/')
     return [
       key,
       {
@@ -512,6 +537,7 @@ async function writeRuntimeManifest(appVersion, moduleCount) {
         version: appVersion,
         apiVersion: 1,
         dataSchemaVersion: 1,
+        archive: 'runtime.asar',
         entry: 'entry.js',
         files,
       },
@@ -520,7 +546,7 @@ async function writeRuntimeManifest(appVersion, moduleCount) {
     )}\n`,
   )
   console.log(
-    `MyDSH 离线核心已构建：${String(entries.length)} 个文件，${String(moduleCount)} 个源码模块。`,
+    `MyDSH 离线核心已构建：${String(entries.length)} 个物理文件（含 runtime.asar），${String(moduleCount)} 个源码模块。`,
   )
 }
 
@@ -554,15 +580,19 @@ if (!forceBuild && cached.bundleHash === bundleHash && isBundleReady(app.version
   process.exit(0)
 }
 
-await rm(bundle, { recursive: true, force: true })
+await removeStagingDirectory()
 await mkdir(payload, { recursive: true })
 const installContext = { records, installed: new Map() }
-for (const record of records.values()) {
-  await installPackageClosure(installContext, record.name, join(root, record.path))
+try {
+  for (const record of records.values()) {
+    await installPackageClosure(installContext, record.name, join(root, record.path))
+  }
+  await copyRuntimeAssetsAndServices(app.version, installContext)
+  await bundleDesktopModules(installContext)
+  await writeRuntimeManifest(app.version, records.size)
+} finally {
+  await removeStagingDirectory()
 }
-await copyRuntimeAssetsAndServices(app.version, installContext)
-await bundleDesktopModules(installContext)
-await writeRuntimeManifest(app.version, records.size)
 await mkdir(dirname(cachePath), { recursive: true })
 await writeFile(
   cachePath,

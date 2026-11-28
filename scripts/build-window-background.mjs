@@ -63,10 +63,10 @@ if (process.platform === 'win32') {
   const sdk = join(programs, 'Windows Kits', '10')
   const sdkVersion = versions(join(sdk, 'Include')).find(
     version =>
-      existsSync(join(sdk, 'Include', version, 'cppwinrt', 'winrt', 'Windows.UI.Composition.h')) &&
-      existsSync(join(sdk, 'Lib', version, 'um', 'x64', 'windowsapp.lib')),
+      existsSync(join(sdk, 'Include', version, 'um', 'dwmapi.h')) &&
+      existsSync(join(sdk, 'Lib', version, 'um', 'x64', 'dwmapi.lib')),
   )
-  if (!sdkVersion) throw new Error('Windows SDK 缺少 WinRT 合成头文件或 x64 库')
+  if (!sdkVersion) throw new Error('Windows SDK 缺少 DWM 头文件或 x64 系统库')
   const temporary = mkdtempSync(join(tmpdir(), 'mydsh-window-background-build-'))
   mkdirSync(join(root, 'lib', 'main'), { recursive: true })
   try {
@@ -85,7 +85,7 @@ if (process.platform === 'win32') {
         '/DNAPI_VERSION=8',
         '/I' + join(tools, 'include'),
         '/I' + headers.include_dir,
-        ...['ucrt', 'shared', 'um', 'winrt', 'cppwinrt'].map(
+        ...['ucrt', 'shared', 'um'].map(
           directory => '/I' + join(sdk, 'Include', sdkVersion, directory),
         ),
         join(root, 'native', 'window-background.cc'),
@@ -96,10 +96,8 @@ if (process.platform === 'win32') {
         '/LIBPATH:' + join(tools, 'lib', 'x64'),
         '/LIBPATH:' + join(sdk, 'Lib', sdkVersion, 'um', 'x64'),
         '/LIBPATH:' + join(sdk, 'Lib', sdkVersion, 'ucrt', 'x64'),
-        'windowsapp.lib',
         'user32.lib',
         'dwmapi.lib',
-        'CoreMessaging.lib',
         'comctl32.lib',
       ],
       { stdio: 'inherit', windowsHide: true },

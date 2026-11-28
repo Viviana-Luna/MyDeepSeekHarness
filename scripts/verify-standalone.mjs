@@ -1,4 +1,5 @@
 /** 独立性检查：允许固定移植的框架源码，禁止运行时依赖外部 DSH 或官方 WebUI。 */
+import { listPackage } from '@electron/asar'
 import { createHash } from 'node:crypto'
 import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs'
 import { extname, isAbsolute, join, relative, resolve } from 'node:path'
@@ -137,6 +138,72 @@ for (const path of [
     failures.push(`桌面内部不能启动 HTTP/TCP 服务：${name}`)
 }
 
+function verifyRuntimeBundle(bundlePath) {
+  const manifest = json(join(bundlePath, 'manifest.json'))
+  if (manifest.platform !== process.platform || manifest.arch !== process.arch)
+    throw new Error('核心平台或架构不匹配')
+  if (manifest.version !== app.version || manifest.schemaVersion !== 1 || manifest.apiVersion !== 1)
+    throw new Error('核心与应用版本或协议版本不匹配')
+  const remaining = new Set(Object.keys(manifest.files ?? {}))
+  const isArchived = typeof manifest.archive === 'string' && manifest.archive.length > 0
+  if (isArchived ? !remaining.has(manifest.archive) : !remaining.has(manifest.entry)) {
+    throw new Error('核心清单缺少入口或归档文件')
+  }
+  const physicalRoot = isArchived ? bundlePath : join(bundlePath, 'payload')
+  let count = 0
+  const walk = directory => {
+    for (const name of readdirSync(directory)) {
+      const path = join(directory, name)
+      const info = lstatSync(path)
+      // 清单键统一为 / 形式；Windows 的 relative() 返回反斜杠，必须与安装器一致地归一。
+      const key = relative(physicalRoot, path).split(/[\\/]/).join('/')
+      if (isArchived && key === 'manifest.json') continue
+      if (info.isSymbolicLink()) throw new Error(`核心制品不得依赖符号链接：${key}`)
+      if (info.isDirectory()) {
+        walk(path)
+        continue
+      }
+      if (!info.isFile() || !remaining.has(key)) throw new Error(`核心包含清单外文件：${key}`)
+      const expected = manifest.files[key]
+      if (
+        info.size !== expected.size ||
+        createHash('sha256').update(readFileSync(path)).digest('hex') !== expected.sha256
+      )
+        throw new Error(`核心文件完整性不符：${key}`)
+      if (process.platform !== 'win32' && expected.executable && (info.mode & 0o111) === 0)
+        throw new Error(`核心工具缺少执行权限：${key}`)
+      remaining.delete(key)
+      count += 1
+    }
+  }
+  for (const key of remaining) {
+    if (isAbsolute(key) || key.split('/').some(part => !part || part === '..' || part === '.')) {
+      throw new Error(`核心清单路径无效：${key}`)
+    }
+  }
+  walk(physicalRoot)
+  if (remaining.size) throw new Error(`核心缺少文件：${[...remaining][0]}`)
+  const requiredPackages = [...selected.keys(), 'typescript', 'esbuild', 'npm']
+  if (isArchived) {
+    const asarEntries = new Set(
+      listPackage(join(bundlePath, manifest.archive)).map(entry => entry.replaceAll('\\', '/')),
+    )
+    if (!asarEntries.has(`/${manifest.entry}`)) {
+      throw new Error(`核心归档缺少启动入口：${manifest.entry}`)
+    }
+    const missing = requiredPackages.find(
+      name => !asarEntries.has(`/node_modules/${name}/package.json`),
+    )
+    if (missing !== undefined) throw new Error(`核心归档未交付必要依赖：${missing}`)
+  } else {
+    const missing = requiredPackages.find(
+      name => !existsSync(join(physicalRoot, 'node_modules', name, 'package.json')),
+    )
+    if (missing !== undefined) throw new Error(`核心未交付必要依赖：${missing}`)
+  }
+  return count
+}
+
 // 源码检查可以在首次构建前运行；存在制品时必须完整校验，不能用成功提示遮住跳过。
 const argument = process.argv.indexOf('--bundle')
 const bundle =
@@ -144,51 +211,7 @@ const bundle =
 let verifiedFiles = 0
 if (argument >= 0 || existsSync(bundle)) {
   try {
-    const manifest = json(join(bundle, 'manifest.json'))
-    if (manifest.platform !== process.platform || manifest.arch !== process.arch)
-      throw new Error('核心平台或架构不匹配')
-    if (
-      manifest.version !== app.version ||
-      manifest.schemaVersion !== 1 ||
-      manifest.apiVersion !== 1
-    )
-      throw new Error('核心与应用版本或协议版本不匹配')
-    const remaining = new Set(Object.keys(manifest.files ?? {}))
-    if (!remaining.has(manifest.entry)) throw new Error('核心清单缺少入口')
-    const payload = join(bundle, 'payload')
-    const walk = directory => {
-      for (const name of readdirSync(directory)) {
-        const path = join(directory, name)
-        const info = lstatSync(path)
-        // 清单键统一为 / 形式；Windows 的 relative() 返回反斜杠，必须与安装器一致地归一。
-        const key = relative(payload, path).split(/[\\/]/).join('/')
-        if (info.isSymbolicLink()) throw new Error(`核心制品不得依赖符号链接：${key}`)
-        if (info.isDirectory()) {
-          walk(path)
-          continue
-        }
-        if (!info.isFile() || !remaining.has(key)) throw new Error(`核心包含清单外文件：${key}`)
-        const expected = manifest.files[key]
-        if (
-          info.size !== expected.size ||
-          createHash('sha256').update(readFileSync(path)).digest('hex') !== expected.sha256
-        )
-          throw new Error(`核心文件完整性不符：${key}`)
-        if (process.platform !== 'win32' && expected.executable && (info.mode & 0o111) === 0)
-          throw new Error(`核心工具缺少执行权限：${key}`)
-        remaining.delete(key)
-        verifiedFiles += 1
-      }
-    }
-    for (const key of remaining)
-      if (isAbsolute(key) || key.split('/').some(part => !part || part === '..' || part === '.'))
-        throw new Error(`核心清单路径无效：${key}`)
-    walk(payload)
-    if (remaining.size) throw new Error(`核心缺少文件：${[...remaining][0]}`)
-    for (const name of [...selected.keys(), 'typescript', 'esbuild', 'npm']) {
-      if (!existsSync(join(payload, 'node_modules', name, 'package.json')))
-        throw new Error(`核心未交付必要依赖：${name}`)
-    }
+    verifiedFiles = verifyRuntimeBundle(bundle)
   } catch (error) {
     failures.push(`离线核心：${error.message}`)
   }

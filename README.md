@@ -32,7 +32,7 @@
 ## 核心特性
 
 ### 光学浮岛工作台
-- **原生质感与双主题**：macOS 原生窗口合成与 Windows 11 原生背景裁剪，内置完整的深浅主题切换、多尺寸响应式排版与无障碍降级（高对比度、强制色彩、减少动态与减少透明）。
+- **原生质感与双主题**：macOS 原生窗口合成与 Windows 11 原生 DWM 硬件圆角及 Mica 背景材质，内置完整的深浅主题切换、多尺寸响应式排版与无障碍降级（高对比度、强制色彩、减少动态与减少透明）。
 - **工作标签与双栏分屏**：聊天、代码文件、Git 差异、本地终端、SSH 与内置浏览器统一纳入顶部工作标签，支持自由排序、拖拽分屏、单标签自动沉浸收起与平铺总览。
 - **同源对话与轨迹**：对话流与结构化执行轨迹实时投影自同一份 Session 日志，并配备轮次刻度导航、多维度用量与上下文压力读数。
 
@@ -74,7 +74,7 @@
 
 - **Node.js**：22.19+ 或 24+
 - **包管理器**：pnpm 11（推荐使用 Corepack：`corepack enable`）
-- **Windows 额外要求**：构建原生背景模块需要 Visual Studio C++ Build Tools 与包含 C++/WinRT 的 Windows SDK
+- **Windows 额外要求**：构建原生窗口与桌面操控模块需要 Visual Studio C++ Build Tools 与 Windows SDK
 
 ### 从源码运行
 
@@ -114,12 +114,12 @@ pnpm run dev
 └──────────────────────────────────┬───────────────────────────────────┘
                                    │ Electron MessagePort / Remote + Typert
 ┌──────────────────────────────────▼───────────────────────────────────┐
-│  内置后台 Runtime（Electron utilityProcess + Cordis）                  │
+│  内置后台 Runtime（Electron utilityProcess + Cordis · runtime.asar）  │
 │  Agent 循环 · 模型路由 · Session 持久化 · 工作区 / 终端 / SSH / DB     │
 │  受控二级 CLI 桥接（mydsh ⇄ Unix Socket / Named Pipe）                │
 └──────────────────────────────────┬───────────────────────────────────┘
                                    │
-                    ~/.mydsh/{runtime,plugins,config,data,conversions,cache}
+                        ~/.mydsh/{plugins,config,data,conversions,cache}
 ```
 
 ### 目录结构

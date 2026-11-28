@@ -7,8 +7,8 @@ import { createFailedVerifyReport, type VerifyReport } from '../desktop-verifier
 import type { LocalSuiteName } from '../host-verify-context.ts'
 import type { LocalVerifyState } from './state.ts'
 
-function assertBackgroundWindowHidden(bag: LocalVerifyState): void {
-  const { win, verifyBackground } = bag.bridge
+function assertBackgroundWindowHidden(state: LocalVerifyState): void {
+  const { win, verifyBackground } = state.bridge
   if (verifyBackground && (win.isVisible() || win.isFocused())) {
     throw new Error('后台验收意外显示了窗口或占用了系统焦点')
   }
@@ -16,16 +16,16 @@ function assertBackgroundWindowHidden(bag: LocalVerifyState): void {
 
 /** 为按子集快速运行的验收套件生成通过报告。 */
 export function buildSubsetVerificationReport(
-  bag: LocalVerifyState,
+  state: LocalVerifyState,
   suites: readonly LocalSuiteName[],
 ): { report: VerifyReport; ok: boolean } {
-  bag.bridge.setStage('complete')
-  assertBackgroundWindowHidden(bag)
+  state.bridge.setStage('complete')
+  assertBackgroundWindowHidden(state)
   const report = createFailedVerifyReport('complete', new Error(''), true)
   delete report.error
   Object.assign(report, {
-    backgroundVerification: bag.bridge.verifyBackground,
-    startupScreen: bag.bridge.isStartupScreenVerified(),
+    backgroundVerification: state.bridge.verifyBackground,
+    startupScreen: state.bridge.isStartupScreenVerified(),
     appMounted: true,
     uiActive: true,
     frame: true,
@@ -34,119 +34,119 @@ export function buildSubsetVerificationReport(
     productName: app.getName(),
     productVersion: app.getVersion(),
     singleInstanceLock: app.hasSingleInstanceLock(),
-    ownership: bag.bridge.getCurrentHost()?.ownership,
-    reportedVersion: bag.bridge.getCurrentHost()?.identity.reportedVersion,
+    ownership: state.bridge.getCurrentHost()?.ownership,
+    reportedVersion: state.bridge.getCurrentHost()?.identity.reportedVersion,
   })
   return { report, ok: true }
 }
 
-function assignShellAndSettingsFields(report: VerifyReport, bag: LocalVerifyState): void {
-  const { bridge } = bag
+function assignShellAndSettingsFields(report: VerifyReport, state: LocalVerifyState): void {
+  const { bridge } = state
   Object.assign(report, {
     backgroundVerification: bridge.verifyBackground,
     nativeFullscreenChecked: process.platform === 'darwin' && !bridge.verifyBackground,
     startupScreen: bridge.isStartupScreenVerified(),
     startupCapture: 'verify-startup.png',
     startupDarkCapture: 'verify-startup-dark.png',
-    appMounted: bag.initial.renderer,
-    sessionInfoReady: bag.sessionInfoReady,
-    hostSettingsEventsReady: bag.hostSettingsEventsReady,
+    appMounted: state.initial.renderer,
+    sessionInfoReady: state.sessionInfoReady,
+    hostSettingsEventsReady: state.hostSettingsEventsReady,
     uiActive: true,
     frame: true,
-    islandCount: bag.initial.islandCount,
+    islandCount: state.initial.islandCount,
     canvasCount: 1,
-    pageScrollable: bag.initial.pageScrollable,
-    shellPinnedToViewport: bag.shellPinnedToViewport,
-    transparentRoots: bag.clearCanvas?.transparentRoots ?? false,
-    settingsDialog: bag.settingsDialog,
-    settingsFocusInside: bag.settingsAudit.focusInside && bag.settingsFocusRestored,
-    settingsLayerCount: bag.settingsAudit.layerCount,
+    pageScrollable: state.initial.pageScrollable,
+    shellPinnedToViewport: state.shellPinnedToViewport,
+    transparentRoots: state.clearCanvas?.transparentRoots ?? false,
+    settingsDialog: state.settingsDialog,
+    settingsFocusInside: state.settingsAudit.focusInside && state.settingsFocusRestored,
+    settingsLayerCount: state.settingsAudit.layerCount,
     settingsAccent: bridge.settingsStore.read().accentColor,
-    settingsCanvasOpacity: bag.material?.canvasAlpha ?? '',
-    settingsCanvasAlpha: Number(bag.material?.canvasAlpha ?? 0),
-    settingsCanvasImageApplied: bag.material?.canvasImage === 'none',
-    canvasColorSchemeReady: bag.canvasColorSchemeReady,
-    mediumCanvasReady: bag.mediumCanvasReady,
-    topControlsReadable: bag.material?.topControlsReadable ?? false,
-    clearCanvasReady: bag.clearCanvasReady,
-    settingsPanelFits: bag.settingsAudit.panelFits,
-    settingsPagesReady: bag.allSettingsPagesReady,
-    islandGapSettingReady: bag.islandGapSettingReady,
-    appearanceCapture: bag.appearanceCapture,
-    appearanceBackgroundsCapture: bag.appearanceBackgroundsCapture,
-    modelsCapture: bag.modelsCapture,
-    modelMenuCapture: bag.modelMenuCapture,
-    modelMenuReady: bag.modelMenuReady,
-    pluginsCapture: bag.pluginsCapture,
-    automationCapture: bag.automationCapture,
-    automationSettingsReady: bag.automationSettingsReady,
-    presetsCapture: bag.presetsCapture,
-    frameOpacity: bag.clearCanvas?.shellOpacity ?? '',
-    islandsOpaque: bag.initial.islandsOpaque,
-    uiDensityReady: bag.initial.densityReady,
-    uiBodyFontSize: bag.initial.bodyFontSize,
-    uiBodyFontWeight: bag.initial.bodyFontWeight,
-    uiProjectActionHeight: bag.initial.projectActionHeight,
-    uiTabHeight: bag.initial.tabHeight,
-    uiFontScaleReady: bag.fontScaleReady,
-    editorAppearanceReady: bag.editorAppearanceReady,
-    uiAccentContrastReady: bag.accentContrastReady,
-    titlebarClearanceReady: bag.initial.titlebarClearanceReady,
-    windowControlsReady: bag.windowControlsReady,
-    islandTop: bag.initial.islandTop,
-    topToolbarReady: bag.initial.topToolbarReady,
-    toolbarLayoutIndependent: bag.initial.toolbarLayoutIndependent,
-    workspaceHeaderRemoved: bag.initial.workspaceHeaderRemoved,
-    panelCapsulesReady: bag.initial.panelCapsulesReady,
-    panelCollapseReady: bag.panelCollapseReady,
-    panelResizeReady: bag.panelResizeReady,
-    panelDragLineReady: bag.panelDragLineReady,
-    trajectoryFocusReady: bag.initial.trajectoryFocusReady,
+    settingsCanvasOpacity: state.material?.canvasAlpha ?? '',
+    settingsCanvasAlpha: Number(state.material?.canvasAlpha ?? 0),
+    settingsCanvasImageApplied: state.material?.canvasImage === 'none',
+    canvasColorSchemeReady: state.canvasColorSchemeReady,
+    mediumCanvasReady: state.mediumCanvasReady,
+    topControlsReadable: state.material?.topControlsReadable ?? false,
+    clearCanvasReady: state.clearCanvasReady,
+    settingsPanelFits: state.settingsAudit.panelFits,
+    settingsPagesReady: state.allSettingsPagesReady,
+    islandGapSettingReady: state.islandGapSettingReady,
+    appearanceCapture: state.appearanceCapture,
+    appearanceBackgroundsCapture: state.appearanceBackgroundsCapture,
+    modelsCapture: state.modelsCapture,
+    modelMenuCapture: state.modelMenuCapture,
+    modelMenuReady: state.modelMenuReady,
+    pluginsCapture: state.pluginsCapture,
+    automationCapture: state.automationCapture,
+    automationSettingsReady: state.automationSettingsReady,
+    presetsCapture: state.presetsCapture,
+    frameOpacity: state.clearCanvas?.shellOpacity ?? '',
+    islandsOpaque: state.initial.islandsOpaque,
+    uiDensityReady: state.initial.densityReady,
+    uiBodyFontSize: state.initial.bodyFontSize,
+    uiBodyFontWeight: state.initial.bodyFontWeight,
+    uiProjectActionHeight: state.initial.projectActionHeight,
+    uiTabHeight: state.initial.tabHeight,
+    uiFontScaleReady: state.fontScaleReady,
+    editorAppearanceReady: state.editorAppearanceReady,
+    uiAccentContrastReady: state.accentContrastReady,
+    titlebarClearanceReady: state.initial.titlebarClearanceReady,
+    windowControlsReady: state.windowControlsReady,
+    islandTop: state.initial.islandTop,
+    topToolbarReady: state.initial.topToolbarReady,
+    toolbarLayoutIndependent: state.initial.toolbarLayoutIndependent,
+    workspaceHeaderRemoved: state.initial.workspaceHeaderRemoved,
+    panelCapsulesReady: state.initial.panelCapsulesReady,
+    panelCollapseReady: state.panelCollapseReady,
+    panelResizeReady: state.panelResizeReady,
+    panelDragLineReady: state.panelDragLineReady,
+    trajectoryFocusReady: state.initial.trajectoryFocusReady,
   })
 }
 
-function assignWorkspaceAndWindowFields(report: VerifyReport, bag: LocalVerifyState): void {
-  const { bridge } = bag
+function assignWorkspaceAndWindowFields(report: VerifyReport, state: LocalVerifyState): void {
+  const { bridge } = state
   Object.assign(report, {
-    projectGroupingReady: bag.projectGroupingReady,
-    sessionActionsReady: bag.sessionActionsReady,
-    sessionActionsCapture: bag.sessionActionsCapture,
-    sessionSearchReady: bag.sessionSearchReady,
-    sessionTabsReady: bag.sessionTabsReady,
+    projectGroupingReady: state.projectGroupingReady,
+    sessionActionsReady: state.sessionActionsReady,
+    sessionActionsCapture: state.sessionActionsCapture,
+    sessionSearchReady: state.sessionSearchReady,
+    sessionTabsReady: state.sessionTabsReady,
     sessionStreamReady: bridge.isSessionStreamFrameObserved(),
-    hostRecoveryRetainsEditor: bag.hostRecoveryRetainsEditor,
+    hostRecoveryRetainsEditor: state.hostRecoveryRetainsEditor,
     hostEventStreamReady: bridge.isHostEventStreamFrameObserved(),
-    sessionCostRemoved: bag.initial.sessionCostRemoved,
-    commandPaletteReady: bag.commandPaletteAudit.ready,
-    commandPaletteOptionCount: bag.commandPaletteAudit.optionCount ?? 0,
-    commandPalettePortal: bag.commandPaletteAudit.portal === true,
-    commandPaletteAriaReady: bag.commandPaletteAudit.ariaReady === true,
-    desktopBridgeVersion: bag.commandPaletteAudit.bridgeVersion ?? 0,
-    fileReferenceReady: bag.fileReferenceAudit.ready,
-    commandExecutionReady: bag.commandExecutionAudit.ready,
-    attachmentDropReady: bag.attachmentDropAudit.ready,
-    commandLifecycleReady: bag.commandLifecycleReady,
-    searchCapture: bag.sessionSearchState.dialogPresent ? bag.searchCapture : '',
+    sessionCostRemoved: state.initial.sessionCostRemoved,
+    commandPaletteReady: state.commandPaletteAudit.ready,
+    commandPaletteOptionCount: state.commandPaletteAudit.optionCount ?? 0,
+    commandPalettePortal: state.commandPaletteAudit.portal === true,
+    commandPaletteAriaReady: state.commandPaletteAudit.ariaReady === true,
+    desktopBridgeVersion: state.commandPaletteAudit.bridgeVersion ?? 0,
+    fileReferenceReady: state.fileReferenceAudit.ready,
+    commandExecutionReady: state.commandExecutionAudit.ready,
+    attachmentDropReady: state.attachmentDropAudit.ready,
+    commandLifecycleReady: state.commandLifecycleReady,
+    searchCapture: state.sessionSearchState.dialogPresent ? state.searchCapture : '',
     zoomFactor: bridge.win.webContents.getZoomFactor(),
-    nativeSettingsTrigger: bag.settingsDialog,
-    nativeSettingsDialog: bag.settingsDialog,
-    nativeSettingsSidebarRaised: bag.settingsAudit.navCount === 6,
-    nativeSettingsTopmost: bag.settingsAudit.modal,
-    nativeAppearanceEntry: bag.settingsAudit.appearanceIndex >= 0,
-    nativeAppearanceEntryPlaced: bag.settingsAudit.appearanceIndex === 1,
+    nativeSettingsTrigger: state.settingsDialog,
+    nativeSettingsDialog: state.settingsDialog,
+    nativeSettingsSidebarRaised: state.settingsAudit.navCount === 6,
+    nativeSettingsTopmost: state.settingsAudit.modal,
+    nativeAppearanceEntry: state.settingsAudit.appearanceIndex >= 0,
+    nativeAppearanceEntryPlaced: state.settingsAudit.appearanceIndex === 1,
     appearanceMenu: bridge.appearanceMenuItem.enabled,
     appearanceAccelerator: bridge.appearanceMenuItem.accelerator ?? '',
-    capture: bag.defaultCapture,
-    darkCapture: bag.darkCapture,
-    darkSettingsReadable: bag.darkSettingsReadable,
-    largeCapture: bag.largeCapture,
-    largeLayoutStable: bag.largeLayoutStable,
-    mediumToolbarStable: bag.mediumToolbarStable,
-    narrowCapture: bag.narrowCapture,
-    narrowSettingsFits: bag.narrowSettingsFits,
-    narrowRightPanelHidden: bag.narrowRightPanelHidden,
-    nativeCapture: bag.materialCapture,
-    clearCapture: bag.clearCapture,
+    capture: state.defaultCapture,
+    darkCapture: state.darkCapture,
+    darkSettingsReadable: state.darkSettingsReadable,
+    largeCapture: state.largeCapture,
+    largeLayoutStable: state.largeLayoutStable,
+    mediumToolbarStable: state.mediumToolbarStable,
+    narrowCapture: state.narrowCapture,
+    narrowSettingsFits: state.narrowSettingsFits,
+    narrowRightPanelHidden: state.narrowRightPanelHidden,
+    nativeCapture: state.materialCapture,
+    clearCapture: state.clearCapture,
     blank: false,
     productName: app.getName(),
     productVersion: app.getVersion(),
@@ -156,72 +156,72 @@ function assignWorkspaceAndWindowFields(report: VerifyReport, bag: LocalVerifySt
     reportedVersion: bridge.getCurrentHost()?.identity.reportedVersion,
     settingsRevision: bridge.settingsStore.read().revision,
     settingsPersisted: bridge.settingsStore.read().canvasTransparency === 0.32,
-    terminalReady: bag.terminalReady,
-    ...bag.projectViews,
+    terminalReady: state.terminalReady,
+    ...state.projectViews,
     nativeWindow: {
       platform: process.platform,
       transparent: bridge.nativeTransparency,
-      transparentPixelRatio: bag.transparentPixelRatio,
+      transparentPixelRatio: state.transparentPixelRatio,
       canvasComposition: bridge.windowController.read().canvasComposition,
     },
-    nativeWindowClipReady: bag.nativeWindowClipReady,
+    nativeWindowClipReady: state.nativeWindowClipReady,
   })
 }
 
-function areCoreAndSessionChecksOk(bag: LocalVerifyState): boolean {
-  const { bridge } = bag
+function areCoreAndSessionChecksOk(state: LocalVerifyState): boolean {
+  const { bridge } = state
   return Boolean(
     bridge.isStartupScreenVerified() &&
-    bag.nativeWindowClipReady &&
-    bag.initial.title === PRODUCT_NAME &&
-    bag.initial.renderer &&
-    bag.initial.islandCount === 3 &&
-    !bag.initial.pageScrollable &&
-    bag.initial.islandsOpaque &&
-    bag.initial.densityReady &&
-    bag.fontScaleReady &&
-    bag.editorAppearanceReady &&
-    bag.accentContrastReady &&
-    bag.initial.titlebarClearanceReady &&
-    bag.windowControlsReady &&
-    bag.initial.topToolbarReady &&
-    bag.initial.toolbarLayoutIndependent &&
-    bag.initial.workspaceHeaderRemoved &&
-    bag.initial.panelCapsulesReady &&
-    bag.panelCollapseReady &&
-    bag.panelResizeReady &&
-    bag.panelDragLineReady &&
-    bag.projectGroupingReady &&
-    bag.sessionActionsReady &&
-    bag.sessionSearchReady &&
-    bag.sessionTabsReady &&
+    state.nativeWindowClipReady &&
+    state.initial.title === PRODUCT_NAME &&
+    state.initial.renderer &&
+    state.initial.islandCount === 3 &&
+    !state.initial.pageScrollable &&
+    state.initial.islandsOpaque &&
+    state.initial.densityReady &&
+    state.fontScaleReady &&
+    state.editorAppearanceReady &&
+    state.accentContrastReady &&
+    state.initial.titlebarClearanceReady &&
+    state.windowControlsReady &&
+    state.initial.topToolbarReady &&
+    state.initial.toolbarLayoutIndependent &&
+    state.initial.workspaceHeaderRemoved &&
+    state.initial.panelCapsulesReady &&
+    state.panelCollapseReady &&
+    state.panelResizeReady &&
+    state.panelDragLineReady &&
+    state.projectGroupingReady &&
+    state.sessionActionsReady &&
+    state.sessionSearchReady &&
+    state.sessionTabsReady &&
     bridge.isSessionStreamFrameObserved() &&
-    bag.hostRecoveryRetainsEditor &&
+    state.hostRecoveryRetainsEditor &&
     bridge.isHostEventStreamFrameObserved() &&
-    bag.initial.sessionCostRemoved &&
-    bag.modelMenuReady &&
-    bag.sessionInfoReady &&
-    bag.hostSettingsEventsReady &&
-    bag.commandPaletteAudit.ready &&
-    bag.commandPaletteAudit.closedAfterClear === true &&
-    bag.commandPaletteAudit.bridgeVersion === 23 &&
-    bag.fileReferenceAudit.ready &&
-    bag.fileReferenceAudit.closedAfterClear === true &&
-    bag.attachmentDropAudit.ready &&
-    bag.commandExecutionAudit.ready &&
-    bag.commandExecutionAudit.draftCleared === true &&
-    bag.commandExecutionAudit.paletteClosed === true &&
-    bag.commandLifecycleReady &&
+    state.initial.sessionCostRemoved &&
+    state.modelMenuReady &&
+    state.sessionInfoReady &&
+    state.hostSettingsEventsReady &&
+    state.commandPaletteAudit.ready &&
+    state.commandPaletteAudit.closedAfterClear === true &&
+    state.commandPaletteAudit.bridgeVersion === 23 &&
+    state.fileReferenceAudit.ready &&
+    state.fileReferenceAudit.closedAfterClear === true &&
+    state.attachmentDropAudit.ready &&
+    state.commandExecutionAudit.ready &&
+    state.commandExecutionAudit.draftCleared === true &&
+    state.commandExecutionAudit.paletteClosed === true &&
+    state.commandLifecycleReady &&
     bridge.win.webContents.getZoomFactor() === 1 &&
-    bag.initial.trajectoryVisible &&
-    bag.initial.trajectoryFocusReady &&
-    bag.initial.composerCapped,
+    state.initial.trajectoryVisible &&
+    state.initial.trajectoryFocusReady &&
+    state.initial.composerCapped,
   )
 }
 
-function areProjectAndVisualChecksOk(bag: LocalVerifyState): boolean {
-  const pv = bag.projectViews
-  const mat = bag.material
+function areProjectAndVisualChecksOk(state: LocalVerifyState): boolean {
+  const pv = state.projectViews
+  const mat = state.material
   return Boolean(
     pv.fileTreeReady &&
     pv.deepFileTreeReady &&
@@ -239,7 +239,7 @@ function areProjectAndVisualChecksOk(bag: LocalVerifyState): boolean {
     pv.taskSuggestionsRemoved &&
     pv.projectTasksReady &&
     pv.composerVisibilityReady &&
-    bag.terminalReady &&
+    state.terminalReady &&
     pv.sourceControlReady &&
     pv.sourceControlWriteReady &&
     pv.sourceControlFailureReady &&
@@ -248,48 +248,48 @@ function areProjectAndVisualChecksOk(bag: LocalVerifyState): boolean {
     pv.contextualRightPanelReady &&
     pv.diffResponsiveReady &&
     pv.pendingInteractionsReady &&
-    bag.settingsDialog &&
-    bag.settingsAudit.focusInside &&
-    bag.settingsFocusRestored &&
-    bag.settingsAudit.panelFits &&
-    bag.settingsAudit.layerCount === 0 &&
-    bag.settingsAudit.navCount === 6 &&
-    bag.settingsAudit.appearanceIndex === 1 &&
-    bag.settingsAudit.modal &&
-    bag.darkSettingsReadable &&
-    bag.allSettingsPagesReady &&
-    bag.canvasColorSchemeReady &&
-    bag.islandGapSettingReady &&
-    bag.reducedTransparencyReady &&
-    bag.forcedColorsReady &&
+    state.settingsDialog &&
+    state.settingsAudit.focusInside &&
+    state.settingsFocusRestored &&
+    state.settingsAudit.panelFits &&
+    state.settingsAudit.layerCount === 0 &&
+    state.settingsAudit.navCount === 6 &&
+    state.settingsAudit.appearanceIndex === 1 &&
+    state.settingsAudit.modal &&
+    state.darkSettingsReadable &&
+    state.allSettingsPagesReady &&
+    state.canvasColorSchemeReady &&
+    state.islandGapSettingReady &&
+    state.reducedTransparencyReady &&
+    state.forcedColorsReady &&
     mat !== null &&
     mat.backdrop === 'none' &&
     mat.canvasImage === 'none' &&
     Math.abs(Number(mat.canvasAlpha) - 0.68) <= 0.001 &&
     Math.abs(Number(mat.scrimAlpha) - 0.84) <= 0.001 &&
     mat.contentBackground.includes('linear-gradient') &&
-    bag.mediumCanvasReady &&
+    state.mediumCanvasReady &&
     mat.topControlsReadable &&
-    bag.clearCanvasReady &&
-    bag.largeLayoutStable &&
-    bag.shellPinnedToViewport &&
-    bag.mediumToolbarStable &&
-    bag.narrowSettingsFits &&
-    bag.narrowRightPanelHidden &&
-    bag.bridge.appearanceMenuItem.enabled,
+    state.clearCanvasReady &&
+    state.largeLayoutStable &&
+    state.shellPinnedToViewport &&
+    state.mediumToolbarStable &&
+    state.narrowSettingsFits &&
+    state.narrowRightPanelHidden &&
+    state.bridge.appearanceMenuItem.enabled,
   )
 }
 
 /** 构造全量验收报告并判定全部指标是否通过。 */
-export function buildFullVerificationReport(bag: LocalVerifyState): {
+export function buildFullVerificationReport(state: LocalVerifyState): {
   report: VerifyReport
   ok: boolean
 } {
-  bag.bridge.setStage('complete')
-  assertBackgroundWindowHidden(bag)
+  state.bridge.setStage('complete')
+  assertBackgroundWindowHidden(state)
   const report = createFailedVerifyReport('complete', new Error(''), true)
   delete report.error
-  assignShellAndSettingsFields(report, bag)
-  assignWorkspaceAndWindowFields(report, bag)
-  return { report, ok: areCoreAndSessionChecksOk(bag) && areProjectAndVisualChecksOk(bag) }
+  assignShellAndSettingsFields(report, state)
+  assignWorkspaceAndWindowFields(report, state)
+  return { report, ok: areCoreAndSessionChecksOk(state) && areProjectAndVisualChecksOk(state) }
 }

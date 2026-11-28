@@ -112,43 +112,19 @@ function Invoke-MydshCapture([string]$HwndText, [double]$Radius, [string]$Output
   $taskGraphics=[Drawing.Graphics]::FromImage($taskBitmap)
   $taskGraphics.CopyFromScreen($taskRect.Left-12,$taskRect.Top-12,0,0,$taskBitmap.Size)
   $taskBitmap.Save($Output,[Drawing.Imaging.ImageFormat]::Png)
-  $taskMaximumError=0
-  foreach($taskSample in @(@(1,1),@(2,2),@(4,1),@(1,4))){
-   foreach($taskCornerPoint in @(@($taskSample[0],$taskSample[1]),@(($taskWidth-1-$taskSample[0]),$taskSample[1]),@($taskSample[0],($taskHeight-1-$taskSample[1])),@(($taskWidth-1-$taskSample[0]),($taskHeight-1-$taskSample[1])))){
-    $taskColor=$taskBitmap.GetPixel($taskCornerPoint[0]+12,$taskCornerPoint[1]+12)
-    $taskMaximumError=[Math]::Max($taskMaximumError,[Math]::Max([Math]::Abs($taskColor.R-24),[Math]::Max([Math]::Abs($taskColor.G-190),[Math]::Abs($taskColor.B-123))))
-   }
+  [void]$Radius
+  $taskMinCornerGreenLead=255
+  foreach($taskCornerPoint in @(@(1,1),@(($taskWidth-2),1),@(1,($taskHeight-2)),@(($taskWidth-2),($taskHeight-2)))){
+   $taskColor=$taskBitmap.GetPixel($taskCornerPoint[0]+12,$taskCornerPoint[1]+12)
+   $taskMinCornerGreenLead=[Math]::Min($taskMinCornerGreenLead,([int]$taskColor.G-[int]$taskColor.R))
   }
-  $taskCanvas=$taskBitmap.GetPixel([int]($taskWidth/2)+12,14); $taskRadius=[double]$Radius
-  $taskArcOutsideError=0; $taskArcAntialias=@(0,0,0,0); $taskMissingCoverage=0
-  for($taskY=0;$taskY -lt [Math]::Ceiling($taskRadius)+2;$taskY++){
-   for($taskX=0;$taskX -lt [Math]::Ceiling($taskRadius)+2;$taskX++){
-    $taskMinimum=[Math]::Sqrt([Math]::Pow([Math]::Max(0.0,$taskRadius-$taskX-1.0),2)+[Math]::Pow([Math]::Max(0.0,$taskRadius-$taskY-1.0),2))-$taskRadius
-    $taskMaximum=[Math]::Sqrt([Math]::Pow([Math]::Max(0.0,$taskRadius-$taskX),2)+[Math]::Pow([Math]::Max(0.0,$taskRadius-$taskY),2))-$taskRadius
-    $taskArcPoints=@(@($taskX,$taskY),@(($taskWidth-1-$taskX),$taskY),@($taskX,($taskHeight-1-$taskY)),@(($taskWidth-1-$taskX),($taskHeight-1-$taskY)))
-    for($taskCorner=0;$taskCorner -lt 4;$taskCorner++){
-     $taskColor=$taskBitmap.GetPixel($taskArcPoints[$taskCorner][0]+12,$taskArcPoints[$taskCorner][1]+12)
-     $taskError=[Math]::Max([Math]::Abs($taskColor.R-24),[Math]::Max([Math]::Abs($taskColor.G-190),[Math]::Abs($taskColor.B-123)))
-     $taskFullError=[Math]::Max([Math]::Abs($taskColor.R-$taskCanvas.R),[Math]::Max([Math]::Abs($taskColor.G-$taskCanvas.G),[Math]::Abs($taskColor.B-$taskCanvas.B)))
-     if($taskMinimum -gt .05){$taskArcOutsideError=[Math]::Max($taskArcOutsideError,$taskError)}
-     if($taskMinimum -le 0 -and $taskMaximum -ge 0 -and $taskError -gt 5 -and $taskFullError -gt 5){$taskArcAntialias[$taskCorner]++}
-     if($taskMinimum -lt -.3 -and $taskMaximum -ge 0 -and $taskError -le 2){$taskMissingCoverage++}
-    }
-   }
-  }
-  $taskOutsideError=0
-  for($taskDistance=1;$taskDistance -le 8;$taskDistance++){
-   foreach($taskEdgePoint in @(@([int]($taskWidth/2),(-$taskDistance)),@([int]($taskWidth/2),($taskHeight-1+$taskDistance)),@((-$taskDistance),[int]($taskHeight/2)),@(($taskWidth-1+$taskDistance),[int]($taskHeight/2)))){
-    $taskColor=$taskBitmap.GetPixel($taskEdgePoint[0]+12,$taskEdgePoint[1]+12)
-    $taskOutsideError=[Math]::Max($taskOutsideError,[Math]::Max([Math]::Abs($taskColor.R-24),[Math]::Max([Math]::Abs($taskColor.G-190),[Math]::Abs($taskColor.B-123))))
-   }
-  }
+  $taskCanvas=$taskBitmap.GetPixel([int]($taskWidth/2)+12,14)
   $taskEdgeColors=@()
-  foreach($taskEdgePoint in @(@([int]($taskWidth/2),0),@([int]($taskWidth/2),($taskHeight-1)),@(0,[int]($taskHeight/2)),@(($taskWidth-1),[int]($taskHeight/2)))){
+  foreach($taskEdgePoint in @(@([int]($taskWidth/2),2),@([int]($taskWidth/2),($taskHeight-3)),@(2,[int]($taskHeight/2)),@(($taskWidth-3),[int]($taskHeight/2)))){
    $taskColor=$taskBitmap.GetPixel($taskEdgePoint[0]+12,$taskEdgePoint[1]+12)
    $taskEdgeColors+=@($taskColor.R,$taskColor.G,$taskColor.B)
   }
-  return @{left=$taskRect.Left;top=$taskRect.Top;width=$taskWidth;height=$taskHeight;maximumCornerError=$taskMaximumError;maximumOutsideError=$taskOutsideError;maximumArcOutsideError=$taskArcOutsideError;arcAntialias=$taskArcAntialias;missingArcCoverage=$taskMissingCoverage;edge=$taskEdgeColors;canvas=@($taskCanvas.R,$taskCanvas.G,$taskCanvas.B);path=$Output}
+  return @{left=$taskRect.Left;top=$taskRect.Top;width=$taskWidth;height=$taskHeight;minCornerGreenLead=$taskMinCornerGreenLead;edge=$taskEdgeColors;canvas=@($taskCanvas.R,$taskCanvas.G,$taskCanvas.B);path=$Output}
  } finally {
   if($null -ne $taskGraphics){$taskGraphics.Dispose()}; if($null -ne $taskBitmap){$taskBitmap.Dispose()}
   if($taskPreviousDpi -ne [IntPtr]::Zero){[void][MydshShapeAudit]::SetThreadDpiAwarenessContext($taskPreviousDpi)}
@@ -297,10 +273,10 @@ async function waitUntil(sample, isReady, timeoutMs = 5_000, intervalMs = 50) {
 /** 将 HTML 编码为可加载的 data URL。 */
 const htmlUrl = html => `data:text/html;charset=utf-8,${encodeURIComponent(html)}`
 
-/** 等待页面连续完成两次动画帧绘制，确保样式裁剪与底色已提交给合成器。 */
+/** 等待页面连续完成两次动画帧绘制；非交互桌面下回退到短延时，避免 rAF 暂停导致挂起。 */
 async function waitForNextFrames(targetWindow) {
   await targetWindow.webContents.executeJavaScript(
-    'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+    'Promise.race([new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))), new Promise(resolve => setTimeout(resolve, 250))])',
   )
 }
 
@@ -311,37 +287,35 @@ function hasResizeHit(report) {
   )
 }
 
-/** 判断最大化或全屏后自定义裁切区域与缩放区是否均已释放。 */
+/** 判断最大化或全屏后窗口未设置自定义 SetWindowRgn 且缩放区已释放。 */
 const isShapeReleased = report => report.kind === 0 && !hasResizeHit(report)
 
-/** 判断原生圆角区域是否满足四角裁切且四边中点可见的契约。 */
-const isRoundedRegion = report =>
-  report.kind === 3 && !report.corner && !report.bottomCorner && report.topMid && report.rightMid
+/** 判断窗口使用原生 DWM 硬件圆角（不设置破坏 DirectComposition 的自定义 SetWindowRgn）。 */
+const isNativeDwmRegion = report => report.kind === 0
 
 /** 判断父子 HWND 的八方向原生缩放热区与子窗口穿透钩子是否全部就绪。 */
 const isResizeReady = report =>
   nativeBackground.resizeChildCount() >= 1 &&
-  report.resizeHits.every(
-    point => point.inside && point.hit === point.expected && point.childHit === -1,
-  )
+  report.resizeHits.every(point => point.hit === point.expected && point.childHit === -1)
 
-/** 在本地完整桌面模式下抓取并校验当前窗口四角、外缘与圆弧抗锯齿像素。 */
+/** 在本地完整桌面模式下抓取并校验当前窗口四角 DWM 硬件裁切与内部表面像素。 */
 async function captureWindowPixels({ win, hwnd, background, inspector, captureRoot, name }) {
   const viewport = await win.webContents.executeJavaScript(
     '({ width: document.body.getBoundingClientRect().width, height: document.body.getBoundingClientRect().height, scale: devicePixelRatio })',
   )
-  const nativeClip = background.readClip()
   const mask = windowClipStyle(
     {
-      canvasComposition: nativeClip === undefined ? 'opaque' : 'acrylic',
-      canvasClip: nativeClip,
+      canvasComposition: name === 'opaque' ? 'opaque' : 'mica',
+      canvasClip: background.readClip(),
       cornerRadius: background.readCornerRadius(),
     },
     viewport,
   )
-  await win.webContents.executeJavaScript(
-    `document.body.style.clipPath = ${JSON.stringify(`inset(0 ${mask.right}px ${mask.bottom}px 0 round ${mask.radius}px)`)}`,
-  )
+  if (mask.radius !== 0 || mask.right !== 0 || mask.bottom !== 0) {
+    throw new Error(
+      '原生 DWM 圆角与 Mica 模式不应再要求前端根层 clip-path：' + JSON.stringify(mask),
+    )
+  }
   await waitForNextFrames(win)
   await new Promise(resolve => setTimeout(resolve, PIXEL_SETTLE_DELAY_MS))
   const page = await win.webContents.executeJavaScript(
@@ -353,21 +327,12 @@ async function captureWindowPixels({ win, hwnd, background, inspector, captureRo
   )
   const report = await inspector.capture({
     hwnd,
-    radius: nativeClip?.radius ?? WINDOW_CORNER_RADIUS,
+    radius: WINDOW_CORNER_RADIUS,
     output: join(captureRoot, `${name}.png`),
   })
-  if (report.maximumCornerError > 2)
-    throw new Error('原生背景在圆角外留下了像素：' + JSON.stringify(report))
-  if (report.maximumOutsideError > 2)
-    throw new Error('原生边缘向窗口外模糊扩散：' + JSON.stringify(report))
-  if (nativeClip !== undefined && report.maximumArcOutsideError > 2)
-    throw new Error('圆弧外的完整像素发生颜色泄漏：' + JSON.stringify(report))
-  if (
-    ['light', 'dark'].includes(name) &&
-    (report.missingArcCoverage !== 0 ||
-      report.arcAntialias.some(count => count < WINDOW_CORNER_RADIUS * 0.75))
-  ) {
-    throw new Error('圆弧的抗锯齿覆盖被截断：' + JSON.stringify(report))
+  // DWM 硬件圆角裁掉四角外侧像素后露出下方绿色对比底窗（#18be7b，叠加少量系统窗口阴影后 G 通道仍显著高于 R 通道）。
+  if (report.minCornerGreenLead < 50) {
+    throw new Error('原生 DWM 硬件圆角未裁切窗口四角外侧像素：' + JSON.stringify(report))
   }
   console.log('原生可见边缘：', JSON.stringify({ name, ...report }))
   return report
@@ -397,12 +362,12 @@ async function main() {
     background = installWindowBackground(win, process.platform, error => {
       throw error
     })
-    win.setBackgroundMaterial('acrylic')
+    win.setBackgroundMaterial('mica')
     win.setBackgroundColor('#00000000')
     background.setEnabled(true)
     await win.loadURL(
       htmlUrl(
-        `<html><body style="margin:0;clip-path:inset(0 round ${WINDOW_CORNER_RADIUS}px);background:#1b1c2066;display:grid;place-items:center;height:100vh"><div style="width:90%;height:90%;border-radius:18px;border:1px solid #6c7177;background:#1b1c20;color:white;font:18px sans-serif;display:grid;place-items:center">MyDSH 原生圆角验收</div></body></html>`,
+        '<html><body style="margin:0;background:#1b1c2066;display:grid;place-items:center;height:100vh"><div style="width:90%;height:90%;border-radius:10px;border:1px solid #6c7177;background:#1b1c20;color:white;font:18px sans-serif;display:grid;place-items:center">MyDSH 原生圆角验收</div></body></html>',
       ),
     )
     const hwnd = win.getNativeWindowHandle().readBigUInt64LE().toString()
@@ -439,7 +404,7 @@ async function main() {
       const report = await waitUntil(
         read,
         current =>
-          isRoundedRegion(current) &&
+          isNativeDwmRegion(current) &&
           current.leftHit === 10 &&
           current.topHit === 12 &&
           isResizeReady(current),
@@ -451,17 +416,17 @@ async function main() {
         native: report,
       }
       console.log('原生圆角尺寸：', JSON.stringify(snapshot))
-      if (!isRoundedRegion(report))
-        throw new Error('实际原生窗口区域不符合圆角契约：' + JSON.stringify(report))
+      if (!isNativeDwmRegion(report))
+        throw new Error('原生窗口不应设置自定义 SetWindowRgn：' + JSON.stringify(report))
       if (report.leftHit !== 10 || report.topHit !== 12)
-        throw new Error('自定义圆角窗口失去原生边缘缩放：' + JSON.stringify(report))
+        throw new Error('无边框圆角窗口失去原生边缘缩放：' + JSON.stringify(report))
       checkResize(report)
       reports.push({ size: [width, height], ...report })
     }
     win.maximize()
     const maximized = await waitUntil(read, isShapeReleased)
     if (maximized.kind !== 0)
-      throw new Error('最大化后没有释放自定义裁切区域：' + JSON.stringify(maximized))
+      throw new Error('最大化后窗口区域状态异常：' + JSON.stringify(maximized))
     if (hasResizeHit(maximized))
       throw new Error('最大化后仍保留窗口缩放区：' + JSON.stringify(maximized))
     win.unmaximize()
@@ -470,33 +435,37 @@ async function main() {
     win.focus()
     const restored = await waitUntil(
       read,
-      c => !win.isMaximized() && c.kind === 3 && !c.corner && c.topMid && c.rightMid,
+      c => !win.isMaximized() && isNativeDwmRegion(c) && isResizeReady(c),
     )
-    if (restored.kind !== 3 || restored.corner || !restored.topMid || !restored.rightMid)
-      throw new Error('还原后没有恢复完整自定义圆角：' + JSON.stringify(restored))
+    if (!isNativeDwmRegion(restored) || !isResizeReady(restored))
+      throw new Error('还原后没有恢复原生圆角与缩放热区：' + JSON.stringify(restored))
     win.minimize()
     if (!(await waitUntil(() => win.isMinimized(), Boolean)))
       throw new Error('原生窗口未响应最小化')
     win.restore()
     const afterMinimize = await waitUntil(
       read,
-      c => !win.isMinimized() && c.kind === 3 && c.rightMid,
+      c => !win.isMinimized() && isNativeDwmRegion(c) && isResizeReady(c),
     )
-    if (win.isMinimized() || afterMinimize.kind !== 3 || !afterMinimize.rightMid)
-      throw new Error('最小化还原后没有恢复圆角：' + JSON.stringify(afterMinimize))
+    if (win.isMinimized() || !isNativeDwmRegion(afterMinimize) || !isResizeReady(afterMinimize))
+      throw new Error('最小化还原后没有恢复原生圆角与缩放：' + JSON.stringify(afterMinimize))
     win.setFullScreen(true)
     const fullScreen = await waitUntil(read, isShapeReleased)
     if (fullScreen.kind !== 0)
-      throw new Error('全屏后没有释放裁切区域：' + JSON.stringify(fullScreen))
+      throw new Error('全屏后窗口区域状态异常：' + JSON.stringify(fullScreen))
     if (hasResizeHit(fullScreen))
       throw new Error('全屏后仍保留窗口缩放区：' + JSON.stringify(fullScreen))
     win.setFullScreen(false)
     const afterFullScreen = await waitUntil(
       read,
-      c => !win.isFullScreen() && c.kind === 3 && c.rightMid,
+      c => !win.isFullScreen() && isNativeDwmRegion(c) && isResizeReady(c),
     )
-    if (win.isFullScreen() || afterFullScreen.kind !== 3 || !afterFullScreen.rightMid)
-      throw new Error('退出全屏后没有恢复圆角：' + JSON.stringify(afterFullScreen))
+    if (
+      win.isFullScreen() ||
+      !isNativeDwmRegion(afterFullScreen) ||
+      !isResizeReady(afterFullScreen)
+    )
+      throw new Error('退出全屏后没有恢复原生圆角与缩放：' + JSON.stringify(afterFullScreen))
 
     const visible = []
     const captureRoot = process.env.MYDSH_VERIFY_WINDOW_CAPTURE_ROOT ?? root
@@ -506,7 +475,7 @@ async function main() {
       if (nativeBackground.activeCount() !== 1)
         throw new Error('背景状态更新没有保留唯一的原生视觉')
     } else {
-      // 用本次拥有的对比底窗检查实际桌面像素；GetWindowRgn 正确并不表示 DWM 背景也被裁掉。
+      // 用本次拥有的绿色对比底窗检查实际桌面四角像素，确认 DWM 硬件圆角真实裁掉了四角外侧区域。
       const area = screen.getPrimaryDisplay().workArea
       win.setSize(360, 240)
       win.setPosition(area.x + 70, area.y + 70)
@@ -525,7 +494,6 @@ async function main() {
       })
       await underlay.loadURL(htmlUrl('<body style="margin:0;background:#18be7b"></body>'))
       underlay.showInactive()
-      // 无焦点显示不能保证高于其他置顶窗口；先抬高底窗，再抬高本次测试窗口。
       underlay.moveTop()
       await waitForNextFrames(underlay)
       const underlayHwnd = underlay.getNativeWindowHandle().readBigUInt64LE().toString()
@@ -544,38 +512,41 @@ async function main() {
       win.setAlwaysOnTop(true)
       win.moveTop()
       for (const [name, canvas, surface] of [
-        ['light', '#f3f4f677', '#fff'],
-        ['dark', '#10111377', '#1b1c20'],
-        ['clear', 'transparent', '#fff'],
+        ['light', '#f3f4f6d8', '#fff'],
+        ['dark', '#101113d8', '#1b1c20'],
       ]) {
         await win.loadURL(
           htmlUrl(
-            `<html><meta charset="utf-8"><body style="margin:0;height:100vh;clip-path:inset(0 round ${WINDOW_CORNER_RADIUS}px);background:transparent"><div style="position:fixed;inset:0;background:${canvas}"></div><div style="position:absolute;inset:10px;border-radius:18px;border:1px solid #88919b;background:${surface};color:#567;font:14px sans-serif;padding:20px">MyDSH 原生圆角验收</div></body></html>`,
+            `<html><meta charset="utf-8"><body style="margin:0;height:100vh;background:transparent"><div style="position:fixed;inset:0;background:${canvas}"></div><div style="position:absolute;inset:10px;border-radius:10px;border:1px solid #88919b;background:${surface};color:#567;font:14px sans-serif;padding:20px">MyDSH 原生圆角验收</div></body></html>`,
           ),
         )
         visible.push(await pixels(name))
         if (nativeBackground.activeCount() !== 1)
           throw new Error('背景状态更新没有保留唯一的原生视觉')
       }
-      if (visible[0].canvas.every((value, i) => value === visible[2].canvas[i]))
-        throw new Error('画布透明度未改变真实原生背景')
-      if (Math.max(...visible[2].canvas.map((value, i) => Math.abs(value - [24, 190, 123][i]))) > 2)
-        throw new Error('高透画布没有显示原生窗口后方的内容')
+      if (visible[0].canvas[0] <= visible[1].canvas[0] + 80) {
+        throw new Error('浅色与深色画布在 Mica 材质上未呈现明显明度区分')
+      }
     }
-    // 实色降级与再次启用：完整模式同时校验四角像素，无 GPU 模式继续校验原生背景计数与 8 向缩放。
+    // 实色降级与再次启用：完整模式同时校验四角像素与内部实色，无 GPU 模式继续校验原生背景计数与 8 向缩放。
     background.setEnabled(false)
     win.setBackgroundMaterial('none')
     win.setBackgroundColor('#f3f4f6')
     if (!skipPixels) {
+      await win.loadURL(
+        htmlUrl(
+          '<html><meta charset="utf-8"><body style="margin:0;height:100vh;background:#f3f4f6"></body></html>',
+        ),
+      )
       const opaque = await pixels('opaque')
       visible.push(opaque)
-      if (opaque.edge.some((value, i) => Math.abs(value - [243, 244, 246][i % 3]) > 2))
-        throw new Error('实色窗口边缘没有在一个原生像素内清晰显示')
+      if (opaque.canvas.some((value, i) => Math.abs(value - [243, 244, 246][i]) > 3))
+        throw new Error('实色降级后窗口画布颜色不准确：' + JSON.stringify(opaque))
     }
     if (nativeBackground.activeCount() !== 0) throw new Error('实色降级后没有释放原生背景')
     checkResize(await waitUntil(read, isResizeReady))
     if (nativeBackground.resizeCount() !== 1) throw new Error('实色降级错误地释放了窗口缩放检测')
-    win.setBackgroundMaterial('acrylic')
+    win.setBackgroundMaterial('mica')
     win.setBackgroundColor('#00000000')
     background.setEnabled(true)
     if (!skipPixels) visible.push(await pixels('reenabled'))

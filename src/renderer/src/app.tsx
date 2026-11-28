@@ -13,11 +13,10 @@ document.documentElement.lang = 'zh-CN'
 document.documentElement.dataset.platform = /Windows/u.test(navigator.userAgent)
   ? 'win32'
   : 'darwin'
-// macOS 由系统裁切窗口；这里只用近似外角计算浮岛曲率，不对页面重复裁切。
+// macOS 与 Windows 外窗均由各自系统合成器硬件裁切；这里用统一参考外角推导浮岛 10px 曲率。
 const windowOuterRadius = `${String(DESKTOP_WINDOW_CORNER_RADIUS)}px`
 document.documentElement.style.setProperty('--window-outer-radius', windowOuterRadius)
-if (document.documentElement.dataset.platform === 'win32')
-  document.documentElement.style.setProperty('--window-clip-radius', windowOuterRadius)
+document.documentElement.style.setProperty('--window-clip-radius', '0px')
 
 /**
  * 根链用 overflow: clip 断掉滚动容器，但 Chromium 仍允许给根元素写入滚动偏移。

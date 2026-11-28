@@ -7,7 +7,7 @@ MyDSH 的后台由应用自带的 Cordis 核心和业务插件组成。Electron 
 | 路径 | 维护职责 |
 | --- | --- |
 | `src/main/index.ts` | Electron 装配、窗口、单实例锁、退出协调和真实窗口验收入口 |
-| `src/main/runtime/runtime-install.ts` | 核心清单校验、版本选择、暂存安装、安装中断恢复、旧版本清理及数据格式检查 |
+| `src/main/runtime/runtime-install.ts` | 随包核心清单与归档校验、数据格式门禁、用户目录准备及旧版残留清理 |
 | `src/main/runtime/runtime-supervisor.ts` | 后台启动、就绪、请求、流、取消、退出确认；凭据由后台文件服务持有 |
 | `src/main/runtime/runtime-stream.ts` | 将运行进程消息适配到现有 Remote 流消费接口，消费完成后才确认消息 |
 | `src/main/runtime/import-controller.ts` | 导入入口、并发互斥、运行任务及未保存文件保护、暂停和重启核心 |
@@ -40,15 +40,14 @@ MyDSH 的后台由应用自带的 Cordis 核心和业务插件组成。Electron 
 
 `tsconfig.json` 编译 Node/Electron 一侧；`tsconfig.renderer.json` 检查前端；后台业务包对 Cordis 的声明合并与前端界面声明使用各自编译边界。不要让 renderer 直接导入 `src/runtime`、Electron 或后台 Cordis 服务。目录迁移保持原来的静态检查范围：上游源码与声明快照不因移动位置而批量套用 MyDSH 的 Lint 规则；MyDSH 自有实现、包构建及集成验收继续执行现有检查。
 
-## 安装目录与配置
+## 核心资源与用户目录
 
-开发构建生成 `lib/mydsh-runtime/manifest.json` 和 `lib/mydsh-runtime/payload/`。正式 App 将这份初始安装包放在 `MyDSH.app/Contents/Resources/mydsh-runtime/`，处于 ASAR 外；原生库和工具链必须可以作为普通文件执行。应用主进程与 renderer 位于 `app.asar`。
+开发构建生成 `lib/mydsh-runtime/manifest.json`、`lib/mydsh-runtime/runtime.asar`、`lib/mydsh-runtime/runtime.asar.unpacked/` 及平台固定工具链（如 Windows `tools/`）和许可证。正式 App 将这份核心资源放在 macOS 的 `MyDSH.app/Contents/Resources/mydsh-runtime/` 或 Windows 的 `resources/mydsh-runtime/`，主进程与 `utilityProcess` 直接从应用资源目录就地只读加载，无需在首次启动时向用户目录复制上万个文件；原生库和工具链位于 `runtime.asar.unpacked` 与 `tools/`，可直接作为普通可执行文件运行。应用主进程与 renderer 位于 `app.asar`。
 
-安装后的可写目录如下：
+用户数据与扩展的可写目录如下（升级后若存在历史遗留的 `~/.mydsh/runtime/<旧版本>` 安装副本，启动时会自动收尾清理）：
 
 ```text
 ~/.mydsh/
-├── runtime/<版本>/       # entry.js、内置插件、node_modules、固定工具链和安装回执
 ├── plugins/             # 用户扩展及其已安装版本
 ├── config/
 │   ├── settings.yaml    # 模型和业务插件设置的唯一活动文件
@@ -71,7 +70,7 @@ MyDSH 的后台由应用自带的 Cordis 核心和业务插件组成。Electron 
 
 ## 启动、通信和退出
 
-启动先取得应用单实例锁，再恢复中断的导入事务，然后校验和安装清单要求的核心版本。必须先恢复导入，后创建空 `data` 或 `config`，否则可能覆盖应恢复的旧目录。核心安装验证整个文件清单；同版本可复用，新版本不覆盖配置和会话。目录里存在更新的核心也不会改变应用选择。
+启动先取得应用单实例锁，再恢复中断的导入事务，然后核对随包核心清单、平台架构、`runtime.asar` 及数据格式门禁并从应用资源目录就地启动。必须先恢复导入，后创建空 `data` 或 `config`，否则可能覆盖应恢复的旧目录。升级后自动收尾清理历史遗留的 `~/.mydsh/runtime/<旧版本>` 副本，不覆盖配置和会话；外部目录是否存在其他核心副本也不会改变应用仅加载自身清单版本的约束。
 
 主进程通过 Electron 消息启动后台，后台装配 `roster.json` 中的插件并检查必要服务后报告就绪。业务请求保留 Remote、Typert 与 Gateway 契约；实现中的 Fetch-shaped 请求对象只是分发适配，没有内部 HTTP 监听、Cookie 登录或端口接管。已有 `host.call` 名字属于界面动作契约，最终只调用应用自有核心。
 

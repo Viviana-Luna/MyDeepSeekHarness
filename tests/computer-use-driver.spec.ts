@@ -65,7 +65,10 @@ function makeImageStub(width: number, height: number) {
     isEmpty: () => false,
     getSize: () => ({ width, height }),
     crop: () => makeImageStub(width, height),
+    resize: ({ width: nextW, height: nextH }: { width: number; height: number }) =>
+      makeImageStub(nextW, nextH),
     toPNG: () => TINY_PNG,
+    toJPEG: () => TINY_PNG,
   }
 }
 
@@ -187,7 +190,9 @@ describe('Computer Use 去阴影截帧、AX @uN 直达与三层确定性投递',
       elementsCount: number
       elementsSummary: string
     }
-    expect(shot.captureMethod).toBe('screencapturekit')
+    expect(shot.captureMethod).toBe(
+      process.platform === 'win32' ? 'win32-printwindow' : 'screencapturekit',
+    )
     expect(shot.elementsCount).toBe(2)
     expect(shot.elementsSummary).toContain('@u1 [button] "点赞"')
     expect(shot.elementsSummary).toContain('@u2 [textfield] "搜索框"')
@@ -304,11 +309,11 @@ describe('Computer Use 去阴影截帧、AX @uN 直达与三层确定性投递',
       driver.call('click', { captureId: shot.captureId, x: 100, y: 100 }, signal, settings),
     ).rejects.toThrow('防自锁保护')
 
-    // 点击右侧 Chrome 区域即使 MyDSH 在前台也应正常放行
+    // 点击右侧 Chrome 区域（图像 x=960 -> 屏幕 1080）即使 MyDSH 在前台也应正常放行
     ;(addon.axPressAt as ReturnType<typeof vi.fn>).mockReturnValueOnce(false)
     const ok = (await driver.call(
       'click',
-      { captureId: shot.captureId, x: 600, y: 200 },
+      { captureId: shot.captureId, x: 960, y: 200 },
       signal,
       settings,
     )) as { ok: boolean }
@@ -357,7 +362,9 @@ describe('Computer Use 去阴影截帧、AX @uN 直达与三层确定性投递',
       captureMethod: string
       elementsCount: number
     }
-    expect(shot.captureMethod).toBe('screencapturekit')
+    expect(shot.captureMethod).toBe(
+      process.platform === 'win32' ? 'win32-printwindow' : 'screencapturekit',
+    )
     expect(shot.elementsCount).toBe(1)
     expect(addon.captureWindowPngAsync).toHaveBeenCalledOnce()
     expect(addon.getUiTreeAsync).toHaveBeenCalledOnce()
@@ -408,11 +415,11 @@ describe('Computer Use 去阴影截帧、AX @uN 直达与三层确定性投递',
     const signal = AbortSignal.timeout(5_000)
     const shot = (await driver.call('screenshot', {}, signal, settings)) as { captureId: string }
 
-    // 起点在 Chrome（图像 x=600 -> 屏幕 1080），终点落入 MyDSH（图像 x=100 -> 屏幕 180），必须被安全拦截
+    // 起点在 Chrome（图像 x=960 -> 屏幕 1080），终点落入 MyDSH（图像 x=160 -> 屏幕 180），必须被安全拦截
     await expect(
       driver.call(
         'drag',
-        { captureId: shot.captureId, fromX: 600, fromY: 200, toX: 100, toY: 200 },
+        { captureId: shot.captureId, fromX: 960, fromY: 200, toX: 160, toY: 200 },
         signal,
         settings,
       ),

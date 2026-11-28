@@ -24,14 +24,6 @@ body {
   /* 使用系统原生文字渲染，避免 macOS 暗色背景下人为削薄中文 400 字重笔画。 */
 }
 
-/* 与原生背景共用同一圆弧；命中区域留出覆盖像素，前景按真实 alpha 抗锯齿。 */
-:root[data-platform='win32'] body {
-  clip-path: inset(
-    0 var(--window-clip-right, 0px) var(--window-clip-bottom, 0px) 0 round
-      var(--window-clip-radius, 18px)
-  );
-}
-
 button,
 input,
 textarea,

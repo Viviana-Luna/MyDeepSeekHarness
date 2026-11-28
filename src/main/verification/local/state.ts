@@ -1,16 +1,16 @@
 /**
  * 本地工作台分套件验收的共享状态容器、前置自举辅助与套件级不变量断言。
  */
-import { callDshHost } from '../../host/host-client.ts'
 import { PRODUCT_NAME } from '../../../shared/product.ts'
 import { parseDesktopWorkspaceCreateResult } from '../../../shared/workspace-capabilities.ts'
+import { callDshHost } from '../../host/host-client.ts'
 import { TRAFFIC_LIGHT_CENTER_Y } from '../../window-controls.ts'
 import {
   ensureFrontendPluginFixture,
   type HostVerificationBridge,
   type LocalSuiteName,
 } from '../host-verify-context.ts'
-import { buildSmokeScript3 } from './smoke-scripts.ts'
+import { buildInitialWorkbenchProbe } from './smoke-probes.ts'
 
 /** 面板几何采样快照结构。 */
 export interface PanelGeometrySample {
@@ -70,156 +70,157 @@ export function createLocalVerifyState(bridge: HostVerificationBridge): LocalVer
 }
 
 /** 当跳过 smoke 单独执行后续套件时，按需采集一次初始浮岛与侧栏几何基线。 */
-export async function ensureInitialShellSampled(bag: LocalVerifyState): Promise<void> {
-  if (bag.initial !== undefined) return
-  bag.initial = await bag.bridge.win.webContents.executeJavaScript(
-    buildSmokeScript3(TRAFFIC_LIGHT_CENTER_Y, TRAFFIC_LIGHT_CENTER_Y),
+export async function ensureInitialShellSampled(state: LocalVerifyState): Promise<void> {
+  if (state.initial !== undefined) return
+  state.initial = await state.bridge.win.webContents.executeJavaScript(
+    buildInitialWorkbenchProbe(TRAFFIC_LIGHT_CENTER_Y),
   )
-  if (!bag.initial || bag.initial.verifyError !== undefined) {
-    throw new Error(`采集工作台初始几何基线失败：${String(bag.initial?.verifyError ?? 'null')}`)
+  if (!state.initial || state.initial.verifyError !== undefined) {
+    throw new Error(`采集工作台初始几何基线失败：${String(state.initial?.verifyError ?? 'null')}`)
   }
 }
 
 /** 当跳过 models 单独执行 settings 套件时，按需创建用于归档恢复校验的隔离会话。 */
-export async function ensureArchivePrerequisiteSession(bag: LocalVerifyState): Promise<void> {
-  if (typeof bag.interactionSessionId === 'string' && bag.interactionSessionId !== '') return
-  const host = bag.bridge.getCurrentHost()
+export async function ensureArchivePrerequisiteSession(state: LocalVerifyState): Promise<void> {
+  if (typeof state.interactionSessionId === 'string' && state.interactionSessionId !== '') return
+  const host = state.bridge.getCurrentHost()
   if (host === undefined) throw new Error('准备归档验收会话时运行核心尚未就绪')
   const createdWorkspace = parseDesktopWorkspaceCreateResult(
     await callDshHost(
-      bag.bridge.targetUrl,
+      state.bridge.targetUrl,
       'createWorkspace',
-      { path: bag.bridge.verifyProject },
-      bag.bridge.fetch,
+      { path: state.bridge.verifyProject },
+      state.bridge.fetch,
       host.sessionCookie,
     ),
   )
   const createdSession = (await callDshHost(
-    bag.bridge.targetUrl,
+    state.bridge.targetUrl,
     'createSessionForWorkspace',
     { workspaceId: createdWorkspace.workspace.workspaceId },
-    bag.bridge.fetch,
+    state.bridge.fetch,
     host.sessionCookie,
   )) as { sessionId?: string }
   if (typeof createdSession?.sessionId !== 'string' || createdSession.sessionId === '') {
     throw new Error('无法创建归档验收所需的隔离工作区会话')
   }
-  bag.interactionSessionId = createdSession.sessionId
+  state.interactionSessionId = createdSession.sessionId
 }
 
-const SUITE_CHECKERS: Record<LocalSuiteName, (bag: LocalVerifyState) => Record<string, boolean>> = {
-  smoke: bag => ({
-    windowControlsReady: Boolean(bag.windowControlsReady),
-    titleMatches: bag.initial?.title === PRODUCT_NAME,
-    rendererMounted: Boolean(bag.initial?.renderer),
-    islandCountThree: bag.initial?.islandCount === 3,
-    pageNotScrollable: bag.initial?.pageScrollable === false,
-    islandsOpaque: Boolean(bag.initial?.islandsOpaque),
-    densityReady: Boolean(bag.initial?.densityReady),
-    titlebarClearanceReady: Boolean(bag.initial?.titlebarClearanceReady),
-    topToolbarReady: Boolean(bag.initial?.topToolbarReady),
-    toolbarLayoutIndependent: Boolean(bag.initial?.toolbarLayoutIndependent),
-    workspaceHeaderRemoved: Boolean(bag.initial?.workspaceHeaderRemoved),
-    panelCapsulesReady: Boolean(bag.initial?.panelCapsulesReady),
-    sessionCostRemoved: Boolean(bag.initial?.sessionCostRemoved),
-    trajectoryVisible: Boolean(bag.initial?.trajectoryVisible),
-    trajectoryFocusReady: Boolean(bag.initial?.trajectoryFocusReady),
-    composerCapped: Boolean(bag.initial?.composerCapped),
-  }),
-  conversation: bag => ({
-    presentationSessionPresent:
-      typeof bag.presentationSession === 'string' && bag.presentationSession.length > 0,
-    processReady: Boolean(bag.processReady),
-  }),
-  composer: bag => ({
-    commandPaletteReady: Boolean(bag.commandPaletteAudit?.ready),
-    commandPaletteClosedAfterClear: bag.commandPaletteAudit?.closedAfterClear === true,
-    bridgeVersion23: bag.commandPaletteAudit?.bridgeVersion === 23,
-    fileReferenceReady: Boolean(bag.fileReferenceAudit?.ready),
-    fileReferenceClosedAfterClear: bag.fileReferenceAudit?.closedAfterClear === true,
-    attachmentDropReady: Boolean(bag.attachmentDropAudit?.ready),
-    commandExecutionReady: Boolean(bag.commandExecutionAudit?.ready),
-    draftCleared: bag.commandExecutionAudit?.draftCleared === true,
-    paletteClosed: bag.commandExecutionAudit?.paletteClosed === true,
-    commandLifecycleReady: Boolean(bag.commandLifecycleReady),
-    fontScaleReady: Boolean(bag.fontScaleReady),
-    accentContrastReady: Boolean(bag.accentContrastReady),
-  }),
-  sessions: bag => ({
-    projectGroupingReady: Boolean(bag.projectGroupingReady),
-    sessionActionsReady: Boolean(bag.sessionActionsReady),
-    sessionSearchReady: Boolean(bag.sessionSearchReady),
-    sessionTabsReady: Boolean(bag.sessionTabsReady),
-  }),
-  panels: bag => ({
-    panelCollapseReady: Boolean(bag.panelCollapseReady),
-    panelResizeReady: Boolean(bag.panelResizeReady),
-    panelDragLineReady: Boolean(bag.panelDragLineReady),
-    composerVisibilityReady: Boolean(bag.composerVisibilityReady),
-  }),
-  'files-scm': bag => ({
-    fileTreeReady: Boolean(bag.fileView?.fileTreeReady),
-    deepFileTreeReady: Boolean(bag.fileView?.deepFileTreeReady),
-    fileViewerReady: Boolean(bag.fileView?.fileViewerReady),
-    fileTabsReady: Boolean(bag.fileView?.fileTabsReady),
-    fileWorkspacePersisted: Boolean(bag.fileView?.fileWorkspacePersisted),
-    imageViewerReady: Boolean(bag.fileView?.imageViewerReady),
-    syntaxHighlightingReady: Boolean(bag.fileView?.syntaxHighlightingReady),
-    fileCursorReady: Boolean(bag.fileView?.fileCursorReady),
-    quickOpenReady: Boolean(bag.fileView?.quickOpenReady),
-    fileEditorReady: Boolean(bag.fileEditorReady),
-    hostRecoveryRetainsEditor: Boolean(bag.hostRecoveryRetainsEditor),
-    fileUnsavedGuardReady: Boolean(bag.fileUnsavedGuardReady),
-    contentSearchReady: Boolean(bag.contentSearchReady),
-    projectTasksOnlyReady: Boolean(bag.projectTasksOnlyReady),
-    projectTasksReady: Boolean(bag.projectTasksReady),
-    taskSuggestionsRemoved: Boolean(bag.taskSuggestionsRemoved),
-    sourceControlReady: Boolean(bag.sourceControlView?.sourceControlReady),
-    uncommittedChangesReady: Boolean(bag.sourceControlView?.uncommittedChangesReady),
-    contextualRightPanelReady: Boolean(bag.sourceControlView?.contextualRightPanelReady),
-    diffResponsiveReady: Boolean(bag.sourceControlView?.diffResponsiveReady),
-    sourceControlWriteReady: Boolean(bag.sourceControlWriteReady),
-    sourceControlFailureReady: Boolean(bag.sourceControlFailureReady),
-    changeFileListReadable: Boolean(bag.changeFileListReadable),
-    terminalReady: Boolean(bag.terminalReady),
-  }),
-  models: bag => ({
-    modelMenuReady: Boolean(bag.modelMenuReady),
-    sessionInfoReady: Boolean(bag.sessionInfoReady),
-    pendingInteractionsReady: Boolean(bag.pendingInteractionsReady),
-  }),
-  settings: bag => ({
-    editorAppearanceReady: Boolean(bag.editorAppearanceReady),
-    settingsDialog: Boolean(bag.settingsDialog),
-    settingsFocusInside: Boolean(bag.settingsAudit?.focusInside),
-    settingsFocusRestored: Boolean(bag.settingsFocusRestored),
-    settingsPanelFits: Boolean(bag.settingsAudit?.panelFits),
-    settingsLayerCountZero: bag.settingsAudit?.layerCount === 0,
-    settingsNavCountSix: bag.settingsAudit?.navCount === 6,
-    settingsAppearanceIndexOne: bag.settingsAudit?.appearanceIndex === 1,
-    settingsModal: Boolean(bag.settingsAudit?.modal),
-    darkSettingsReadable: Boolean(bag.darkSettingsReadable),
-    allSettingsPagesReady: Boolean(bag.allSettingsPagesReady),
-    hostSettingsEventsReady: Boolean(bag.hostSettingsEventsReady),
-    canvasColorSchemeReady: Boolean(bag.canvasColorSchemeReady),
-    islandGapSettingReady: Boolean(bag.islandGapSettingReady),
-    reducedTransparencyReady: Boolean(bag.reducedTransparencyReady),
-    forcedColorsReady: Boolean(bag.forcedColorsReady),
-    nativeWindowClipReady: Boolean(bag.nativeWindowClipReady),
-    mediumCanvasReady: Boolean(bag.mediumCanvasReady),
-    clearCanvasReady: Boolean(bag.clearCanvasReady),
-    largeLayoutStable: Boolean(bag.largeLayoutStable),
-    shellPinnedToViewport: Boolean(bag.shellPinnedToViewport),
-    mediumToolbarStable: Boolean(bag.mediumToolbarStable),
-    narrowSettingsFits: Boolean(bag.narrowSettingsFits),
-    narrowRightPanelHidden: Boolean(bag.narrowRightPanelHidden),
-    rightTabsReady: Boolean(bag.rightTabsReady),
-  }),
-}
+const SUITE_CHECKERS: Record<LocalSuiteName, (state: LocalVerifyState) => Record<string, boolean>> =
+  {
+    smoke: state => ({
+      windowControlsReady: Boolean(state.windowControlsReady),
+      titleMatches: state.initial?.title === PRODUCT_NAME,
+      rendererMounted: Boolean(state.initial?.renderer),
+      islandCountThree: state.initial?.islandCount === 3,
+      pageNotScrollable: state.initial?.pageScrollable === false,
+      islandsOpaque: Boolean(state.initial?.islandsOpaque),
+      densityReady: Boolean(state.initial?.densityReady),
+      titlebarClearanceReady: Boolean(state.initial?.titlebarClearanceReady),
+      topToolbarReady: Boolean(state.initial?.topToolbarReady),
+      toolbarLayoutIndependent: Boolean(state.initial?.toolbarLayoutIndependent),
+      workspaceHeaderRemoved: Boolean(state.initial?.workspaceHeaderRemoved),
+      panelCapsulesReady: Boolean(state.initial?.panelCapsulesReady),
+      sessionCostRemoved: Boolean(state.initial?.sessionCostRemoved),
+      trajectoryVisible: Boolean(state.initial?.trajectoryVisible),
+      trajectoryFocusReady: Boolean(state.initial?.trajectoryFocusReady),
+      composerCapped: Boolean(state.initial?.composerCapped),
+    }),
+    conversation: state => ({
+      presentationSessionPresent:
+        typeof state.presentationSession === 'string' && state.presentationSession.length > 0,
+      processReady: Boolean(state.processReady),
+    }),
+    composer: state => ({
+      commandPaletteReady: Boolean(state.commandPaletteAudit?.ready),
+      commandPaletteClosedAfterClear: state.commandPaletteAudit?.closedAfterClear === true,
+      bridgeVersion23: state.commandPaletteAudit?.bridgeVersion === 23,
+      fileReferenceReady: Boolean(state.fileReferenceAudit?.ready),
+      fileReferenceClosedAfterClear: state.fileReferenceAudit?.closedAfterClear === true,
+      attachmentDropReady: Boolean(state.attachmentDropAudit?.ready),
+      commandExecutionReady: Boolean(state.commandExecutionAudit?.ready),
+      draftCleared: state.commandExecutionAudit?.draftCleared === true,
+      paletteClosed: state.commandExecutionAudit?.paletteClosed === true,
+      commandLifecycleReady: Boolean(state.commandLifecycleReady),
+      fontScaleReady: Boolean(state.fontScaleReady),
+      accentContrastReady: Boolean(state.accentContrastReady),
+    }),
+    sessions: state => ({
+      projectGroupingReady: Boolean(state.projectGroupingReady),
+      sessionActionsReady: Boolean(state.sessionActionsReady),
+      sessionSearchReady: Boolean(state.sessionSearchReady),
+      sessionTabsReady: Boolean(state.sessionTabsReady),
+    }),
+    panels: state => ({
+      panelCollapseReady: Boolean(state.panelCollapseReady),
+      panelResizeReady: Boolean(state.panelResizeReady),
+      panelDragLineReady: Boolean(state.panelDragLineReady),
+      composerVisibilityReady: Boolean(state.composerVisibilityReady),
+    }),
+    'files-scm': state => ({
+      fileTreeReady: Boolean(state.fileView?.fileTreeReady),
+      deepFileTreeReady: Boolean(state.fileView?.deepFileTreeReady),
+      fileViewerReady: Boolean(state.fileView?.fileViewerReady),
+      fileTabsReady: Boolean(state.fileView?.fileTabsReady),
+      fileWorkspacePersisted: Boolean(state.fileView?.fileWorkspacePersisted),
+      imageViewerReady: Boolean(state.fileView?.imageViewerReady),
+      syntaxHighlightingReady: Boolean(state.fileView?.syntaxHighlightingReady),
+      fileCursorReady: Boolean(state.fileView?.fileCursorReady),
+      quickOpenReady: Boolean(state.fileView?.quickOpenReady),
+      fileEditorReady: Boolean(state.fileEditorReady),
+      hostRecoveryRetainsEditor: Boolean(state.hostRecoveryRetainsEditor),
+      fileUnsavedGuardReady: Boolean(state.fileUnsavedGuardReady),
+      contentSearchReady: Boolean(state.contentSearchReady),
+      projectTasksOnlyReady: Boolean(state.projectTasksOnlyReady),
+      projectTasksReady: Boolean(state.projectTasksReady),
+      taskSuggestionsRemoved: Boolean(state.taskSuggestionsRemoved),
+      sourceControlReady: Boolean(state.sourceControlView?.sourceControlReady),
+      uncommittedChangesReady: Boolean(state.sourceControlView?.uncommittedChangesReady),
+      contextualRightPanelReady: Boolean(state.sourceControlView?.contextualRightPanelReady),
+      diffResponsiveReady: Boolean(state.sourceControlView?.diffResponsiveReady),
+      sourceControlWriteReady: Boolean(state.sourceControlWriteReady),
+      sourceControlFailureReady: Boolean(state.sourceControlFailureReady),
+      changeFileListReadable: Boolean(state.changeFileListReadable),
+      terminalReady: Boolean(state.terminalReady),
+    }),
+    models: state => ({
+      modelMenuReady: Boolean(state.modelMenuReady),
+      sessionInfoReady: Boolean(state.sessionInfoReady),
+      pendingInteractionsReady: Boolean(state.pendingInteractionsReady),
+    }),
+    settings: state => ({
+      editorAppearanceReady: Boolean(state.editorAppearanceReady),
+      settingsDialog: Boolean(state.settingsDialog),
+      settingsFocusInside: Boolean(state.settingsAudit?.focusInside),
+      settingsFocusRestored: Boolean(state.settingsFocusRestored),
+      settingsPanelFits: Boolean(state.settingsAudit?.panelFits),
+      settingsLayerCountZero: state.settingsAudit?.layerCount === 0,
+      settingsNavCountSix: state.settingsAudit?.navCount === 6,
+      settingsAppearanceIndexOne: state.settingsAudit?.appearanceIndex === 1,
+      settingsModal: Boolean(state.settingsAudit?.modal),
+      darkSettingsReadable: Boolean(state.darkSettingsReadable),
+      allSettingsPagesReady: Boolean(state.allSettingsPagesReady),
+      hostSettingsEventsReady: Boolean(state.hostSettingsEventsReady),
+      canvasColorSchemeReady: Boolean(state.canvasColorSchemeReady),
+      islandGapSettingReady: Boolean(state.islandGapSettingReady),
+      reducedTransparencyReady: Boolean(state.reducedTransparencyReady),
+      forcedColorsReady: Boolean(state.forcedColorsReady),
+      nativeWindowClipReady: Boolean(state.nativeWindowClipReady),
+      mediumCanvasReady: Boolean(state.mediumCanvasReady),
+      clearCanvasReady: Boolean(state.clearCanvasReady),
+      largeLayoutStable: Boolean(state.largeLayoutStable),
+      shellPinnedToViewport: Boolean(state.shellPinnedToViewport),
+      mediumToolbarStable: Boolean(state.mediumToolbarStable),
+      narrowSettingsFits: Boolean(state.narrowSettingsFits),
+      narrowRightPanelHidden: Boolean(state.narrowRightPanelHidden),
+      rightTabsReady: Boolean(state.rightTabsReady),
+    }),
+  }
 
 /** 立即校验指定套件的不变量断言，发现未通过指标时直接抛出明确错误。 */
-export function assertSuiteInvariants(suite: LocalSuiteName, bag: LocalVerifyState): void {
-  const checks = SUITE_CHECKERS[suite](bag)
+export function assertSuiteInvariants(suite: LocalSuiteName, state: LocalVerifyState): void {
+  const checks = SUITE_CHECKERS[suite](state)
   const failed = Object.entries(checks)
     .filter(([, passed]) => !passed)
     .map(([key]) => key)

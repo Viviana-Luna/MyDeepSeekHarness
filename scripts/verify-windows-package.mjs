@@ -56,14 +56,23 @@ function verifyContent(directory) {
     throw new Error('Windows 制品缺少外置浏览器 CDP 所需的 ws 依赖')
   }
   for (const file of [
+    'runtime.asar',
     'tools/powershell/pwsh.exe',
     'tools/git/cmd/git.exe',
     'tools/powershell/LICENSE.txt',
     'tools/git/LICENSE.txt',
-    'node_modules/koffi/src/koffi/index.cjs',
+    'runtime.asar.unpacked/node_modules/@vscode/ripgrep-win32-x64/bin/rg.exe',
   ]) {
-    if (!existsSync(join(directory, 'resources/mydsh-runtime/payload', file)))
+    if (!existsSync(join(directory, 'resources/mydsh-runtime', file)))
       throw new Error('Windows 制品缺少必要文件：' + file)
+  }
+  const runtimeEntries = listPackage(join(directory, 'resources/mydsh-runtime/runtime.asar')).map(
+    entry => entry.replaceAll('\\', '/'),
+  )
+  for (const entry of ['/entry.js', '/node_modules/koffi/src/koffi/index.cjs']) {
+    if (!runtimeEntries.includes(entry)) {
+      throw new Error('Windows 核心归档缺少必要文件：' + entry)
+    }
   }
   execFileSync(
     process.execPath,
@@ -87,6 +96,13 @@ verifyContent(packagedDirectory)
 if (process.argv.includes('--made')) {
   const installer = join(root, 'out', 'mydsh-Windows-x64-' + source.version + '.exe')
   if (!existsSync(installer)) throw new Error('缺少按用户安装包')
+  const installerBinary = readFileSync(installer)
+  if (
+    !installerBinary.includes(Buffer.from('level="asInvoker"')) ||
+    installerBinary.includes(Buffer.from('level="requireAdministrator"'))
+  ) {
+    throw new Error('Windows 安装包清单必须声明按当前用户执行（asInvoker），不得要求管理员提权')
+  }
   await withExtractedWindowsInstaller(installer, async installed => {
     verifyContent(installed)
     verifyRuntime(installed)

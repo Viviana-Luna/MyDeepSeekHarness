@@ -131,7 +131,7 @@ export async function apply(ctx) {
 
 async function main() {
   const home = process.env.MYDSH_VERIFY_HOME ?? (await mkdtemp(join(tmpdir(), 'mydsh-core-check-')))
-  const core = process.env.MYDSH_VERIFY_CORE_DIRECTORY ?? resolve('lib/mydsh-runtime/payload')
+  const core = process.env.MYDSH_VERIFY_CORE_DIRECTORY ?? resolve('lib/mydsh-runtime/runtime.asar')
   app.setPath('userData', join(home, 'electron'))
   let child, exitCode, shutdown
   try {

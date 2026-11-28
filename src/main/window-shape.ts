@@ -1,7 +1,12 @@
+/**
+ * Windows 窗口圆角状态与跨显示器缩放监听：根据窗口最大化、全屏、还原与跨屏移动状态，
+ * 向原生 DWM 圆角层和 8 向无边框缩放热区同步当前有效圆角半径，不再向 HWND 写入破坏 DirectComposition 的 `SetWindowRgn`。
+ * 运行在 Electron 主进程；由 `dispose()` 移除全部窗口事件监听。
+ */
 import type { BrowserWindow, Rectangle } from 'electron'
 import type { EventEmitter } from 'node:events'
 import { createRequire } from 'node:module'
-import { DESKTOP_WINDOW_CORNER_RADIUS } from '../shared/window.ts'
+import { WINDOWS_NATIVE_CORNER_RADIUS } from '../shared/window.ts'
 
 const require = createRequire(import.meta.url)
 
@@ -19,27 +24,32 @@ function readWindowDisplayKey(win: BrowserWindow): string | undefined {
   }
 }
 
-/** Windows 窗口外角；工作台按外缘留白计算内侧浮岛圆角。 */
-export const WINDOW_CORNER_RADIUS = DESKTOP_WINDOW_CORNER_RADIUS
+/** Windows 11 原生 DWM 硬件圆角标准半径（8 DIP）。 */
+export const WINDOW_CORNER_RADIUS = WINDOWS_NATIVE_CORNER_RADIUS
 
-/** 水平切片交给 Electron 合成为原生窗口区域，窗口外的像素与点击一起裁掉。 */
+/**
+ * 计算离散圆角水平切片矩形（仅供几何算法单测校验，实际窗口圆角由系统 DWM 硬件合成承担）。
+ */
 export function roundedWindowShape(
   width: number,
   height: number,
   radius = WINDOW_CORNER_RADIUS,
   coverage = 0,
 ): Rectangle[] {
-  const r = Math.min(radius, Math.floor(width / 2), Math.floor(height / 2))
-  const rectangles: Rectangle[] = [{ x: 0, y: r, width, height: height - r * 2 }]
-  for (let y = 0; y < r; y += 1) {
-    const inset = Math.ceil(r - Math.sqrt(r * r - (r - y - 0.5) ** 2))
+  const clampedRadius = Math.min(radius, Math.floor(width / 2), Math.floor(height / 2))
+  const rectangles: Rectangle[] = [
+    { x: 0, y: clampedRadius, width, height: height - clampedRadius * 2 },
+  ]
+  for (let y = 0; y < clampedRadius; y += 1) {
+    const inset = Math.ceil(
+      clampedRadius - Math.sqrt(clampedRadius * clampedRadius - (clampedRadius - y - 0.5) ** 2),
+    )
     rectangles.push({ x: inset, y, width: width - inset * 2, height: 1 })
     rectangles.push({ x: inset, y: height - y - 1, width: width - inset * 2, height: 1 })
   }
   return rectangles
     .filter(rectangle => rectangle.width > 0 && rectangle.height > 0)
     .map(rectangle => {
-      // 命中区域须容纳圆弧的部分覆盖像素；真正的可见边缘由前景与背景合成器抗锯齿。
       const x = Math.max(0, rectangle.x - coverage)
       const y = Math.max(0, rectangle.y - coverage)
       return {
@@ -51,6 +61,10 @@ export function roundedWindowShape(
     })
 }
 
+/**
+ * 监听 Windows 窗口尺寸、最大化、全屏与跨显示器移动变化，同步原生圆角半径与缩放热区宽度。
+ * 不调用 `win.setShape` 设置非矩形区域，保持 `GetWindowRgn` 为空以维持满帧 DirectComposition 合成。
+ */
 export function installWindowShape(
   win: BrowserWindow,
   platform: string,
@@ -60,70 +74,62 @@ export function installWindowShape(
   let previous = ''
   let previousDisplay = readWindowDisplayKey(win)
   let updating = false
-  let fullScreen = win.isFullScreen()
-  let antialiasing = false
-  let pendingAntialiasing = false
+  let isFullScreen = win.isFullScreen()
+
   const update = (): void => {
     if (win.isDestroyed() || updating || win.isMinimized()) return
     const [width = 0, height = 0] = win.getSize()
-    const square = win.isMaximized() || fullScreen || win.isFullScreen()
+    const isSquare = win.isMaximized() || isFullScreen || win.isFullScreen()
     const display = readWindowDisplayKey(win)
     previousDisplay = display
-    const key = `${width}:${height}:${display ?? ''}:${square}:${antialiasing}`
+    const key = `${String(width)}:${String(height)}:${display ?? ''}:${String(isSquare)}`
+    if (previous === key) return
     updating = true
     try {
-      if (previous !== key) {
-        win.setShape(
-          square
-            ? []
-            : roundedWindowShape(width, height, WINDOW_CORNER_RADIUS, antialiasing ? 1 : 0),
-        )
-        previous = key
-      }
-      onShape?.(square ? 0 : WINDOW_CORNER_RADIUS, width)
+      previous = key
+      onShape?.(isSquare ? 0 : WINDOW_CORNER_RADIUS, width)
     } finally {
       updating = false
-      if (pendingAntialiasing) {
-        pendingAntialiasing = false
-        update()
-      }
     }
   }
+
   // 无厚边框的 Windows 窗口发送全屏事件，但 Electron 的 isFullScreen 仍可能返回 false。
   const enterFullScreen = (): void => {
-    fullScreen = true
+    isFullScreen = true
     update()
   }
   const leaveFullScreen = (): void => {
-    fullScreen = false
+    isFullScreen = false
     update()
   }
-  // 同显示器平移不重算 SetWindowRgn/DWM；跨显示器或缩放比变化时再重算，测试无 screen 时保持重算语义。
-  const move = (): void => {
-    const nextDisplay = readWindowDisplayKey(win)
-    if (nextDisplay !== undefined && nextDisplay === previousDisplay) return
+  const forceUpdate = (): void => {
     previous = ''
     update()
   }
-  const events = ['resize', 'maximize', 'unmaximize', 'restore']
+  // 同显示器平移不重复调用 DWM；跨显示器或缩放比变化时再重算，测试无 screen 时保持重算语义。
+  const move = (): void => {
+    const nextDisplay = readWindowDisplayKey(win)
+    if (nextDisplay !== undefined && nextDisplay === previousDisplay) return
+    forceUpdate()
+  }
+
+  const events = ['resize', 'maximize', 'unmaximize']
+  const forceEvents = ['restore', 'show']
   const emitter: EventEmitter = win
   for (const event of events) emitter.on(event, update)
+  for (const event of forceEvents) emitter.on(event, forceUpdate)
   emitter.on('enter-full-screen', enterFullScreen)
   emitter.on('leave-full-screen', leaveFullScreen)
   emitter.on('move', move)
   update()
+
   return {
-    setAntialiasing(enabled) {
-      if (antialiasing === enabled) return
-      antialiasing = enabled
-      if (updating) {
-        pendingAntialiasing = true
-        return
-      }
-      update()
+    setAntialiasing() {
+      // 原生 DWM 圆角由系统合成器直接完成边缘抗锯齿，保留空方法以兼容既有控制器接口。
     },
     dispose() {
       for (const event of events) emitter.removeListener(event, update)
+      for (const event of forceEvents) emitter.removeListener(event, forceUpdate)
       emitter.removeListener('enter-full-screen', enterFullScreen)
       emitter.removeListener('leave-full-screen', leaveFullScreen)
       emitter.removeListener('move', move)

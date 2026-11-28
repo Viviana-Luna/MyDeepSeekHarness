@@ -1,6 +1,6 @@
-// MyDSH Windows 系统级 Computer Use 原生模块（SendInput + EnumWindows + DWM + 防自锁硬门禁）。
-// 通过稳定 Node-API 导出与 macOS 对齐的 16 个函数，在初始化阶段一次性缓存 N-API 函数表并兜底拦截 C++ 异常，
-// 所有键鼠投递均执行 GetCurrentProcessId() 与目标窗口归属校验，并支持扩展键扫描码与 UIPI 返回值检测。
+// MyDSH Windows 系统级 Computer Use 原生模块（SendInput + EnumWindows + DWM + WIC 异步窗口截帧 + 防自锁硬门禁）。
+// 通过稳定 Node-API 导出与 macOS 对齐的函数集，在初始化阶段一次性缓存 N-API 函数表并兜底拦截 C++ 异常，
+// 所有键鼠投递与窗口截帧均执行 GetCurrentProcessId() 归属校验，窗口截帧支持 libuv 工作线程异步缩放与 PNG 编码。
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -15,14 +15,21 @@
 #endif
 #include <windows.h>
 #include <dwmapi.h>
+#include <objbase.h>
+#include <wincodec.h>
 #include <node_api.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <iterator>
 #include <limits>
 #include <string>
 #include <vector>
+
+#ifndef PW_RENDERFULLCONTENT
+#define PW_RENDERFULLCONTENT 0x00000002
+#endif
 
 struct NapiTable {
   decltype(&napi_get_boolean) get_boolean;
@@ -31,6 +38,12 @@ struct NapiTable {
   decltype(&napi_create_array) create_array;
   decltype(&napi_create_double) create_double;
   decltype(&napi_create_string_utf8) create_string_utf8;
+  decltype(&napi_create_buffer_copy) create_buffer_copy;
+  decltype(&napi_create_promise) create_promise;
+  decltype(&napi_resolve_deferred) resolve_deferred;
+  decltype(&napi_create_async_work) create_async_work;
+  decltype(&napi_queue_async_work) queue_async_work;
+  decltype(&napi_delete_async_work) delete_async_work;
   decltype(&napi_set_named_property) set_named_property;
   decltype(&napi_set_element) set_element;
   decltype(&napi_get_cb_info) get_cb_info;
@@ -63,6 +76,12 @@ static bool InitNapiTable() {
       ResolveApi(mod, "napi_create_array", &gApi.create_array) &&
       ResolveApi(mod, "napi_create_double", &gApi.create_double) &&
       ResolveApi(mod, "napi_create_string_utf8", &gApi.create_string_utf8) &&
+      ResolveApi(mod, "napi_create_buffer_copy", &gApi.create_buffer_copy) &&
+      ResolveApi(mod, "napi_create_promise", &gApi.create_promise) &&
+      ResolveApi(mod, "napi_resolve_deferred", &gApi.resolve_deferred) &&
+      ResolveApi(mod, "napi_create_async_work", &gApi.create_async_work) &&
+      ResolveApi(mod, "napi_queue_async_work", &gApi.queue_async_work) &&
+      ResolveApi(mod, "napi_delete_async_work", &gApi.delete_async_work) &&
       ResolveApi(mod, "napi_set_named_property", &gApi.set_named_property) &&
       ResolveApi(mod, "napi_set_element", &gApi.set_element) &&
       ResolveApi(mod, "napi_get_cb_info", &gApi.get_cb_info) &&
@@ -692,11 +711,286 @@ static napi_value TypeText(napi_env env, napi_callback_info info) {
   }
 }
 
-static napi_value CaptureWindowPng(napi_env env, napi_callback_info info) {
-  (void)info;
+template <class T>
+struct ScopedCom {
+  T* ptr = nullptr;
+  ScopedCom() = default;
+  ScopedCom(const ScopedCom&) = delete;
+  ScopedCom& operator=(const ScopedCom&) = delete;
+  ~ScopedCom() noexcept {
+    if (ptr) ptr->Release();
+  }
+  T** Put() noexcept { return &ptr; }
+  T* operator->() const noexcept { return ptr; }
+  explicit operator bool() const noexcept { return ptr != nullptr; }
+};
+
+struct ScopedCoInit {
+  bool shouldUninit = false;
+  ScopedCoInit() noexcept {
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    shouldUninit = SUCCEEDED(hr);
+  }
+  ~ScopedCoInit() noexcept {
+    if (shouldUninit) CoUninitialize();
+  }
+};
+
+struct CapturedWindowData {
+  bool ok = false;
+  std::vector<uint8_t> png;
+  int x = 0;
+  int y = 0;
+  int width = 0;
+  int height = 0;
+};
+
+static bool EncodeBgraToScaledPng(const std::vector<uint8_t>& bgra, int srcWidth, int srcHeight,
+                                  int32_t maxLongEdge, std::vector<uint8_t>* outPng) {
+  ScopedCoInit comGuard;
+  ScopedCom<IWICImagingFactory> factory;
+  if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+                              IID_PPV_ARGS(factory.Put()))) ||
+      !factory) {
+    return false;
+  }
+  ScopedCom<IWICBitmap> bitmap;
+  if (FAILED(factory->CreateBitmapFromMemory(
+          static_cast<UINT>(srcWidth), static_cast<UINT>(srcHeight), GUID_WICPixelFormat32bppBGRA,
+          static_cast<UINT>(srcWidth * 4), static_cast<UINT>(bgra.size()),
+          const_cast<BYTE*>(bgra.data()), bitmap.Put())) ||
+      !bitmap) {
+    return false;
+  }
+
+  int32_t safeCap = maxLongEdge > 0 ? std::clamp(maxLongEdge, 320, 2048) : 1280;
+  int32_t longEdge = std::max(srcWidth, srcHeight);
+  UINT outW = static_cast<UINT>(srcWidth);
+  UINT outH = static_cast<UINT>(srcHeight);
+  IWICBitmapSource* source = bitmap.ptr;
+  ScopedCom<IWICBitmapScaler> scaler;
+  if (longEdge > safeCap) {
+    double ratio = static_cast<double>(safeCap) / static_cast<double>(longEdge);
+    outW = static_cast<UINT>(std::max<long>(1L, std::lround(srcWidth * ratio)));
+    outH = static_cast<UINT>(std::max<long>(1L, std::lround(srcHeight * ratio)));
+    if (FAILED(factory->CreateBitmapScaler(scaler.Put())) || !scaler) return false;
+    if (FAILED(scaler->Initialize(bitmap.ptr, outW, outH, WICBitmapInterpolationModeFant))) {
+      return false;
+    }
+    source = scaler.ptr;
+  }
+
+  ScopedCom<IStream> memStream;
+  if (FAILED(CreateStreamOnHGlobal(nullptr, TRUE, memStream.Put())) || !memStream) return false;
+  ScopedCom<IWICBitmapEncoder> encoder;
+  if (FAILED(factory->CreateEncoder(GUID_ContainerFormatPng, nullptr, encoder.Put())) || !encoder) {
+    return false;
+  }
+  if (FAILED(encoder->Initialize(memStream.ptr, WICBitmapEncoderNoCache))) return false;
+  ScopedCom<IWICBitmapFrameEncode> frame;
+  ScopedCom<IPropertyBag2> props;
+  if (FAILED(encoder->CreateNewFrame(frame.Put(), props.Put())) || !frame) return false;
+  if (FAILED(frame->Initialize(props.ptr))) return false;
+  if (FAILED(frame->SetSize(outW, outH))) return false;
+  WICPixelFormatGUID pixelFormat = GUID_WICPixelFormat32bppBGRA;
+  if (FAILED(frame->SetPixelFormat(&pixelFormat))) return false;
+  if (FAILED(frame->WriteSource(source, nullptr))) return false;
+  if (FAILED(frame->Commit()) || FAILED(encoder->Commit())) return false;
+
+  STATSTG stat{};
+  if (FAILED(memStream->Stat(&stat, STATFLAG_NONAME))) return false;
+  if (stat.cbSize.QuadPart == 0 || stat.cbSize.QuadPart > 32ULL * 1024ULL * 1024ULL) return false;
+  ULONG byteLen = static_cast<ULONG>(stat.cbSize.QuadPart);
+  LARGE_INTEGER zero{};
+  if (FAILED(memStream->Seek(zero, STREAM_SEEK_SET, nullptr))) return false;
+  outPng->resize(byteLen);
+  ULONG bytesRead = 0;
+  return SUCCEEDED(memStream->Read(outPng->data(), byteLen, &bytesRead)) && bytesRead == byteLen;
+}
+
+static CapturedWindowData CaptureWindowPngWorker(double windowId, int32_t maxLongEdge) {
+  try {
+    HWND hwnd = SafeHwndFromDouble(windowId);
+    if (!hwnd || !IsWindowVisible(hwnd) || IsIconic(hwnd) || IsWindowCloaked(hwnd)) return {};
+    DWORD winPid = 0;
+    GetWindowThreadProcessId(hwnd, &winPid);
+    if (winPid == 0 || winPid == GetCurrentProcessId()) return {};
+
+    RECT winRect{};
+    if (!GetWindowRect(hwnd, &winRect)) return {};
+    int fullW = winRect.right - winRect.left;
+    int fullH = winRect.bottom - winRect.top;
+    if (fullW < 16 || fullH < 16 || fullW > 16384 || fullH > 16384) return {};
+
+    RECT extRect = winRect;
+    if (FAILED(DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &extRect, sizeof(extRect)))) {
+      extRect = winRect;
+    }
+    int cropX = std::clamp<int>(extRect.left - winRect.left, 0, fullW - 1);
+    int cropY = std::clamp<int>(extRect.top - winRect.top, 0, fullH - 1);
+    int cropW = std::clamp<int>(extRect.right - extRect.left, 1, fullW - cropX);
+    int cropH = std::clamp<int>(extRect.bottom - extRect.top, 1, fullH - cropY);
+    if (cropW < 8 || cropH < 8) return {};
+
+    HDC hdcMem = CreateCompatibleDC(nullptr);
+    if (!hdcMem) return {};
+    BITMAPINFO bmi{};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = fullW;
+    bmi.bmiHeader.biHeight = -fullH;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+    void* dibBits = nullptr;
+    HBITMAP hbmp = CreateDIBSection(hdcMem, &bmi, DIB_RGB_COLORS, &dibBits, nullptr, 0);
+    if (!hbmp || !dibBits) {
+      if (hbmp) DeleteObject(hbmp);
+      DeleteDC(hdcMem);
+      return {};
+    }
+    HGDIOBJ oldObj = SelectObject(hdcMem, hbmp);
+    BOOL printed = PrintWindow(hwnd, hdcMem, PW_RENDERFULLCONTENT);
+    if (!printed) printed = PrintWindow(hwnd, hdcMem, 0);
+
+    std::vector<uint8_t> bgra;
+    bool hasNonZeroRgb = false;
+    if (printed) {
+      bgra.resize(static_cast<size_t>(cropW) * static_cast<size_t>(cropH) * 4u);
+      const auto* srcBase = static_cast<const uint8_t*>(dibBits);
+      const size_t srcStride = static_cast<size_t>(fullW) * 4u;
+      const size_t dstStride = static_cast<size_t>(cropW) * 4u;
+      for (int row = 0; row < cropH; ++row) {
+        const uint8_t* srcRow =
+            srcBase + static_cast<size_t>(cropY + row) * srcStride + static_cast<size_t>(cropX) * 4u;
+        uint8_t* dstRow = bgra.data() + static_cast<size_t>(row) * dstStride;
+        std::memcpy(dstRow, srcRow, dstStride);
+        for (size_t px = 0; px < dstStride; px += 4u) {
+          if ((dstRow[px] | dstRow[px + 1] | dstRow[px + 2]) != 0) hasNonZeroRgb = true;
+          dstRow[px + 3] = 0xFF;
+        }
+      }
+    }
+    SelectObject(hdcMem, oldObj);
+    DeleteObject(hbmp);
+    DeleteDC(hdcMem);
+    if (!printed || !hasNonZeroRgb) return {};
+
+    CapturedWindowData result{};
+    if (!EncodeBgraToScaledPng(bgra, cropW, cropH, maxLongEdge, &result.png) || result.png.empty()) {
+      return {};
+    }
+    result.ok = true;
+    result.x = winRect.left + cropX;
+    result.y = winRect.top + cropY;
+    result.width = cropW;
+    result.height = cropH;
+    return result;
+  } catch (...) {
+    return {};
+  }
+}
+
+static napi_value MakeNull(napi_env env) {
   napi_value result = nullptr;
   gApi.get_null(env, &result);
   return result;
+}
+
+static napi_value BuildCaptureResultValue(napi_env env, const CapturedWindowData& data) {
+  if (!data.ok || data.png.empty()) return MakeNull(env);
+  void* copied = nullptr;
+  napi_value pngBuf = nullptr;
+  if (gApi.create_buffer_copy(env, data.png.size(), data.png.data(), &copied, &pngBuf) != napi_ok ||
+      !pngBuf) {
+    return MakeNull(env);
+  }
+  napi_value bounds = nullptr;
+  gApi.create_object(env, &bounds);
+  SetNumberProp(env, bounds, "x", static_cast<double>(data.x));
+  SetNumberProp(env, bounds, "y", static_cast<double>(data.y));
+  SetNumberProp(env, bounds, "width", static_cast<double>(data.width));
+  SetNumberProp(env, bounds, "height", static_cast<double>(data.height));
+
+  napi_value obj = nullptr;
+  gApi.create_object(env, &obj);
+  gApi.set_named_property(env, obj, "png", pngBuf);
+  gApi.set_named_property(env, obj, "bounds", bounds);
+  return obj;
+}
+
+static bool ParseCaptureArgs(napi_env env, napi_callback_info info, double* outWid,
+                             int32_t* outMaxLongEdge) {
+  size_t argc = 2;
+  napi_value argv[2];
+  if (gApi.get_cb_info(env, info, &argc, argv, nullptr, nullptr) != napi_ok || argc < 1 ||
+      !ReadDouble(env, argv[0], outWid)) {
+    return false;
+  }
+  *outMaxLongEdge = 1280;
+  if (argc >= 2) {
+    int32_t edge = 1280;
+    if (ReadInt32(env, argv[1], &edge) && edge > 0) *outMaxLongEdge = edge;
+  }
+  return true;
+}
+
+static napi_value CaptureWindowPng(napi_env env, napi_callback_info info) {
+  double wid = 0.0;
+  int32_t maxLongEdge = 1280;
+  if (!ParseCaptureArgs(env, info, &wid, &maxLongEdge)) return MakeNull(env);
+  return BuildCaptureResultValue(env, CaptureWindowPngWorker(wid, maxLongEdge));
+}
+
+struct CaptureWindowAsyncContext {
+  double windowId = 0.0;
+  int32_t maxLongEdge = 1280;
+  CapturedWindowData output{};
+  napi_deferred deferred = nullptr;
+  napi_async_work work = nullptr;
+};
+
+static void ExecuteCaptureWindowWork(napi_env env, void* data) {
+  (void)env;
+  auto* ctx = static_cast<CaptureWindowAsyncContext*>(data);
+  ctx->output = CaptureWindowPngWorker(ctx->windowId, ctx->maxLongEdge);
+}
+
+static void CompleteCaptureWindowWork(napi_env env, napi_status status, void* data) {
+  auto* ctx = static_cast<CaptureWindowAsyncContext*>(data);
+  napi_value resolved =
+      (status == napi_ok) ? BuildCaptureResultValue(env, ctx->output) : MakeNull(env);
+  gApi.resolve_deferred(env, ctx->deferred, resolved);
+  gApi.delete_async_work(env, ctx->work);
+  delete ctx;
+}
+
+static napi_value CaptureWindowPngAsync(napi_env env, napi_callback_info info) {
+  napi_deferred deferred = nullptr;
+  napi_value promise = nullptr;
+  if (gApi.create_promise(env, &deferred, &promise) != napi_ok || !promise) {
+    return MakeNull(env);
+  }
+  double wid = 0.0;
+  int32_t maxLongEdge = 1280;
+  if (!ParseCaptureArgs(env, info, &wid, &maxLongEdge)) {
+    gApi.resolve_deferred(env, deferred, MakeNull(env));
+    return promise;
+  }
+  auto* ctx = new CaptureWindowAsyncContext{};
+  ctx->windowId = wid;
+  ctx->maxLongEdge = maxLongEdge;
+  ctx->deferred = deferred;
+
+  napi_value resourceName = nullptr;
+  gApi.create_string_utf8(env, "mydsh:captureWindowPng", NAPI_AUTO_LENGTH, &resourceName);
+  if (gApi.create_async_work(env, nullptr, resourceName, ExecuteCaptureWindowWork,
+                             CompleteCaptureWindowWork, ctx, &ctx->work) != napi_ok ||
+      gApi.queue_async_work(env, ctx->work) != napi_ok) {
+    if (ctx->work) gApi.delete_async_work(env, ctx->work);
+    delete ctx;
+    gApi.resolve_deferred(env, deferred, MakeNull(env));
+  }
+  return promise;
 }
 
 static napi_value GetUiTree(napi_env env, napi_callback_info info) {
@@ -731,6 +1025,8 @@ static napi_value Init(napi_env env, napi_value exports) {
       {"focusWindow", nullptr, FocusWindow, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"captureWindowPng", nullptr, CaptureWindowPng, nullptr, nullptr, nullptr, napi_default,
        nullptr},
+      {"captureWindowPngAsync", nullptr, CaptureWindowPngAsync, nullptr, nullptr, nullptr,
+       napi_default, nullptr},
       {"getUiTree", nullptr, GetUiTree, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"axPressAt", nullptr, AxUnsupported, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"axSetTextAt", nullptr, AxUnsupported, nullptr, nullptr, nullptr, napi_default, nullptr},

@@ -14,35 +14,65 @@ function isPngBuffer(buf: Buffer): boolean {
   )
 }
 
-/** 将 PNG/JPEG 截图按最大长边等比缩放并自适应选择 PNG 或 JPEG 编码，确保体积 <= 1.5 MiB。 */
-export const scaleImageWithNativeImage: ImageScaler = (input, maxLongEdge) => {
-  let image = nativeImage.createFromBuffer(input)
-  if (image.isEmpty()) throw new Error('截图解码失败，页面可能尚未渲染完成')
+function clampMaxLongEdge(maxLongEdge: number): number {
+  const safeEdge = Number.isFinite(maxLongEdge) ? maxLongEdge : 1280
+  return Math.max(320, Math.min(2048, Math.round(safeEdge)))
+}
+
+function encodeConstrainedNativeImage(image: Electron.NativeImage, cap: number) {
   const original = image.getSize()
   const longEdge = Math.max(original.width, original.height)
-  const safeEdge = Number.isFinite(maxLongEdge) ? maxLongEdge : 1280
-  const cap = Math.max(320, Math.min(2048, Math.round(safeEdge)))
-  // 已由原生 GPU 截帧缩放至上限内的 PNG 直接复用原缓冲，省去重复编码开销。
-  if (longEdge <= cap && isPngBuffer(input) && input.byteLength <= MAX_PNG_BYTES) {
-    return { buffer: input, mediaType: 'image/png', width: original.width, height: original.height }
-  }
+  let target = image
   if (longEdge > cap && original.width > 0 && original.height > 0) {
     const ratio = cap / longEdge
-    image = image.resize({
+    target = image.resize({
       width: Math.max(1, Math.round(original.width * ratio)),
       height: Math.max(1, Math.round(original.height * ratio)),
       quality: 'good',
     })
   }
-  const size = image.getSize()
-  const png = image.toPNG()
+  const size = target.getSize()
+  const png = target.toPNG()
   if (png.byteLength <= MAX_PNG_BYTES) {
-    return { buffer: png, mediaType: 'image/png', width: size.width, height: size.height }
+    return { buffer: png, mediaType: 'image/png' as const, width: size.width, height: size.height }
   }
-  const jpegHigh = image.toJPEG(82)
+  const jpegHigh = target.toJPEG(82)
   if (jpegHigh.byteLength <= MAX_JPEG_BYTES) {
-    return { buffer: jpegHigh, mediaType: 'image/jpeg', width: size.width, height: size.height }
+    return {
+      buffer: jpegHigh,
+      mediaType: 'image/jpeg' as const,
+      width: size.width,
+      height: size.height,
+    }
   }
-  const jpegCompact = image.toJPEG(64)
-  return { buffer: jpegCompact, mediaType: 'image/jpeg', width: size.width, height: size.height }
+  const jpegCompact = target.toJPEG(64)
+  return {
+    buffer: jpegCompact,
+    mediaType: 'image/jpeg' as const,
+    width: size.width,
+    height: size.height,
+  }
+}
+
+/** 直接对内存中的 `NativeImage` 等比缩放并编码，避免主线程先编码大图 PNG 再解码缩放的双重开销。 */
+export function scaleNativeImage(
+  image: Electron.NativeImage,
+  maxLongEdge: number,
+): ReturnType<ImageScaler> {
+  if (image.isEmpty()) throw new Error('截图为空，目标窗口或显示器可能尚未完成渲染')
+  return encodeConstrainedNativeImage(image, clampMaxLongEdge(maxLongEdge))
+}
+
+/** 将 PNG/JPEG 截图按最大长边等比缩放并自适应选择 PNG 或 JPEG 编码，确保体积 <= 1.5 MiB。 */
+export const scaleImageWithNativeImage: ImageScaler = (input, maxLongEdge) => {
+  const image = nativeImage.createFromBuffer(input)
+  if (image.isEmpty()) throw new Error('截图解码失败，页面可能尚未渲染完成')
+  const original = image.getSize()
+  const longEdge = Math.max(original.width, original.height)
+  const cap = clampMaxLongEdge(maxLongEdge)
+  // 已由原生工作线程缩放至上限内的 PNG 直接复用原缓冲，省去主线程重复编码开销。
+  if (longEdge <= cap && isPngBuffer(input) && input.byteLength <= MAX_PNG_BYTES) {
+    return { buffer: input, mediaType: 'image/png', width: original.width, height: original.height }
+  }
+  return encodeConstrainedNativeImage(image, cap)
 }

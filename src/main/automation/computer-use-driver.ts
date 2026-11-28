@@ -43,7 +43,7 @@ import {
   type CapturedUiElementRef,
   type ComputerUseWindowInfo,
 } from './computer-use-policy.ts'
-import { scaleImageWithNativeImage } from './image-scaler.ts'
+import { scaleImageWithNativeImage, scaleNativeImage } from './image-scaler.ts'
 import {
   createVirtualCursorOverlay,
   type VirtualCursorOverlayController,
@@ -297,6 +297,19 @@ function buildScreenshotResponse(input: {
   }
 }
 
+function scaleCapturedTargetImage(
+  captured: Awaited<ReturnType<typeof captureTargetImage>>,
+  maxLongEdge: number,
+): ReturnType<typeof scaleImageWithNativeImage> {
+  if (captured.rawPng && captured.rawPng.byteLength > 0) {
+    return scaleImageWithNativeImage(captured.rawPng, maxLongEdge)
+  }
+  if (captured.image && !captured.image.isEmpty()) {
+    return scaleNativeImage(captured.image, maxLongEdge)
+  }
+  throw new Error('SCREEN_CAPTURE_EMPTY：截图缓冲为空，请重试')
+}
+
 async function handleScreenshot(
   state: DriverState,
   payload: Record<string, unknown>,
@@ -338,11 +351,7 @@ async function handleScreenshot(
     state.cursorOverlay.setCaptureHidden(false)
   }
   signal.throwIfAborted()
-  const rawBuffer = captured.rawPng ?? captured.image?.toPNG()
-  if (!rawBuffer || rawBuffer.byteLength === 0) {
-    throw new Error('SCREEN_CAPTURE_EMPTY：截图缓冲为空，请重试')
-  }
-  const scaled = scaleImageWithNativeImage(rawBuffer, settings.computerUse.maxImageLongEdge)
+  const scaled = scaleCapturedTargetImage(captured, settings.computerUse.maxImageLongEdge)
   const captureId = `cap_${randomUUID().slice(0, 12)}`
   const baseMapping = buildCaptureMapping({
     captureId,

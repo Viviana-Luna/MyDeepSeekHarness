@@ -144,8 +144,11 @@ function buildWindows() {
         '/LIBPATH:' + join(sdk, 'Lib', sdkVersion, 'um', 'x64'),
         '/LIBPATH:' + join(sdk, 'Lib', sdkVersion, 'ucrt', 'x64'),
         'user32.lib',
+        'gdi32.lib',
         'dwmapi.lib',
         'advapi32.lib',
+        'ole32.lib',
+        'windowscodecs.lib',
       ],
       { stdio: 'inherit', windowsHide: true },
     )

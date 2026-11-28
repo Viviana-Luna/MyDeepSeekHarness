@@ -8,7 +8,7 @@ const mocked = vi.hoisted(() => ({
   setBackgroundEnabled: vi.fn(),
   disposeBackground: vi.fn(),
   backgroundFailure: undefined as ((error: unknown) => void) | undefined,
-  cornerRadius: 18,
+  cornerRadius: 8,
   theme: {
     prefersReducedTransparency: false,
     shouldUseHighContrastColors: false,
@@ -105,7 +105,7 @@ beforeEach(() => {
   mocked.setBackgroundEnabled.mockReset()
   mocked.disposeBackground.mockReset()
   mocked.backgroundFailure = undefined
-  mocked.cornerRadius = 18
+  mocked.cornerRadius = 8
   Object.assign(mocked.theme, {
     prefersReducedTransparency: false,
     shouldUseHighContrastColors: false,
@@ -139,6 +139,11 @@ describe('自定义窗口控制', () => {
       windowClipStyle({ ...state, canvasClip: { ...state.canvasClip, radius: 0 } }, viewport)
         .radius,
     ).toBe(0)
+    expect(windowClipStyle({ ...state, canvasComposition: 'mica' }, viewport)).toEqual({
+      radius: 0,
+      right: 0,
+      bottom: 0,
+    })
     expect(windowClipStyle({ ...state, canvasComposition: 'opaque' }, viewport)).toEqual({
       radius: 0,
       right: 0,
@@ -155,9 +160,9 @@ describe('自定义窗口控制', () => {
       DESKTOP_WINDOW_CHANNELS.changed,
       expect.objectContaining({ cornerRadius: 0 }),
     )
-    mocked.cornerRadius = 18
+    mocked.cornerRadius = 8
     win.emit('leave-full-screen')
-    expect(controller.read().cornerRadius).toBe(18)
+    expect(controller.read().cornerRadius).toBe(8)
     controller.dispose()
     expect(win.listenerCount('enter-full-screen')).toBe(0)
     expect(win.listenerCount('leave-full-screen')).toBe(0)
@@ -233,7 +238,7 @@ describe('自定义窗口控制', () => {
     expect(mocked.disposeBackground).toHaveBeenCalledOnce()
   })
 
-  it('Windows 11 新版启用 Acrylic；旧版、减少透明与高对比度使用实色，并响应系统变化', () => {
+  it('Windows 11 新版启用 Mica；旧版、减少透明与高对比度使用实色，并响应系统变化', () => {
     expect(supportsWindowsBackdrop('win32', '10.0.22000')).toBe(false)
     expect(supportsWindowsBackdrop('darwin', '24.0.0')).toBe(false)
     const { win, install } = createWindow()
@@ -242,7 +247,8 @@ describe('自定义窗口控制', () => {
     expect(win.setBackgroundMaterial).not.toHaveBeenCalled()
     legacy.dispose()
     const controller = install()
-    expect(controller.read().canvasComposition).toBe('acrylic')
+    expect(controller.read().canvasComposition).toBe('mica')
+    expect(win.setBackgroundMaterial).toHaveBeenLastCalledWith('mica')
     expect(mocked.setBackgroundEnabled).toHaveBeenLastCalledWith(true)
     expect(win.setBackgroundColor).toHaveBeenLastCalledWith('#00000000')
     for (const key of [
@@ -261,7 +267,7 @@ describe('自定义窗口控制', () => {
       mocked.themeListeners.forEach(listener => {
         listener()
       })
-      expect(controller.read().canvasComposition).toBe('acrylic')
+      expect(controller.read().canvasComposition).toBe('mica')
     }
     controller.dispose()
   })
@@ -297,7 +303,7 @@ describe('自定义窗口控制', () => {
     failed.dispose()
     const second = createWindow()
     const controller = second.install()
-    expect(controller.read().canvasComposition).toBe('acrylic')
+    expect(controller.read().canvasComposition).toBe('mica')
     mocked.backgroundFailure?.(new Error('视觉尺寸更新失败'))
     expect(controller.read().canvasComposition).toBe('opaque')
     expect(second.win.setBackgroundMaterial).toHaveBeenLastCalledWith('none')

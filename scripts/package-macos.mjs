@@ -74,7 +74,7 @@ for (const [name, version] of Object.entries(desktopDependencies))
     throw new Error(`package.json 缺少桌面运行依赖 ${name}。`)
 if (
   !existsSync(join(coreBundlePath, 'manifest.json')) ||
-  !existsSync(join(coreBundlePath, 'payload', 'entry.js'))
+  !existsSync(join(coreBundlePath, 'runtime.asar'))
 ) {
   throw new Error('缺少离线核心安装包，请先完成 build:runtime。')
 }
@@ -177,8 +177,10 @@ try {
   // 深度签名可能改写核心原生文件；先更新实际发行字节的摘要，再重封外层资源。
   const packagedCore = join(applicationPath, 'Contents', 'Resources', 'mydsh-runtime')
   const packagedManifest = JSON.parse(readFileSync(join(packagedCore, 'manifest.json'), 'utf8'))
+  const physicalRoot =
+    packagedManifest.archive === undefined ? join(packagedCore, 'payload') : packagedCore
   for (const [path, record] of Object.entries(packagedManifest.files)) {
-    const absolute = join(packagedCore, 'payload', path)
+    const absolute = join(physicalRoot, path)
     const bytes = readFileSync(absolute)
     record.sha256 = createHash('sha256').update(bytes).digest('hex')
     record.size = statSync(absolute).size

@@ -1,24 +1,20 @@
-/** MyDSH 私有配置仅由宿主服务读写；模型文件工具和派生进程不得访问。 */
-import { realpathSync } from 'node:fs'
-import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+/**
+ * MyDSH 私有配置目录读写隔离保护：拦截模型文件工具与受管派生进程对 `config/` 凭据与设置的访问。
+ * 运行在后台 Runtime。
+ */
+import { basename, dirname, isAbsolute, relative, sep } from 'node:path'
+import { canonicalRuntimePath as canonical } from './canonical-path.mjs'
 
-function canonical(path) {
-  const tail = []
-  let current = resolve(path)
-  for (;;) {
-    try {
-      return resolve(realpathSync.native(current), ...tail)
-    } catch (error) {
-      if (!['ENOENT', 'ENOTDIR'].includes(error.code) || dirname(current) === current) throw error
-      tail.unshift(basename(current))
-      current = dirname(current)
-    }
-  }
-}
 function within(root, path) {
   const part = relative(root, path)
   return part === '' || (!isAbsolute(part) && part !== '..' && !part.startsWith(`..${sep}`))
 }
+
+/**
+ * 创建拒绝访问指定私有配置目录及其子项的路径守卫函数。
+ * @param {string} directory 受保护的私有目录路径。
+ * @returns {(path: string) => void} 越界访问时抛出中文错误的校验函数。
+ */
 export function privatePathGuard(directory) {
   const root = canonical(directory)
   return path => {

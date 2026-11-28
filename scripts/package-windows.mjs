@@ -71,7 +71,7 @@ for (const [name, version] of Object.entries(desktopDependencies)) {
 }
 if (
   !existsSync(join(coreBundlePath, 'manifest.json')) ||
-  !existsSync(join(coreBundlePath, 'payload', 'entry.js'))
+  !existsSync(join(coreBundlePath, 'runtime.asar'))
 ) {
   throw new Error('缺少离线核心安装包，请先完成 build:runtime。')
 }
@@ -215,8 +215,8 @@ try {
   const executablePath = join(packageDirectory, `${PRODUCT_NAME}.exe`)
   if (!existsSync(executablePath)) throw new Error(`Windows 应用缺少可执行文件：${executablePath}`)
   const packagedCore = join(packageDirectory, 'resources', 'mydsh-runtime')
-  if (!existsSync(join(packagedCore, 'payload', 'entry.js')))
-    throw new Error('Windows 应用没有携带离线核心安装包。')
+  if (!existsSync(join(packagedCore, 'runtime.asar')))
+    throw new Error('Windows 应用没有携带离线核心归档。')
   cpSync(iconPath, join(outputRoot, 'MyDSH.ico'))
   console.log(`package-windows: ${executablePath}`)
 } finally {

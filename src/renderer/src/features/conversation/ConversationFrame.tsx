@@ -1,5 +1,5 @@
 /**
- * 对话内容框架：负责正文双侧宽度拖动、底栏输入区留白同步，以及对话顶部的渐进式渐变模糊叠层。
+ * 对话内容框架：负责正文双侧宽度拖动、底栏输入区留白同步，以及对话顶部的单层平滑渐隐遮罩。
  * 运行在 renderer；持有 ResizeObserver 与 MutationObserver，在组件卸载时断开清理。
  */
 import {
@@ -109,11 +109,7 @@ export function ConversationFrame({
           className={styles.topProgressiveBlur}
           data-top-progressive-blur="true"
           aria-hidden="true"
-        >
-          <span className={styles.topProgressiveBlurLow} />
-          <span className={styles.topProgressiveBlurMid} />
-          <span className={styles.topProgressiveBlurHigh} />
-        </div>
+        />
       )}
       {onWidthChange &&
         (['left', 'right'] as const).map(side => (

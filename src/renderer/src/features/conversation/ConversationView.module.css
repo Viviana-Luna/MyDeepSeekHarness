@@ -1208,12 +1208,10 @@
   background: linear-gradient(
     180deg,
     transparent 0%,
-    color-mix(in srgb, var(--composer-scrim) 72%, transparent) 30%,
-    color-mix(in srgb, var(--composer-scrim) 96%, transparent) 62%,
+    color-mix(in srgb, var(--composer-scrim) 56%, transparent) 26%,
+    color-mix(in srgb, var(--composer-scrim) 92%, transparent) 58%,
     var(--composer-scrim) 100%
   );
-  backdrop-filter: blur(12px) saturate(1.04);
-  mask-image: linear-gradient(180deg, transparent, rgb(0 0 0 / 0.55) 24%, #000 48%);
 }
 @media (prefers-reduced-transparency: reduce), (forced-colors: active) {
   .latestButton {
@@ -1222,8 +1220,6 @@
   }
   .frame[data-composer-overlay]::after {
     background: var(--composer-scrim);
-    backdrop-filter: none;
-    mask-image: none;
   }
 }
 .frame[data-composer-overlay] .view {
@@ -1236,9 +1232,7 @@
   bottom: var(--conversation-dock-space, 180px);
 }
 
-/* 对话与空会话顶部三层渐进式渐变模糊：顶端用实色渐隐彻底吸收滚动残影，中上段辅以轻度柔焦过渡。
-   Chromium 合成 backdrop-filter + mask-image 时会绕过祖先 overflow: hidden 的圆角裁剪，
-   因此叠层本体与各滤镜子层必须显式继承与浮岛内缘一致的顶部圆角，并补回顶缘 1px 浮雕高光。 */
+/* 对话与空会话顶部单层渐隐遮罩：以实色多段透明度平滑吸收滚出文字，避免三层 backdrop-filter 在滚动时触发整区重采样。 */
 .topProgressiveBlur {
   --top-blur-radius: max(0px, calc(var(--island-radius, 10px) - 1px));
   position: absolute;
@@ -1248,8 +1242,13 @@
   z-index: 5;
   height: 52px;
   border-radius: var(--top-blur-radius) var(--top-blur-radius) 0 0;
-  clip-path: inset(0 round var(--top-blur-radius) var(--top-blur-radius) 0 0);
-  overflow: clip;
+  background: linear-gradient(
+    to bottom,
+    var(--island-face, var(--surface)) 0%,
+    color-mix(in srgb, var(--island-face, var(--surface)) 86%, transparent) 36%,
+    color-mix(in srgb, var(--island-face, var(--surface)) 36%, transparent) 72%,
+    transparent 100%
+  );
   pointer-events: none;
 }
 
@@ -1262,75 +1261,8 @@
   content: '';
 }
 
-.topProgressiveBlurLow {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(
-    to bottom,
-    var(--island-face, var(--surface)) 0%,
-    color-mix(in srgb, var(--island-face, var(--surface)) 92%, transparent) 26%,
-    color-mix(in srgb, var(--island-face, var(--surface)) 52%, transparent) 60%,
-    transparent 100%
-  );
-  backdrop-filter: blur(2px);
-  mask-image: linear-gradient(
-    to bottom,
-    #000 0%,
-    #000 46%,
-    rgb(0 0 0 / 0.45) 76%,
-    transparent 100%
-  );
-}
-
-.topProgressiveBlurMid {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 62%;
-  border-radius: inherit;
-  backdrop-filter: blur(5px);
-  mask-image: linear-gradient(
-    to bottom,
-    #000 0%,
-    #000 32%,
-    rgb(0 0 0 / 0.35) 68%,
-    transparent 100%
-  );
-}
-
-.topProgressiveBlurHigh {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 36%;
-  border-radius: inherit;
-  backdrop-filter: blur(9px);
-  mask-image: linear-gradient(to bottom, #000 0%, rgb(0 0 0 / 0.65) 48%, transparent 100%);
-}
-
 :global(.app-shell[data-session-tabs-visible='false'] .main-island) .view {
   padding-top: 52px;
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  .topProgressiveBlurLow {
-    background: linear-gradient(
-      to bottom,
-      var(--island-face, var(--surface)) 0%,
-      color-mix(in srgb, var(--island-face, var(--surface)) 72%, transparent) 46%,
-      transparent 100%
-    );
-    backdrop-filter: none;
-    mask-image: none;
-  }
-  .topProgressiveBlurMid,
-  .topProgressiveBlurHigh {
-    display: none;
-    backdrop-filter: none;
-  }
 }
 
 @media (prefers-contrast: more) {

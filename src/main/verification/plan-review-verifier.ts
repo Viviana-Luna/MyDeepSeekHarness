@@ -193,14 +193,15 @@ async function waitForPermissionDialogSettled(win: BrowserWindow) {
       const rect = dialog.getBoundingClientRect()
       const surface = dialog.querySelector('.mydsh-glass-dialog')
       const blur = surface ? getComputedStyle(surface).backdropFilter : ''
+      const solidSurface = Boolean(surface) && getComputedStyle(surface).backgroundColor !== 'rgba(0, 0, 0, 0)'
       const menuClosed = !document.querySelector('[aria-label="选择访问模式"]')
       const focusInside = dialog.contains(document.activeElement)
       const centeredX = Math.abs(rect.left + rect.width / 2 - innerWidth / 2) < 2
       const centeredY = Math.abs(rect.top + rect.height / 2 - innerHeight / 2) < 20
       const inViewport = rect.width <= 441 && rect.top > 0 && rect.bottom < innerHeight
       return {
-        ok: !motion && !running && inViewport && centeredX && centeredY && blur.includes('blur') && menuClosed && focusInside,
-        motion, running, rect: rect.toJSON(), innerWidth, innerHeight, blur, menuClosed, focusInside,
+        ok: !motion && !running && inViewport && centeredX && centeredY && blur === 'none' && solidSurface && menuClosed && focusInside,
+        motion, running, rect: rect.toJSON(), innerWidth, innerHeight, blur, solidSurface, menuClosed, focusInside,
       }
     })()`,
     condition: 'state.ok === true',

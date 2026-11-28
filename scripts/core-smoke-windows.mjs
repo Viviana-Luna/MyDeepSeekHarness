@@ -1,7 +1,7 @@
 /* oxlint-disable no-await-in-loop -- 验收按依赖顺序执行，并有界等待进程就绪。 */
 /** 仅由隔离验收安装的临时插件，覆盖 Windows 原生执行与清理。 */
 import { mkdir, readFile, writeFile, access } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const home = process.env.MYDSH_HOME
@@ -105,7 +105,7 @@ async function verifyCodingModes(ctx, workspace) {
           timeout: 10,
         })
         if (command.exitCode !== 0 || !command.stdout.text.includes('pi-mode-ok'))
-          throw new Error('Shell 或二级 mydsh CLI 执行失败')
+          throw new Error('Shell 或二级 mydsh CLI 执行失败：' + JSON.stringify(command))
       } else {
         await call('apply_patch', {
           patch: '*** Begin Patch\n*** Add File: codex-mode.txt\n+before\n*** End Patch',
@@ -161,7 +161,12 @@ async function verifyCodingModes(ctx, workspace) {
 export async function apply(ctx) {
   const pwsh = process.env.MYDSH_PWSH_EXECUTABLE
   const git = process.env.MYDSH_GIT_EXECUTABLE
-  if (!pwsh?.startsWith(core) || !git?.startsWith(core) || process.env.ELECTRON_RUN_AS_NODE)
+  const coreBundle = core?.toLowerCase().endsWith('.asar') ? dirname(core) : core
+  if (
+    !pwsh?.startsWith(coreBundle) ||
+    !git?.startsWith(coreBundle) ||
+    process.env.ELECTRON_RUN_AS_NODE
+  )
     throw new Error('工具入口或后台 Node 模式隔离无效')
   async function run(argv, env = {}, cwd = home) {
     const processHandle = ctx.subprocess.spawn({

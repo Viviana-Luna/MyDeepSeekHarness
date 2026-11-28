@@ -238,9 +238,10 @@ export class MydshPluginConverter {
         { ...pkg.dependencies, ...pkg.devDependencies },
         controller.signal,
       )
+      const unpackedToolchain = this.unpackedToolchainDirectory()
       for (const tsconfig of configs)
         await this.node(
-          path.join(this.config.toolchainDirectory, 'node_modules/typescript/bin/tsc'),
+          path.join(unpackedToolchain, 'node_modules/typescript/bin/tsc'),
           ['--project', tsconfig, '--noEmit'],
           record.directory,
           controller.signal,
@@ -302,12 +303,23 @@ export class MydshPluginConverter {
       let reflection: { generated: boolean; package?: string; exports?: Record<string, unknown> } =
         { generated: false }
       if (backend) {
-        const helper = path.join(this.config.toolchainDirectory, 'plugin-typert.js')
-        // 开发源码入口和正式包使用相同脚本；只在构建环境回退到源码文件。
-        const generator = await lstat(helper).then(
-          () => helper,
-          () => path.join(this.config.toolchainDirectory, 'packages/runtime/plugin-typert.mjs'),
-        )
+        const unpackedRoot = this.unpackedToolchainDirectory()
+        const candidates = [
+          path.join(unpackedRoot, 'plugin-typert.js'),
+          path.join(this.config.toolchainDirectory, 'plugin-typert.js'),
+          path.join(this.config.toolchainDirectory, 'packages/runtime/plugin-typert.mjs'),
+        ]
+        let generator = candidates[candidates.length - 1]!
+        for (const candidate of candidates) {
+          const found = await lstat(candidate).then(
+            () => true,
+            () => false,
+          )
+          if (found) {
+            generator = candidate
+            break
+          }
+        }
         const result = await this.node(
           generator,
           [record.directory, artifact, this.config.toolchainDirectory, backendConfig],
@@ -450,8 +462,14 @@ export class MydshPluginConverter {
       await this.npm(['install', '--ignore-scripts', '--no-audit', '--no-fund'], isolated, signal)
     const modules = path.join(isolated, 'node_modules')
     await mkdir(modules, { recursive: true })
+    const unpackedRoot = this.unpackedToolchainDirectory()
     for (const name of SHARED_MODULES) {
-      const source = path.join(this.config.toolchainDirectory, 'node_modules', name)
+      const unpackedSource = path.join(unpackedRoot, 'node_modules', name)
+      const fallbackSource = path.join(this.config.toolchainDirectory, 'node_modules', name)
+      const source = await lstat(unpackedSource).then(
+        () => unpackedSource,
+        () => fallbackSource,
+      )
       try {
         await lstat(source)
       } catch {
@@ -509,6 +527,12 @@ export class MydshPluginConverter {
     }
   }
 
+  private unpackedToolchainDirectory(): string {
+    return this.config.toolchainDirectory.toLowerCase().endsWith('.asar')
+      ? `${this.config.toolchainDirectory}.unpacked`
+      : this.config.toolchainDirectory
+  }
+
   private npm(args: string[], cwd: string, signal: AbortSignal): Promise<string> {
     return this.node(
       path.join(this.config.toolchainDirectory, 'node_modules/npm/bin/npm-cli.js'),
@@ -529,7 +553,7 @@ export class MydshPluginConverter {
       [
         '-e',
         'require(process.argv[1]).buildSync(JSON.parse(process.argv[2]))',
-        path.join(this.config.toolchainDirectory, 'node_modules/esbuild/lib/main.js'),
+        path.join(this.unpackedToolchainDirectory(), 'node_modules/esbuild/lib/main.js'),
         JSON.stringify(options),
       ],
       cwd,

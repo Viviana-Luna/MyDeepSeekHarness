@@ -2,24 +2,22 @@
  * 真实 Electron 运行时隔离验收驱动：创建自包含临时用户目录与验收仓库，
  * 支持同卷硬链接核心种子预热与 Git 夹具缓存，并在退出时强制回收子进程与临时目录。
  */
+import { extractFile } from '@electron/asar'
 import { execFile, execFileSync, spawn } from 'node:child_process'
-import { createHash } from 'node:crypto'
 import {
   cpSync,
   existsSync,
-  linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  readdirSync,
   realpathSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
-import { delimiter, join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { delimiter, dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
@@ -158,66 +156,11 @@ function createVerificationProject(verifyHome) {
   return project
 }
 
-function hardlinkDirectoryTree(sourceDir, targetDir) {
-  mkdirSync(targetDir, { recursive: true })
-  for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
-    const srcPath = join(sourceDir, entry.name)
-    const dstPath = join(targetDir, entry.name)
-    if (entry.isDirectory()) {
-      hardlinkDirectoryTree(srcPath, dstPath)
-    } else {
-      linkSync(srcPath, dstPath)
-    }
-  }
-}
-
-async function materializeRuntimeSeed({
-  bundleDirectory,
-  installerPath,
-  seedRoot,
-  seedVersionDir,
-}) {
-  mkdirSync(join(VERIFY_CACHE_ROOT, 'runtime-seed'), { recursive: true })
-  const staging = mkdtempSync(join(VERIFY_CACHE_ROOT, 'runtime-seed/staging-'))
-  try {
-    const { ensureRuntimeInstalled } = await import(pathToFileURL(installerPath).href)
-    await ensureRuntimeInstalled({ bundleDirectory, mydshHome: staging })
-    try {
-      renameSync(staging, seedRoot)
-    } catch {
-      if (!existsSync(join(seedVersionDir, '.mydsh-install.json'))) {
-        rmSync(seedRoot, { recursive: true, force: true })
-        renameSync(staging, seedRoot)
-      }
-    }
-  } finally {
-    rmSync(staging, { recursive: true, force: true })
-  }
-}
-
-async function seedSourceRuntimeIfEligible({ cwd, args, mydshHome, coldInstall }) {
-  if (coldInstall || args?.[0] !== '.') return
-  const bundleDirectory = join(cwd, 'lib/mydsh-runtime')
-  const manifestPath = join(bundleDirectory, 'manifest.json')
-  const installerPath = join(cwd, 'lib/main/runtime/runtime-install.js')
-  if (!existsSync(manifestPath) || !existsSync(installerPath)) return
-  try {
-    const manifestBytes = readFileSync(manifestPath)
-    const manifest = JSON.parse(manifestBytes.toString('utf8'))
-    const digest = createHash('sha256').update(manifestBytes).digest('hex').slice(0, 16)
-    const seedRoot = join(VERIFY_CACHE_ROOT, 'runtime-seed', `${manifest.version}-${digest}`)
-    const seedVersionDir = join(seedRoot, 'runtime', manifest.version)
-    if (!existsSync(join(seedVersionDir, '.mydsh-install.json'))) {
-      await materializeRuntimeSeed({ bundleDirectory, installerPath, seedRoot, seedVersionDir })
-    }
-    for (const sub of ['runtime', 'plugins', 'data', 'config', 'conversions', 'cache']) {
-      mkdirSync(join(mydshHome, sub), { recursive: true })
-    }
-    hardlinkDirectoryTree(seedVersionDir, join(mydshHome, 'runtime', manifest.version))
-  } catch {
-    // 跨卷或权限不支持硬链接时清空半成品，回退到应用内完整离线冷安装路径。
-    rmSync(mydshHome, { recursive: true, force: true })
-  }
+function resolveBundledRuntimeRoot(command, args, cwd) {
+  if (args?.[0] === '.') return join(cwd, 'lib/mydsh-runtime')
+  return process.platform === 'win32'
+    ? join(dirname(command), 'resources/mydsh-runtime')
+    : resolve(dirname(command), '../Resources/mydsh-runtime')
 }
 
 function processTargetExists(target) {
@@ -247,8 +190,8 @@ async function stopRecordedRuntime(verifyHome) {
   }
   /* oxlint-disable no-await-in-loop -- 进程退出检查必须按固定间隔串行等待，并受次数上限约束。 */
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    await new Promise(resolve => {
-      setTimeout(resolve, 100)
+    await new Promise(done => {
+      setTimeout(done, 100)
     })
     if (!processTargetExists(target)) return
   }
@@ -261,8 +204,8 @@ async function stopRecordedRuntime(verifyHome) {
   }
   /* oxlint-disable no-await-in-loop -- 强制终止后仍需有界等待登记进程退出。 */
   for (let attempt = 0; attempt < 10; attempt += 1) {
-    await new Promise(resolve => {
-      setTimeout(resolve, 100)
+    await new Promise(done => {
+      setTimeout(done, 100)
     })
     if (!processTargetExists(target)) return
   }
@@ -272,27 +215,29 @@ async function stopRecordedRuntime(verifyHome) {
 
 async function verifyBundledRuntimeTools({
   command,
+  args,
+  cwd,
   verifyHome,
   mydshHome,
   environment,
   systemPath,
 }) {
-  const runtimeRoot = join(mydshHome, 'runtime')
-  if (!existsSync(runtimeRoot)) throw new Error('应用没有在隔离 MYDSH_HOME 中安装离线核心。')
-  const versions = readdirSync(runtimeRoot).filter(name => !name.startsWith('.'))
-  if (versions.length !== 1 || !existsSync(join(runtimeRoot, versions[0], '.mydsh-install.json'))) {
-    throw new Error('离线核心没有留下唯一且完整的安装记录。')
-  }
-  const receipt = JSON.parse(
-    readFileSync(join(runtimeRoot, versions[0], '.mydsh-install.json'), 'utf8'),
-  )
-  if (!existsSync(join(runtimeRoot, versions[0], receipt.entry))) {
-    throw new Error('离线核心缺少已安装入口。')
-  }
-  for (const name of ['typescript', 'esbuild', 'npm']) {
-    if (!existsSync(join(runtimeRoot, versions[0], 'node_modules', name, 'package.json'))) {
-      throw new Error(`隔离核心缺少随包工具链 ${name}。`)
+  for (const sub of ['plugins', 'data', 'config', 'conversions', 'cache']) {
+    if (!existsSync(join(mydshHome, sub))) {
+      throw new Error(`应用没有在隔离 MYDSH_HOME 中初始化 ${sub} 目录。`)
     }
+  }
+  if (!existsSync(join(mydshHome, 'data/format.json'))) {
+    throw new Error('应用没有在隔离 MYDSH_HOME 中写入数据格式门禁 format.json。')
+  }
+  if (existsSync(join(mydshHome, 'runtime'))) {
+    throw new Error('就地运行核心不应向用户目录复制 ~/.mydsh/runtime 文件树。')
+  }
+  const bundleRoot = resolveBundledRuntimeRoot(command, args, cwd)
+  const asarPath = join(bundleRoot, 'runtime.asar')
+  const unpackedRoot = join(bundleRoot, 'runtime.asar.unpacked')
+  if (!existsSync(asarPath) || !existsSync(unpackedRoot)) {
+    throw new Error(`随包核心归档或解包目录缺失：${bundleRoot}`)
   }
   const toolEnvironment = {
     ...environment,
@@ -303,24 +248,33 @@ async function verifyBundledRuntimeTools({
     NPM_CONFIG_CACHE: join(verifyHome, 'npm-cache'),
   }
   writeFileSync(toolEnvironment.NPM_CONFIG_USERCONFIG, '', { mode: 0o600 })
-  const installedRoot = join(runtimeRoot, versions[0])
-  const checkCliTool = async (name, entry) => {
-    const packageRoot = join(installedRoot, 'node_modules', name)
-    const version = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')).version
-    const { stdout } = await execFileAsync(command, [join(packageRoot, entry), '--version'], {
-      env: toolEnvironment,
-      encoding: 'utf8',
-      timeout: 10_000,
-    })
+  const readBundledVersion = name => {
+    const unpackedManifest = join(unpackedRoot, 'node_modules', name, 'package.json')
+    if (existsSync(unpackedManifest)) {
+      return JSON.parse(readFileSync(unpackedManifest, 'utf8')).version
+    }
+    return JSON.parse(
+      extractFile(asarPath, join('node_modules', name, 'package.json')).toString('utf8'),
+    ).version
+  }
+  const checkCliTool = async (name, rootPath, entry) => {
+    const version = readBundledVersion(name)
+    const { stdout } = await execFileAsync(
+      command,
+      [join(rootPath, 'node_modules', name, entry), '--version'],
+      {
+        env: toolEnvironment,
+        encoding: 'utf8',
+        timeout: 10_000,
+      },
+    )
     if (!stdout.includes(version)) {
       throw new Error(`随包 ${name} 没有通过应用自带 Node 的执行验收。`)
     }
   }
   const checkEsbuild = async () => {
-    const esbuildRoot = join(installedRoot, 'node_modules/esbuild')
-    const esbuildVersion = JSON.parse(
-      readFileSync(join(esbuildRoot, 'package.json'), 'utf8'),
-    ).version
+    const esbuildRoot = join(unpackedRoot, 'node_modules/esbuild')
+    const esbuildVersion = readBundledVersion('esbuild')
     const esbuildProbe =
       "const esbuild = require(process.argv[1]); const result = esbuild.transformSync('const answer: number = 42', { loader: 'ts' }); if (!result.code.includes('42')) throw new Error('esbuild 编译结果无效'); console.log(esbuild.version)"
     const { stdout } = await execFileAsync(
@@ -333,8 +287,8 @@ async function verifyBundledRuntimeTools({
     }
   }
   await Promise.all([
-    checkCliTool('typescript', 'bin/tsc'),
-    checkCliTool('npm', 'bin/npm-cli.js'),
+    checkCliTool('typescript', unpackedRoot, 'bin/tsc'),
+    checkCliTool('npm', asarPath, 'bin/npm-cli.js'),
     checkEsbuild(),
   ])
 }
@@ -351,7 +305,7 @@ export async function runRuntimeVerification({
   timeoutMs = DEFAULT_TIMEOUT_MS,
   requireRuntime = false,
   useSystemKeychain = false,
-  coldInstall = false,
+  coldInstall: _coldInstall = false,
   signal,
 }) {
   if (signal?.aborted) throw new Error(`${label}已取消。`)
@@ -369,9 +323,6 @@ export async function runRuntimeVerification({
   let stderr = ''
   try {
     const verifyProject = realpathSync.native(createVerificationProject(verifyHome))
-    if (requireRuntime) {
-      await seedSourceRuntimeIfEligible({ cwd, args, mydshHome, coldInstall })
-    }
     if (signal?.aborted) throw new Error(`${label}已取消。`)
     // 去除调用环境的外部 Host 和 Node 模式，并且不让全局包管理器参与独立性验收。
     const environment = { ...process.env }
@@ -466,7 +417,15 @@ export async function runRuntimeVerification({
       )
     }
     if (requireRuntime) {
-      await verifyBundledRuntimeTools({ command, verifyHome, mydshHome, environment, systemPath })
+      await verifyBundledRuntimeTools({
+        command,
+        args,
+        cwd,
+        verifyHome,
+        mydshHome,
+        environment,
+        systemPath,
+      })
     }
     return { stdout, stderr, verifyHome, mydshHome }
   } finally {
@@ -479,12 +438,12 @@ export async function runRuntimeVerification({
       try {
         if (process.env.MYDSH_VERIFY_INSPECT === '1') {
           console.log(`${label}截图查看窗口：${join(verifyHome, 'artifacts')}；45 秒后自动清理。`)
-          await new Promise(resolve => {
-            setTimeout(resolve, 45_000)
+          await new Promise(done => {
+            setTimeout(done, 45_000)
           })
         }
       } finally {
-        rmSync(verifyHome, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
+        await rm(verifyHome, { recursive: true, force: true, maxRetries: 30, retryDelay: 150 })
       }
     }
   }

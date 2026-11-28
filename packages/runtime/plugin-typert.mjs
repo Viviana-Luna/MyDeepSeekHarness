@@ -1,8 +1,13 @@
+/**
+ * 插件 Typert 编译期契约生成器：将单个待转换插件隔离映射为临时单包工作区，生成 `@Remote` 宿主与客户端契约。
+ * 运行在构建进程或后台插件转换器的隔离 Node 子进程；临时分析目录在 `finally` 中完整清理。
+ */
 import { cp, mkdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
-import { realpathSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, relative, resolve, sep } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { canonicalRuntimePath } from './canonical-path.mjs'
 
 /** Windows 普通账户没有符号链接特权，目录链接改用 junction；lstat 仍把它报告为符号链接。 */
 const DIRECTORY_LINK_TYPE = process.platform === 'win32' ? 'junction' : 'dir'
@@ -10,9 +15,18 @@ const DIRECTORY_LINK_TYPE = process.platform === 'win32' ? 'junction' : 'dir'
 /** TypeScript 统一返回正斜杠路径；Windows 的本地路径是反斜杠，比较与写入前先统一。 */
 const slash = value => value.replaceAll('\\', '/')
 
+function preferUnpackedPath(targetPath) {
+  const unpacked = targetPath.replace(/\.asar(?=[\\/]|$)/iu, '.asar.unpacked')
+  return unpacked !== targetPath && existsSync(unpacked) ? unpacked : targetPath
+}
+
 /**
  * 将一个扩展临时映射为 Typert 的单包工作区，复用上游分析器与产物格式。
  * 不修改原始源码、不分析全部核心插件，也不以源码反射代替编译期校验。
+ * @param {string} sourceInput 待分析源码目录。
+ * @param {string} artifact 编译输出产物目录。
+ * @param {string} toolchainInput 核心工具链根目录（可为 `runtime.asar` 或解包目录）。
+ * @param {string} [configFile='tsconfig.json'] TypeScript 配置文件相对路径。
  */
 export async function generatePluginTypert(
   sourceInput,
@@ -21,8 +35,8 @@ export async function generatePluginTypert(
   configFile = 'tsconfig.json',
 ) {
   // TypeScript 的模块解析按真实路径记录文件（Windows 上是长路径），调用方传入的短路径无法与它比较，入口统一成规范路径。
-  const source = realpathSync.native(sourceInput)
-  const toolchain = realpathSync.native(toolchainInput)
+  const source = canonicalRuntimePath(sourceInput)
+  const toolchain = canonicalRuntimePath(toolchainInput)
   const requireTool = createRequire(join(toolchain, 'package.json'))
   const ts = requireTool('typescript')
   const configPath = join(source, configFile)
@@ -83,8 +97,8 @@ export async function generatePluginTypert(
     )
     // 上游分析器通过包归属识别 Remote 符号。只登记固定协议的声明快照，不编译核心。
     const protocolDirectory = join(compiler, 'packages', 'protocol')
-    const protocolPackage = dirname(
-      requireTool.resolve('@deepseek-ai/dsh-typert-protocol/package.json'),
+    const protocolPackage = preferUnpackedPath(
+      dirname(requireTool.resolve('@deepseek-ai/dsh-typert-protocol/package.json')),
     )
     await cp(join(protocolPackage, 'types'), join(protocolDirectory, 'types'), { recursive: true })
     await json(join(protocolDirectory, 'package.json'), {
@@ -96,7 +110,7 @@ export async function generatePluginTypert(
       files: ['./types/index.d.ts', './types/types.d.ts'],
     })
     const sdkDirectory = join(compiler, 'packages', 'sdk')
-    const sdkSource = dirname(requireTool.resolve('@mydsh/sdk'))
+    const sdkSource = preferUnpackedPath(dirname(requireTool.resolve('@mydsh/sdk')))
     await mkdir(sdkDirectory, { recursive: true })
     await cp(join(sdkSource, 'index.d.ts'), join(sdkDirectory, 'index.d.ts'))
     await json(join(sdkDirectory, 'package.json'), {
@@ -230,7 +244,10 @@ async function json(file, value) {
   await writeFile(file, JSON.stringify(value, null, 2) + '\n')
 }
 
-if (process.argv[1] && pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url) {
+if (
+  process.argv[1] &&
+  canonicalRuntimePath(process.argv[1]) === canonicalRuntimePath(fileURLToPath(import.meta.url))
+) {
   const result = await generatePluginTypert(...process.argv.slice(2))
   process.stdout.write(JSON.stringify(result) + '\n')
 }

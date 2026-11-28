@@ -16,7 +16,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const filename = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(filename), '..')
 const payload =
-  process.env.MYDSH_VERIFICATION_RUNTIME ?? join(repository, 'lib/mydsh-runtime/payload')
+  process.env.MYDSH_VERIFICATION_RUNTIME ?? join(repository, 'lib/mydsh-runtime/runtime.asar')
 const localRequire = createRequire(join(repository, 'package.json'))
 const budget = { requests: 6, tokens: 40_000, output: 6_000, milliseconds: 360_000 }
 const approvedModelEndpoint = 'https://api.commandcode.ai/provider/v1'
@@ -149,8 +149,10 @@ async function main() {
       },
       logLevel: 'silent',
     })
-    const isolatedPayload = join(home, 'runtime')
-    await cp(payload, isolatedPayload, { recursive: true })
+    const isAsarPayload = payload.toLowerCase().endsWith('.asar')
+    const isolatedBundle = join(home, 'runtime')
+    await cp(isAsarPayload ? dirname(payload) : payload, isolatedBundle, { recursive: true })
+    const isolatedPayload = isAsarPayload ? join(isolatedBundle, 'runtime.asar') : isolatedBundle
     child = utilityProcess.fork(filename, [], {
       cwd: home,
       stdio: 'pipe',

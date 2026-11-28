@@ -1,16 +1,22 @@
+/**
+ * Windows 原生窗口圆角状态同步与几何算法测试。
+ */
 import { EventEmitter } from 'node:events'
 import type { BrowserWindow } from 'electron'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   installWindowShape,
   roundedWindowShape,
   WINDOW_CORNER_RADIUS,
 } from '../src/main/window-shape.ts'
+import { WINDOWS_NATIVE_CORNER_RADIUS } from '../src/shared/window.ts'
 
-describe('Windows 的自定义窗口圆角', () => {
-  it('命中区域容纳整个抗锯齿像素，合成失败时重新收紧并释放监听', () => {
+describe('Windows 原生 DWM 圆角与状态同步', () => {
+  it('采用 Windows 11 原生 8 DIP 圆角且不调用破坏硬件翻转的 setShape', () => {
+    expect(WINDOW_CORNER_RADIUS).toBe(WINDOWS_NATIVE_CORNER_RADIUS)
+    expect(WINDOW_CORNER_RADIUS).toBe(8)
     const setShape = vi.fn()
-    let fail = false
+    const onShape = vi.fn()
     const win = Object.assign(new EventEmitter(), {
       isDestroyed: () => false,
       isMinimized: () => false,
@@ -19,26 +25,18 @@ describe('Windows 的自定义窗口圆角', () => {
       getSize: () => [1280, 800],
       setShape,
     })
-    const shape = installWindowShape(win as unknown as BrowserWindow, 'win32', () => {
-      if (fail) shape.setAntialiasing(false)
-    })
+    const shape = installWindowShape(win as unknown as BrowserWindow, 'win32', onShape)
     shape.setAntialiasing(true)
-    const padded = setShape.mock.lastCall?.[0] as ReturnType<typeof roundedWindowShape>
-    expect(
-      padded.some(
-        rectangle => rectangle.x <= 12 && rectangle.x + rectangle.width > 12 && rectangle.y === 0,
-      ),
-    ).toBe(true)
-    fail = true
-    win.emit('move')
-    expect(setShape.mock.lastCall?.[0]).toEqual(roundedWindowShape(1280, 800))
+    expect(setShape).not.toHaveBeenCalled()
+    expect(onShape).toHaveBeenLastCalledWith(WINDOW_CORNER_RADIUS, 1280)
     shape.dispose()
     expect(win.eventNames()).toEqual([])
   })
 
-  it('全屏事件早于尺寸变化且状态查询仍为 false 时保持矩形，退出后恢复并释放监听', () => {
+  it('全屏事件早于尺寸变化且状态查询仍为 false 时切换直角，退出后恢复圆角并释放监听', () => {
     let size = [1280, 800]
     const setShape = vi.fn()
+    const onShape = vi.fn()
     const win = Object.assign(new EventEmitter(), {
       isDestroyed: () => false,
       isMinimized: () => false,
@@ -47,21 +45,22 @@ describe('Windows 的自定义窗口圆角', () => {
       getSize: () => size,
       setShape,
     })
-    const dispose = installWindowShape(win as unknown as BrowserWindow, 'win32')
-    expect(setShape.mock.lastCall?.[0]).not.toEqual([])
+    const shape = installWindowShape(win as unknown as BrowserWindow, 'win32', onShape)
+    expect(onShape).toHaveBeenLastCalledWith(WINDOW_CORNER_RADIUS, 1280)
     win.emit('enter-full-screen')
     size = [1600, 1000]
     win.emit('resize')
-    expect(setShape.mock.lastCall?.[0]).toEqual([])
+    expect(onShape).toHaveBeenLastCalledWith(0, 1600)
     win.emit('leave-full-screen')
     size = [1280, 800]
     win.emit('resize')
-    expect(setShape.mock.lastCall?.[0]).not.toEqual([])
-    dispose.dispose()
+    expect(onShape).toHaveBeenLastCalledWith(WINDOW_CORNER_RADIUS, 1280)
+    expect(setShape).not.toHaveBeenCalled()
+    shape.dispose()
     expect(win.eventNames()).toEqual([])
   })
 
-  it('四角对称裁切，边中点保留，覆盖默认、放大和小窗口', () => {
+  it('几何圆角切片函数保持四角对称裁切与边中点覆盖', () => {
     for (const [width, height] of [
       [1280, 800],
       [1600, 1000],
@@ -86,11 +85,10 @@ describe('Windows 的自定义窗口圆角', () => {
     }
   })
 
-  it('背景与命中共用圆角，跨显示器移动后重算，最小化与销毁期间停止更新', () => {
+  it('最大化置零圆角，跨显示器移动后重算，最小化与销毁期间停止更新', () => {
     let minimized = false
     let destroyed = false
     let maximized = false
-    const setShape = vi.fn()
     const onShape = vi.fn()
     const win = Object.assign(new EventEmitter(), {
       isDestroyed: () => destroyed,
@@ -98,12 +96,12 @@ describe('Windows 的自定义窗口圆角', () => {
       isMaximized: () => maximized,
       isFullScreen: () => false,
       getSize: () => [1280, 800],
-      setShape,
+      setShape: vi.fn(),
     })
-    const dispose = installWindowShape(win as unknown as BrowserWindow, 'win32', onShape)
+    const shape = installWindowShape(win as unknown as BrowserWindow, 'win32', onShape)
     expect(onShape).toHaveBeenLastCalledWith(WINDOW_CORNER_RADIUS, 1280)
     win.emit('move')
-    expect(setShape).toHaveBeenCalledTimes(2)
+    expect(onShape).toHaveBeenCalledTimes(2)
     maximized = true
     win.emit('maximize')
     expect(onShape).toHaveBeenLastCalledWith(0, 1280)
@@ -114,7 +112,7 @@ describe('Windows 的自定义窗口圆角', () => {
     destroyed = true
     win.emit('restore')
     expect(onShape).toHaveBeenCalledTimes(3)
-    dispose.dispose()
+    shape.dispose()
     expect(win.eventNames()).toEqual([])
   })
 })

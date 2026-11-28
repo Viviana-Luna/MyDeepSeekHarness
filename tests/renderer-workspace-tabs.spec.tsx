@@ -404,7 +404,7 @@ describe('统一工作标签导航', () => {
     }
   })
 
-  it('ConversationFrame 仅在 overlayComposer 对话框架内渲染三层顶部渐进模糊', () => {
+  it('ConversationFrame 仅在 overlayComposer 对话框架内渲染单层顶部渐进遮罩', () => {
     const view = render(
       <ConversationFrame width={null} onWidthChange={undefined} overlayComposer>
         <div>对话正文</div>
@@ -413,7 +413,7 @@ describe('统一工作标签导航', () => {
     const blur = document.querySelector<HTMLElement>('[data-top-progressive-blur="true"]')
     expect(blur).not.toBeNull()
     expect(blur?.getAttribute('aria-hidden')).toBe('true')
-    expect(blur?.children).toHaveLength(3)
+    expect(blur?.children).toHaveLength(0)
 
     view.rerender(
       <ConversationFrame width={null} onWidthChange={undefined} overlayComposer={false}>

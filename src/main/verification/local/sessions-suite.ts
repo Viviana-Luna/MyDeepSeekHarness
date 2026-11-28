@@ -1,42 +1,32 @@
 /**
  * 项目分组、会话操作、会话搜索与液态标签栏动效验收套件。
  */
-import { type LocalVerifyState, assertSuiteInvariants, ensureInitialShellSampled } from './state.ts'
 import {
-  runSessionsStep1,
-  runSessionsStep2,
-  runSessionsStep3,
-  runSessionsStep4,
-  runSessionsStep5,
-  runSessionsStep6,
-  runSessionsStep7,
-  runSessionsStep8,
-  runSessionsStep9,
-} from './sessions-part-1.ts'
+  verifyPeerTabFocusAndViewIsolation,
+  verifyProjectGroupingAndPinning,
+  verifySessionSearchDialog,
+  verifyWorkspaceGroupsAndPreparePeerTab,
+} from './session-list-verifier.ts'
 import {
-  runSessionsStep10,
-  runSessionsStep11,
-  runSessionsStep12,
-  runSessionsStep13,
-  runSessionsStep14,
-} from './sessions-part-2.ts'
+  verifyLiquidTabMotionAndPress,
+  verifySessionTabAccessibilityMedia,
+  verifySessionTabOverflowAndClose,
+  verifySessionTabReorderAndFill,
+  verifySessionTabResponsiveSizes,
+} from './session-tabs-verifier.ts'
+import { assertSuiteInvariants, ensureInitialShellSampled, type LocalVerifyState } from './state.ts'
 
 /** 运行 sessions 验收套件。 */
-export async function runSessionsSuite(bag: LocalVerifyState): Promise<void> {
-  await ensureInitialShellSampled(bag)
-  await runSessionsStep1(bag)
-  await runSessionsStep2(bag)
-  await runSessionsStep3(bag)
-  await runSessionsStep4(bag)
-  await runSessionsStep5(bag)
-  await runSessionsStep6(bag)
-  await runSessionsStep7(bag)
-  await runSessionsStep8(bag)
-  await runSessionsStep9(bag)
-  await runSessionsStep10(bag)
-  await runSessionsStep11(bag)
-  await runSessionsStep12(bag)
-  await runSessionsStep13(bag)
-  await runSessionsStep14(bag)
-  assertSuiteInvariants('sessions', bag)
+export async function runSessionsSuite(state: LocalVerifyState): Promise<void> {
+  await ensureInitialShellSampled(state)
+  await verifyProjectGroupingAndPinning(state)
+  await verifySessionSearchDialog(state)
+  await verifyWorkspaceGroupsAndPreparePeerTab(state)
+  await verifyPeerTabFocusAndViewIsolation(state)
+  await verifyLiquidTabMotionAndPress(state)
+  await verifySessionTabResponsiveSizes(state)
+  await verifySessionTabAccessibilityMedia(state)
+  await verifySessionTabReorderAndFill(state)
+  await verifySessionTabOverflowAndClose(state)
+  assertSuiteInvariants('sessions', state)
 }

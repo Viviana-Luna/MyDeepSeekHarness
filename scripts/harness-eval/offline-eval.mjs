@@ -3,6 +3,7 @@
  * 运行在 Node / Vitest 进程；所有临时目录与本地套接字均在 finally 中自动清理，不访问网络或真实用户配置。
  */
 import { installWorkspacePresetResolver, resolveWorkspaceModuleUrl } from './workspace-resolver.mjs'
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -221,6 +222,14 @@ async function loadEvalRuntimeModules() {
   }
 }
 
+function configureBundledWindowsPwsh() {
+  if (process.platform !== 'win32' || process.env.MYDSH_PWSH_EXECUTABLE) return
+  const bundledPwsh = join(REPO_ROOT, 'lib/mydsh-runtime/tools/powershell/pwsh.exe')
+  if (!existsSync(bundledPwsh)) return
+  // 优先复用随包便携版 PowerShell 7，避免开发机仅有 Microsoft Store 版（WindowsApps 包 ACL）时在 Low-IL 沙箱下加载失败。
+  process.env.MYDSH_PWSH_EXECUTABLE = bundledPwsh
+}
+
 /**
  * 装载真实 `roster.json` 启动隔离评测 Runtime 上下文（供离线评测与 `--live` 端到端基准复用）。
  * 调用方必须在结束后调用 `ctx.fiber.dispose()` 释放所有服务与临时套接字。
@@ -235,6 +244,7 @@ export async function bootRealRosterForEval(tempHome, options = {}) {
   } = options
   await mkdir(join(tempHome, 'data'), { recursive: true })
   await mkdir(join(tempHome, 'config'), { recursive: true })
+  configureBundledWindowsPwsh()
   process.env.MYDSH_HOME = tempHome
   process.env.DSH_HOME = join(tempHome, 'data')
   process.env.DSH_TELEMETRY_DISABLED = '1'

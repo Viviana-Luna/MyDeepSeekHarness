@@ -94,14 +94,16 @@
   border: 1px solid transparent;
   border-radius: 10px;
   transition:
-    background-color 140ms ease,
-    border-color 140ms ease,
-    color 140ms ease;
+    background-color 110ms ease,
+    border-color 110ms ease,
+    color 110ms ease;
 }
 
 .settings-nav .settings-nav__items > .ant-menu-item:not(.ant-menu-item-selected):hover {
-  background: color-mix(in srgb, var(--surface-hover) 72%, transparent);
+  background: var(--surface-hover);
   color: var(--text);
+  transition-duration: 55ms;
+  transition-timing-function: ease-out;
 }
 
 .settings-nav .settings-nav__items > .ant-menu-item-selected {

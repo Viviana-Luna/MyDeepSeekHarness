@@ -1,7 +1,7 @@
 /**
  * 空会话像素工坊动态背景画布：在 renderer 以整数像素对齐渲染稀疏多帧像素网格，
- * 响应鼠标滑过点亮、空白轻点方形像素涟漪、窗口缩放与主题明暗/强调色切换；
- * 卸载或不可见时自动暂停动画并彻底清理观察器与事件监听。
+ * 离屏缓存静态网格线，仅在悬停过渡或点击涟漪期间使用满帧 `requestAnimationFrame`，
+ * 静止态自动切换至按图元换帧边界触发的低频定时重绘，显著降低待机合成开销。
  */
 import { useEffect, useRef } from 'react'
 import styles from './EmptyConversation.module.css'
@@ -28,9 +28,12 @@ interface WorkshopRenderState {
   ripples: RippleWave[]
   dpr: number
   lastFrameTime: number
+  gridCache: HTMLCanvasElement | null
 }
 
 const RIPPLE_DURATION_MS = 750
+const MIN_IDLE_FRAME_DELAY_MS = 120
+const MAX_IDLE_FRAME_DELAY_MS = 900
 const INTERACTIVE_SELECTOR = 'button, a, input, textarea, select, [role="button"], [role="menu"]'
 
 function readCurrentTheme(): { readonly accent: string; readonly isDark: boolean } {
@@ -96,6 +99,20 @@ function drawGridLines(
     ctx.lineTo(width, crisp)
   }
   ctx.stroke()
+}
+
+function rebuildStaticGridCache(state: WorkshopRenderState): HTMLCanvasElement | null {
+  const { layout, palette, dpr } = state
+  if (layout.width <= 0 || layout.height <= 0 || typeof document === 'undefined') return null
+  const offscreen = state.gridCache ?? document.createElement('canvas')
+  offscreen.width = Math.max(1, Math.round(layout.width * dpr))
+  offscreen.height = Math.max(1, Math.round(layout.height * dpr))
+  const cacheCtx = offscreen.getContext('2d')
+  if (cacheCtx === null) return null
+  cacheCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  cacheCtx.clearRect(0, 0, layout.width, layout.height)
+  drawGridLines(cacheCtx, layout, palette)
+  return offscreen
 }
 
 function drawHoverFrame(
@@ -237,14 +254,28 @@ function applySoftMask(ctx: CanvasRenderingContext2D, layout: WorkshopGridLayout
   ctx.restore()
 }
 
+function nextSpriteFlipDelayMs(layout: WorkshopGridLayout, now: number): number {
+  let nearest = MAX_IDLE_FRAME_DELAY_MS
+  for (const cell of layout.cells) {
+    if (cell.sprite.frames.length <= 1 || cell.frameDurationMs <= 0) continue
+    const elapsedInFrame = (now + cell.phaseOffsetMs) % cell.frameDurationMs
+    const remaining = cell.frameDurationMs - elapsedInFrame
+    if (remaining < nearest) nearest = remaining
+  }
+  return Math.max(
+    MIN_IDLE_FRAME_DELAY_MS,
+    Math.min(MAX_IDLE_FRAME_DELAY_MS, Math.ceil(nearest) + 4),
+  )
+}
+
 function renderWorkshopFrame(
   ctx: CanvasRenderingContext2D,
   state: WorkshopRenderState,
   now: number,
   reducedMotion: boolean,
-): void {
+): boolean {
   const { layout, palette } = state
-  if (layout.width <= 0 || layout.height <= 0) return
+  if (layout.width <= 0 || layout.height <= 0) return false
   const dt =
     state.lastFrameTime === 0
       ? 1 / 60
@@ -257,11 +288,16 @@ function renderWorkshopFrame(
 
   ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0)
   ctx.clearRect(0, 0, layout.width, layout.height)
-  drawGridLines(ctx, layout, palette)
+  if (state.gridCache !== null) {
+    ctx.drawImage(state.gridCache, 0, 0, layout.width, layout.height)
+  } else {
+    drawGridLines(ctx, layout, palette)
+  }
 
   let hoveredCellRect: { readonly x: number; readonly y: number; readonly size: number } | null =
     null
   let hoveredCellGlow = 0
+  let hasActiveGlowTransition = false
 
   for (const cell of layout.cells) {
     let target = 0
@@ -271,11 +307,17 @@ function renderWorkshopFrame(
     }
     const previous = state.glowByKey.get(cell.key) ?? 0
     const next = previous + (target - previous) * easeStep
-    if (next > 0.004) state.glowByKey.set(cell.key, next)
-    else state.glowByKey.delete(cell.key)
+    if (Math.abs(target - next) > 0.004) {
+      hasActiveGlowTransition = true
+      state.glowByKey.set(cell.key, next)
+    } else if (target > 0.004) {
+      state.glowByKey.set(cell.key, target)
+    } else {
+      state.glowByKey.delete(cell.key)
+    }
     if (state.hoveredKey === cell.key) {
       hoveredCellRect = { x: cell.x, y: cell.y, size: cell.size }
-      hoveredCellGlow = next
+      hoveredCellGlow = state.glowByKey.get(cell.key) ?? 0
     }
   }
 
@@ -305,6 +347,7 @@ function renderWorkshopFrame(
     drawRipples(ctx, state.ripples, palette, now)
   }
   applySoftMask(ctx, layout)
+  return !reducedMotion && (hasActiveGlowTransition || state.ripples.length > 0)
 }
 
 function observeThemeChanges(onChange: () => void): () => void {
@@ -322,6 +365,229 @@ function observeThemeChanges(onChange: () => void): () => void {
   }
 }
 
+interface WorkshopLoopController {
+  readonly stopLoop: () => void
+  readonly drawStatic: () => void
+  readonly wakeInteractiveLoop: () => void
+  readonly refreshLoop: () => void
+  readonly setVisible: (nextVisible: boolean) => void
+  readonly isVisible: () => boolean
+}
+
+function createWorkshopLoopController(
+  ctx: CanvasRenderingContext2D,
+  state: WorkshopRenderState,
+  reducedQuery: MediaQueryList | null,
+): WorkshopLoopController {
+  let rafId = 0
+  let idleTimerId = 0
+  let visible = true
+
+  const stopLoop = () => {
+    if (rafId !== 0) {
+      cancelAnimationFrame(rafId)
+      rafId = 0
+    }
+    if (idleTimerId !== 0) {
+      window.clearTimeout(idleTimerId)
+      idleTimerId = 0
+    }
+    state.lastFrameTime = 0
+  }
+
+  const drawStatic = () => {
+    renderWorkshopFrame(ctx, state, performance.now(), true)
+  }
+
+  const scheduleNextFrame = (now: number, needsSmoothAnimation: boolean) => {
+    if (!visible || document.hidden || reducedQuery?.matches === true) return
+    if (needsSmoothAnimation) {
+      if (idleTimerId !== 0) {
+        window.clearTimeout(idleTimerId)
+        idleTimerId = 0
+      }
+      if (rafId === 0) rafId = requestAnimationFrame(tick)
+      return
+    }
+    state.lastFrameTime = 0
+    if (idleTimerId === 0 && rafId === 0) {
+      idleTimerId = window.setTimeout(onIdleTimer, nextSpriteFlipDelayMs(state.layout, now))
+    }
+  }
+
+  const tick = (now: number) => {
+    rafId = 0
+    if (!visible || document.hidden || reducedQuery?.matches === true) return
+    scheduleNextFrame(now, renderWorkshopFrame(ctx, state, now, false))
+  }
+
+  const onIdleTimer = () => {
+    idleTimerId = 0
+    if (!visible || document.hidden || reducedQuery?.matches === true) return
+    const now = performance.now()
+    scheduleNextFrame(now, renderWorkshopFrame(ctx, state, now, false))
+  }
+
+  const wakeInteractiveLoop = () => {
+    if (!visible || document.hidden || reducedQuery?.matches === true) return
+    if (idleTimerId !== 0) {
+      window.clearTimeout(idleTimerId)
+      idleTimerId = 0
+    }
+    if (rafId === 0) rafId = requestAnimationFrame(tick)
+  }
+
+  const refreshLoop = () => {
+    stopLoop()
+    if (!visible || document.hidden) return
+    if (reducedQuery?.matches === true) {
+      drawStatic()
+      return
+    }
+    const now = performance.now()
+    scheduleNextFrame(now, renderWorkshopFrame(ctx, state, now, false))
+  }
+
+  return {
+    stopLoop,
+    drawStatic,
+    wakeInteractiveLoop,
+    refreshLoop,
+    setVisible: nextVisible => {
+      visible = nextVisible
+    },
+    isVisible: () => visible,
+  }
+}
+
+function mountWorkshopCanvasHost(canvas: HTMLCanvasElement, host: HTMLElement): () => void {
+  const initialTheme = readCurrentTheme()
+  const initialPalette = resolveWorkshopPalette(initialTheme.accent, initialTheme.isDark)
+  canvas.dataset.accent = initialPalette.accent
+
+  const ctx = canvas.getContext('2d')
+  if (ctx === null) {
+    return observeThemeChanges(() => {
+      const theme = readCurrentTheme()
+      canvas.dataset.accent = resolveWorkshopPalette(theme.accent, theme.isDark).accent
+    })
+  }
+
+  const reducedQuery =
+    typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null
+  const state: WorkshopRenderState = {
+    layout: buildPixelWorkshopGrid(host.clientWidth, host.clientHeight),
+    palette: initialPalette,
+    hoveredKey: null,
+    hoveredSlot: null,
+    glowByKey: new Map(),
+    ripples: [],
+    dpr: Math.min(2, window.devicePixelRatio || 1),
+    lastFrameTime: 0,
+    gridCache: null,
+  }
+  const loop = createWorkshopLoopController(ctx, state, reducedQuery)
+
+  const syncCanvasSize = () => {
+    const width = host.clientWidth
+    const height = host.clientHeight
+    state.dpr = Math.min(2, window.devicePixelRatio || 1)
+    canvas.width = Math.max(1, Math.round(width * state.dpr))
+    canvas.height = Math.max(1, Math.round(height * state.dpr))
+    state.layout = buildPixelWorkshopGrid(width, height)
+    state.glowByKey.clear()
+    state.gridCache = rebuildStaticGridCache(state)
+  }
+
+  const refreshTheme = () => {
+    const theme = readCurrentTheme()
+    state.palette = resolveWorkshopPalette(theme.accent, theme.isDark)
+    canvas.dataset.accent = state.palette.accent
+    state.gridCache = rebuildStaticGridCache(state)
+    if (reducedQuery?.matches === true) loop.drawStatic()
+    else if (loop.isVisible() && !document.hidden) loop.refreshLoop()
+  }
+
+  const onPointerMove = (event: PointerEvent) => {
+    const rect = host.getBoundingClientRect()
+    const hit = findHitCell(state.layout, event.clientX - rect.left, event.clientY - rect.top)
+    const nextKey = hit.cell?.key ?? null
+    const nextSlot = hit.slot
+    const changed =
+      nextKey !== state.hoveredKey ||
+      nextSlot?.col !== state.hoveredSlot?.col ||
+      nextSlot?.row !== state.hoveredSlot?.row
+    state.hoveredKey = nextKey
+    state.hoveredSlot = nextSlot
+    if (reducedQuery?.matches === true) loop.drawStatic()
+    else if (changed) loop.wakeInteractiveLoop()
+  }
+
+  const onPointerLeave = () => {
+    const hadHover = state.hoveredKey !== null || state.hoveredSlot !== null
+    state.hoveredKey = null
+    state.hoveredSlot = null
+    if (reducedQuery?.matches === true) loop.drawStatic()
+    else if (hadHover) loop.wakeInteractiveLoop()
+  }
+
+  const onPointerDown = (event: PointerEvent) => {
+    if (event.button !== 0 || reducedQuery?.matches === true) return
+    if (event.target instanceof Element && event.target.closest(INTERACTIVE_SELECTOR) !== null) {
+      return
+    }
+    const rect = host.getBoundingClientRect()
+    state.ripples.push({
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+      startTime: performance.now(),
+    })
+    if (state.ripples.length > 4) state.ripples.shift()
+    loop.wakeInteractiveLoop()
+  }
+
+  const resizeObserver =
+    typeof ResizeObserver === 'function'
+      ? new ResizeObserver(() => {
+          syncCanvasSize()
+          if (reducedQuery?.matches === true) loop.drawStatic()
+          else loop.refreshLoop()
+        })
+      : null
+  resizeObserver?.observe(host)
+
+  const intersectionObserver =
+    typeof IntersectionObserver === 'function'
+      ? new IntersectionObserver(entries => {
+          loop.setVisible(entries.some(entry => entry.isIntersecting))
+          loop.refreshLoop()
+        })
+      : null
+  intersectionObserver?.observe(canvas)
+
+  const stopThemeObserver = observeThemeChanges(refreshTheme)
+  host.addEventListener('pointermove', onPointerMove)
+  host.addEventListener('pointerleave', onPointerLeave)
+  host.addEventListener('pointerdown', onPointerDown)
+  document.addEventListener('visibilitychange', loop.refreshLoop)
+  reducedQuery?.addEventListener('change', loop.refreshLoop)
+
+  syncCanvasSize()
+  loop.refreshLoop()
+
+  return () => {
+    loop.stopLoop()
+    resizeObserver?.disconnect()
+    intersectionObserver?.disconnect()
+    stopThemeObserver()
+    host.removeEventListener('pointermove', onPointerMove)
+    host.removeEventListener('pointerleave', onPointerLeave)
+    host.removeEventListener('pointerdown', onPointerDown)
+    document.removeEventListener('visibilitychange', loop.refreshLoop)
+    reducedQuery?.removeEventListener('change', loop.refreshLoop)
+  }
+}
+
 /** 渲染铺满空会话容器底层的像素工坊微动背景画布。 */
 export function PixelWorkshopBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -330,155 +596,7 @@ export function PixelWorkshopBackground() {
     const canvas = canvasRef.current
     const host = canvas?.parentElement
     if (!canvas || !host) return
-
-    const initialTheme = readCurrentTheme()
-    const initialPalette = resolveWorkshopPalette(initialTheme.accent, initialTheme.isDark)
-    canvas.dataset.accent = initialPalette.accent
-
-    const ctx = canvas.getContext('2d')
-    if (ctx === null) {
-      return observeThemeChanges(() => {
-        const theme = readCurrentTheme()
-        canvas.dataset.accent = resolveWorkshopPalette(theme.accent, theme.isDark).accent
-      })
-    }
-
-    const reducedQuery =
-      typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null
-    const state: WorkshopRenderState = {
-      layout: buildPixelWorkshopGrid(host.clientWidth, host.clientHeight),
-      palette: initialPalette,
-      hoveredKey: null,
-      hoveredSlot: null,
-      glowByKey: new Map(),
-      ripples: [],
-      dpr: Math.min(2, window.devicePixelRatio || 1),
-      lastFrameTime: 0,
-    }
-
-    let rafId = 0
-    let visible = true
-
-    const syncCanvasSize = () => {
-      const width = host.clientWidth
-      const height = host.clientHeight
-      state.dpr = Math.min(2, window.devicePixelRatio || 1)
-      canvas.width = Math.max(1, Math.round(width * state.dpr))
-      canvas.height = Math.max(1, Math.round(height * state.dpr))
-      state.layout = buildPixelWorkshopGrid(width, height)
-      state.glowByKey.clear()
-    }
-
-    const stopLoop = () => {
-      if (rafId !== 0) {
-        cancelAnimationFrame(rafId)
-        rafId = 0
-      }
-      state.lastFrameTime = 0
-    }
-
-    const drawStatic = () => {
-      renderWorkshopFrame(ctx, state, performance.now(), reducedQuery?.matches === true)
-    }
-
-    const tick = (now: number) => {
-      rafId = 0
-      if (!visible || document.hidden || reducedQuery?.matches === true) return
-      renderWorkshopFrame(ctx, state, now, false)
-      rafId = requestAnimationFrame(tick)
-    }
-
-    const refreshLoop = () => {
-      if (!visible || document.hidden) {
-        stopLoop()
-        return
-      }
-      if (reducedQuery?.matches === true) {
-        stopLoop()
-        drawStatic()
-        return
-      }
-      if (rafId === 0) rafId = requestAnimationFrame(tick)
-    }
-
-    const refreshTheme = () => {
-      const theme = readCurrentTheme()
-      state.palette = resolveWorkshopPalette(theme.accent, theme.isDark)
-      canvas.dataset.accent = state.palette.accent
-      if (reducedQuery?.matches === true) drawStatic()
-      else if (visible && !document.hidden)
-        renderWorkshopFrame(ctx, state, performance.now(), false)
-    }
-
-    const onPointerMove = (event: PointerEvent) => {
-      const rect = host.getBoundingClientRect()
-      const hit = findHitCell(state.layout, event.clientX - rect.left, event.clientY - rect.top)
-      state.hoveredKey = hit.cell?.key ?? null
-      state.hoveredSlot = hit.slot
-      if (reducedQuery?.matches === true) drawStatic()
-    }
-
-    const onPointerLeave = () => {
-      state.hoveredKey = null
-      state.hoveredSlot = null
-      if (reducedQuery?.matches === true) drawStatic()
-    }
-
-    const onPointerDown = (event: PointerEvent) => {
-      if (event.button !== 0 || reducedQuery?.matches === true) return
-      if (event.target instanceof Element && event.target.closest(INTERACTIVE_SELECTOR) !== null) {
-        return
-      }
-      const rect = host.getBoundingClientRect()
-      state.ripples.push({
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
-        startTime: performance.now(),
-      })
-      if (state.ripples.length > 4) state.ripples.shift()
-    }
-
-    const resizeObserver =
-      typeof ResizeObserver === 'function'
-        ? new ResizeObserver(() => {
-            syncCanvasSize()
-            if (reducedQuery?.matches === true) drawStatic()
-            else refreshLoop()
-          })
-        : null
-    resizeObserver?.observe(host)
-
-    const intersectionObserver =
-      typeof IntersectionObserver === 'function'
-        ? new IntersectionObserver(entries => {
-            visible = entries.some(entry => entry.isIntersecting)
-            refreshLoop()
-          })
-        : null
-    intersectionObserver?.observe(canvas)
-
-    const stopThemeObserver = observeThemeChanges(refreshTheme)
-
-    host.addEventListener('pointermove', onPointerMove)
-    host.addEventListener('pointerleave', onPointerLeave)
-    host.addEventListener('pointerdown', onPointerDown)
-    document.addEventListener('visibilitychange', refreshLoop)
-    reducedQuery?.addEventListener('change', refreshLoop)
-
-    syncCanvasSize()
-    refreshLoop()
-
-    return () => {
-      stopLoop()
-      resizeObserver?.disconnect()
-      intersectionObserver?.disconnect()
-      stopThemeObserver()
-      host.removeEventListener('pointermove', onPointerMove)
-      host.removeEventListener('pointerleave', onPointerLeave)
-      host.removeEventListener('pointerdown', onPointerDown)
-      document.removeEventListener('visibilitychange', refreshLoop)
-      reducedQuery?.removeEventListener('change', refreshLoop)
-    }
+    return mountWorkshopCanvasHost(canvas, host)
   }, [])
 
   return (

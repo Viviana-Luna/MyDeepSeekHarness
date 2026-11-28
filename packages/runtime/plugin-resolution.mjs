@@ -1,18 +1,18 @@
-import { realpathSync } from 'node:fs'
+/**
+ * 用户扩展共享模块解析钩子：仅在当前后台 Runtime 进程内将用户插件对宿主共享包的导入重定向到核心实例。
+ * 运行在后台 Runtime；拥有 `module.registerHooks` 句柄，由调用方在停止时统一注销。
+ */
 import { createRequire, registerHooks } from 'node:module'
 import { join, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { canonicalRuntimePath as canonical } from './canonical-path.mjs'
 
 /**
- * 仅在当前 Runtime 进程内，为插件代码解析宿主共享模块。
- * 其他来源和依赖继续由 Node 正常解析，不设置全局 NODE_PATH，也不写用户模块目录。
+ * 注册用户扩展与转换产物对 `@deepseek-ai/cordis` 及 `@mydsh/sdk` 的共享模块解析钩子。
+ * @param {string} runtimeDirectory 核心运行根目录（可为 `runtime.asar` 或普通目录）。
+ * @param {string} home MyDSH 用户数据根目录。
+ * @returns {{ deregister: () => void }} 供退出阶段解除模块钩子的句柄。
  */
-/**
- * Windows 上 realpathSync 会返回 8.3 短路径（如 RAINY_~1），与异步 realpath 的长路径无法直接比较，
- * 因此统一使用原生实现：它和异步 realpath 一样返回规范长路径，POSIX 上两者行为相同。
- */
-const canonical = path => realpathSync.native(path)
-
 export function installPluginResolution(runtimeDirectory, home) {
   const runtime = canonical(runtimeDirectory)
   const resolveFromRuntime = createRequire(pathToFileURL(join(runtime, 'package.json')))
