@@ -368,7 +368,7 @@ async function installPackageClosure(context, name, sourceDirectory, consumer = 
     dereference: true,
     filter: path => !excluded.includes(relative(canonical, path).split(/[\\/]/u)[0]),
   })
-  if (process.platform === 'win32' && name === 'node-pty') {
+  if (name === 'node-pty') {
     await patchNodePty(target, meta.version)
   }
   if (records.has(name)) {
