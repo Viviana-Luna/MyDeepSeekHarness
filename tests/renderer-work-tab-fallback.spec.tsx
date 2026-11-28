@@ -100,31 +100,34 @@ function createStoreHarness() {
     createdAt: number
     updatedAt: number
   }> = []
-  const hostCall = vi.fn(async (operation: string, payload?: Record<string, unknown>) => {
-    if (operation === 'listSessions') return { items: [...sessions] }
-    if (operation === 'listWorkspaces') return { items: [{ ...workspace }], archivedSessionIds: [] }
-    if (operation === 'listArchivedSessions') return { sessionIds: [] }
-    if (operation === 'listPermissionPresets') return { items: [] }
-    if (operation === 'listModels') return { providers: [], current: null }
-    if (operation === 'loadSessionPage') return { records: [], hasMore: false }
-    if (operation === 'listSessionCommands') return { commands: [], skills: [] }
-    if (operation === 'createSessionForWorkspace') {
-      const created = {
-        sessionId: 'welcome-session-1',
-        cwd: workspace.path,
-        title: '新会话',
-        running: false,
-        blank: true,
-        createdAt: 10,
-        updatedAt: 10,
+  const hostCall = vi.fn(
+    async (operation: string, payload?: Record<string, unknown>): Promise<unknown> => {
+      if (operation === 'listSessions') return { items: [...sessions] }
+      if (operation === 'listWorkspaces')
+        return { items: [{ ...workspace }], archivedSessionIds: [] }
+      if (operation === 'listArchivedSessions') return { sessionIds: [] }
+      if (operation === 'listPermissionPresets') return { items: [] }
+      if (operation === 'listModels') return { providers: [], current: null }
+      if (operation === 'loadSessionPage') return { records: [], hasMore: false }
+      if (operation === 'listSessionCommands') return { commands: [], skills: [] }
+      if (operation === 'createSessionForWorkspace') {
+        const created = {
+          sessionId: 'welcome-session-1',
+          cwd: workspace.path,
+          title: '新会话',
+          running: false,
+          blank: true,
+          createdAt: 10,
+          updatedAt: 10,
+        }
+        sessions.push(created)
+        workspace.sessionIds = ['welcome-session-1']
+        return { sessionId: created.sessionId }
       }
-      sessions.push(created)
-      workspace.sessionIds = ['welcome-session-1']
-      return { sessionId: created.sessionId }
-    }
-    if (operation === 'promptSession') return { accepted: true, payload }
-    return {}
-  })
+      if (operation === 'promptSession') return { accepted: true, payload }
+      return {}
+    },
+  )
   const bridge = {
     version: 19,
     platform: 'win32',
@@ -326,6 +329,64 @@ describe('关闭最后浏览器与终端标签回退欢迎新聊天', () => {
     expect(panelMocks.enterNewSessionWelcome).not.toHaveBeenCalled()
   })
 
+  it('全部项目下关闭前即使终端标签曾因无选中会话失焦，移除最后终端标签后仍回到欢迎新聊天', () => {
+    panelMocks.activeView = 'terminal'
+    panelMocks.selectedProjectId = null
+    panelMocks.tabs = [
+      makeTab({
+        id: 'terminal:access-1:terminal-1',
+        kind: 'terminal',
+        projectId: 'project:alpha',
+        active: false,
+        rawActive: false,
+      }),
+    ]
+    const view = render(
+      <WorkspaceTabsProvider>
+        <WorkTabPanels />
+      </WorkspaceTabsProvider>,
+    )
+
+    panelMocks.tabs = []
+    view.rerender(
+      <WorkspaceTabsProvider>
+        <WorkTabPanels />
+      </WorkspaceTabsProvider>,
+    )
+
+    expect(panelMocks.enterNewSessionWelcome).toHaveBeenCalledTimes(1)
+    expect(panelMocks.enterNewSessionWelcome).toHaveBeenCalledWith('project:alpha')
+  })
+
+  it('全部项目下关闭前即使浏览器标签曾失焦，移除最后浏览器标签后仍回到欢迎新聊天', () => {
+    panelMocks.activeView = 'browser'
+    panelMocks.selectedProjectId = null
+    panelMocks.tabs = [
+      makeTab({
+        id: 'browser:b-lost',
+        kind: 'browser',
+        projectId: 'project:alpha',
+        active: false,
+        rawActive: false,
+      }),
+    ]
+    const view = render(
+      <WorkspaceTabsProvider>
+        <WorkTabPanels />
+      </WorkspaceTabsProvider>,
+    )
+
+    panelMocks.tabs = []
+    view.rerender(
+      <WorkspaceTabsProvider>
+        <WorkTabPanels />
+      </WorkspaceTabsProvider>,
+    )
+
+    expect(panelMocks.enterNewSessionWelcome).toHaveBeenCalledTimes(1)
+    expect(panelMocks.enterNewSessionWelcome).toHaveBeenCalledWith('project:alpha')
+  })
+
   it('WorkspaceStore.enterNewSessionWelcome 在全部项目模式下也支持直接发送首条消息创建会话', async () => {
     const harness = createStoreHarness()
     const store = new WorkspaceStore(harness.bridge, harness.storage)
@@ -350,6 +411,84 @@ describe('关闭最后浏览器与终端标签回退欢迎新聊天', () => {
       selectedProjectId: null,
       selectedSessionId: 'welcome-session-1',
       newSessionProjectId: null,
+    })
+    store.dispose()
+  })
+
+  it('关闭空会话标签后再关闭最后一个终端或浏览器标签时，直接复用已有空会话并恢复模型加载', async () => {
+    const harness = createStoreHarness()
+    const baseCall = harness.hostCall.getMockImplementation()!
+    const existingBlank = {
+      sessionId: 'blank-existing-1',
+      cwd: '/repo/alpha',
+      title: '新会话',
+      running: false,
+      blank: true,
+      createdAt: 5,
+      updatedAt: 5,
+    }
+    harness.hostCall.mockImplementation(async (operation, payload) => {
+      if (operation === 'listSessions') return { items: [existingBlank] }
+      if (operation === 'listWorkspaces') {
+        return {
+          items: [
+            {
+              workspaceId: 'ws-a',
+              path: '/repo/alpha',
+              title: 'Alpha',
+              createdAt: '2026-11-27T00:00:00.000Z',
+              updatedAt: '2026-11-27T00:00:00.000Z',
+              sessionIds: [existingBlank.sessionId],
+            },
+          ],
+          archivedSessionIds: [],
+        }
+      }
+      if (operation === 'getSessionModels') {
+        return {
+          default: { provider: 'deepseek-official', model: 'deepseek-flash' },
+          routableProviders: ['deepseek-official'],
+          groups: [
+            {
+              id: 'deepseek-official',
+              name: 'DeepSeek',
+              models: [{ id: 'deepseek-flash', name: 'DeepSeek-V41-Flash' }],
+            },
+          ],
+          failures: [],
+        }
+      }
+      return baseCall(operation, payload)
+    })
+    const store = new WorkspaceStore(harness.bridge, harness.storage)
+    await store.initialize()
+
+    // 复现用户路径：默认空会话打开终端后，依次关闭会话标签与终端标签。
+    store.setView('terminal')
+    store.closeSessionTab(existingBlank.sessionId)
+    expect(store.getSnapshot().openedSessionIds).toEqual([])
+    harness.hostCall.mockClear()
+
+    store.enterNewSessionWelcome(harness.projectId)
+
+    expect(store.getSnapshot()).toMatchObject({
+      activeView: 'conversation',
+      selectedProjectId: null,
+      selectedSessionId: existingBlank.sessionId,
+      openedSessionIds: [existingBlank.sessionId],
+      newSessionProjectId: null,
+    })
+    expect(harness.hostCall).not.toHaveBeenCalledWith(
+      'createSessionForWorkspace',
+      expect.anything(),
+    )
+    expect(harness.hostCall).toHaveBeenCalledWith(
+      'loadSessionPage',
+      expect.objectContaining({ sessionId: existingBlank.sessionId }),
+    )
+    await expect(store.loadSessionModels(false)).resolves.toBe(true)
+    expect(harness.hostCall).toHaveBeenCalledWith('getSessionModels', {
+      sessionId: existingBlank.sessionId,
     })
     store.dispose()
   })

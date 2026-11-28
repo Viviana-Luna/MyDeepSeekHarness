@@ -351,18 +351,21 @@
 .app-shell[data-tab-actions-floating='true']:not([data-workspace-split])
   .main-island
   .ssh-terminal-heading,
+.app-shell[data-tab-actions-floating='true'][data-workspace-split]
+  .main-island
+  .work-tab-panel[data-split-pane='right']
+  .ssh-terminal-heading {
+  min-height: 42px;
+  padding-right: 84px;
+}
 .app-shell[data-tab-actions-floating='true']:not([data-workspace-split])
   .main-island
   .ssh-recent__heading,
 .app-shell[data-tab-actions-floating='true'][data-workspace-split]
   .main-island
   .work-tab-panel[data-split-pane='right']
-  .ssh-terminal-heading,
-.app-shell[data-tab-actions-floating='true'][data-workspace-split]
-  .main-island
-  .work-tab-panel[data-split-pane='right']
   .ssh-recent__heading {
-  padding-right: 56px;
+  padding-right: 84px;
 }
 .ssh-terminal-heading > span:first-child {
   min-width: 0;

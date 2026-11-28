@@ -90,6 +90,7 @@ pnpm run dev
 | 命令 | 说明 |
 | --- | --- |
 | `pnpm run dev` | 增量构建并启动 Electron 桌面端 |
+| `pnpm run dev:watch` | 启动常驻 Electron 桌面端，监听前端代码保存并自动增量重编刷新窗口 |
 | `pnpm run build` | 按输入摘要增量构建离线核心运行时、主进程与前端资源（全量冷重编可用 `pnpm run build:clean`） |
 | `pnpm run check` | 运行并行增量类型检查、格式校验、Lint、注释检查、单元测试与独立性门禁 |
 | `pnpm run test:unit` | 仅运行纯内存与前端组件快速单元测试（跳过重型子进程集成测试） |

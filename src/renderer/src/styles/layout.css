@@ -123,6 +123,14 @@
   --session-chrome-reveal: 0;
 }
 
+/* macOS 左栏收起且单标签隐藏顶栏时，隐藏标签条但保留 32px 原生红绿灯安全行，避免红绿灯压住模式栏或主浮岛左上角。 */
+:root:not([data-platform='win32'])
+  .app-shell[data-navigation-collapsed='true'][data-session-tabs-visible='false'] {
+  --workspace-top: calc(var(--window-edge) + var(--session-chrome-height) + var(--window-gap));
+  grid-template-rows: var(--session-chrome-height) minmax(0, 1fr);
+  row-gap: var(--window-gap);
+}
+
 .app-shell[data-pending-interaction='true'] {
   --composer-block-size: max(
     180px,
@@ -287,6 +295,7 @@
   min-height: 0;
   flex: 1;
   flex-direction: column;
+  border-radius: max(0px, calc(var(--island-radius) - 1px));
 }
 .workspace-island-content[data-placement='right'] {
   overflow: auto;
@@ -948,7 +957,7 @@
 }
 .workbench-surface:not([data-workbench-split]) > .work-tab-panel {
   border: 0;
-  border-radius: 0;
+  border-radius: max(0px, calc(var(--island-radius) - 1px));
 }
 
 .workspace-island[hidden] {

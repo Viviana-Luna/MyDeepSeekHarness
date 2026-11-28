@@ -65,6 +65,7 @@ describe('空会话页面与像素工坊背景', () => {
 
     const view = render(<ChatMainPanel snapshot={newSessionSnapshot} history={[]} />)
     expect(screen.getByRole('heading', { name: '在 项目 中开始新会话' })).toBeTruthy()
+    expect(screen.getByText('预设选择')).toBeTruthy()
     expect(screen.queryByRole('group', { name: '起手建议' })).toBeNull()
     const stage = document.querySelector<HTMLElement>('[aria-label="空会话"]')
     const content = stage?.querySelector<HTMLElement>(':scope > div')

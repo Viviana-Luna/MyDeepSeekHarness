@@ -43,18 +43,38 @@ export function WorkTabPanels({ showWindowControls = false }: { showWindowContro
     rawKind: WorkTab['kind'] | null
     rawProjectId: string | null
     group: readonly [string, string] | null
-  }>({ navigation: '', rawId: null, rawKind: null, rawProjectId: null, group: null })
+    ephemeralTabs: readonly Pick<WorkTab, 'id' | 'kind' | 'projectId'>[]
+  }>({
+    navigation: '',
+    rawId: null,
+    rawKind: null,
+    rawProjectId: null,
+    group: null,
+    ephemeralTabs: [],
+  })
   useLayoutEffect(() => {
     const before = previousNavigation.current
     const removedRaw = before.rawId !== null && !tabs.some(tab => tab.id === before.rawId)
     const survivor =
       removedRaw && before.group ? tabs.find(tab => before.group!.includes(tab.id)) : undefined
+    const currentEphemeralTabs = tabs
+      .filter(tab => tab.kind === 'browser' || tab.kind === 'terminal')
+      .map(tab => ({ id: tab.id, kind: tab.kind, projectId: tab.projectId }))
+    const removedEphemeralForView =
+      snapshot.activeView === 'browser' || snapshot.activeView === 'terminal'
+        ? before.ephemeralTabs.findLast(
+            prev =>
+              prev.kind === snapshot.activeView &&
+              !currentEphemeralTabs.some(cur => cur.id === prev.id),
+          )
+        : undefined
     previousNavigation.current = {
       navigation,
       rawId: rawActiveId,
       rawKind: rawActiveTab?.kind ?? null,
       rawProjectId: rawActiveTab?.projectId ?? null,
       group: split,
+      ephemeralTabs: currentEphemeralTabs,
     }
     for (const group of state?.splitGroups ?? []) {
       for (const id of group.tabs) if (!tabs.some(tab => tab.id === id)) state?.removeTab(id)
@@ -66,22 +86,30 @@ export function WorkTabPanels({ showWindowControls = false }: { showWindowContro
     }
     // 关闭当前分组最后一个浏览器或终端标签时，不滞留在空浏览器/空终端占位页：
     // 优先切回同组剩余标签，若该组已无标签则回到首页欢迎的新聊天界面。
+    const closedEphemeralKind =
+      removedRaw && (before.rawKind === 'browser' || before.rawKind === 'terminal')
+        ? before.rawKind
+        : removedEphemeralForView?.kind
+    const closedProjectId =
+      removedRaw && before.rawProjectId !== null
+        ? before.rawProjectId
+        : (removedEphemeralForView?.projectId ?? null)
     if (
-      removedRaw &&
+      closedEphemeralKind !== undefined &&
       rawActiveId === null &&
-      (before.rawKind === 'browser' || before.rawKind === 'terminal') &&
       (snapshot.activeView === 'browser' || snapshot.activeView === 'terminal')
     ) {
-      const sameGroupTab = tabs.findLast(tab => tab.projectId === before.rawProjectId)
+      const sameGroupTab = tabs.findLast(tab => tab.projectId === closedProjectId)
       const fallbackTab =
         sameGroupTab ??
-        (before.rawProjectId === 'unassigned' && snapshot.selectedProjectId === null
+        ((closedProjectId === 'unassigned' || closedProjectId === null) &&
+        snapshot.selectedProjectId === null
           ? tabs.findLast(tab => tab.kind !== 'ssh')
           : undefined)
       if (fallbackTab !== undefined) {
         fallbackTab.select()
       } else {
-        store.enterNewSessionWelcome(before.rawProjectId)
+        store.enterNewSessionWelcome(closedProjectId)
       }
       state?.focus(null)
       return

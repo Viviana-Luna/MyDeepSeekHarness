@@ -1,6 +1,6 @@
 /** 输入区模型菜单：在同一层展示模型，把推理等级放在对应行的侧边。 */
 import { Check, ChevronRight, ChevronUp, LoaderCircle, RefreshCw } from 'lucide-react'
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type RefObject } from 'react'
 import type {
   ModelCatalogModel,
   ModelSelection,
@@ -9,6 +9,7 @@ import type {
 import { useWorkspaceSnapshot, useWorkspaceStore } from '../../hooks/useWorkspace.ts'
 import { AnchoredMenu } from '../../shared/ui/AnchoredMenu.tsx'
 import { ElasticPress } from '../../shared/ui/ElasticPress.tsx'
+import { ProviderBrandIcon } from '../settings/ProviderBrandIcon.tsx'
 import styles from './ComposerControls.module.css'
 
 interface EffortMenu {
@@ -67,7 +68,10 @@ function ModelRows({
           aria-label={provider.name}
           key={provider.id}
         >
-          <h3>{provider.name}</h3>
+          <h3>
+            <ProviderBrandIcon providerId={provider.id} displayName={provider.name} size="sm" />
+            <span className={styles.providerGroupName}>{provider.name}</span>
+          </h3>
           {provider.models.map(model => {
             const current = isCurrent(directory.current, provider.id, model)
             const effort =
@@ -136,7 +140,7 @@ function ModelRows({
         </section>
       ))}
       {directory.groups.every(provider => provider.models.length === 0) && (
-        <p className={styles.empty}>暂无可选模型，请先在设置中配置模型提供方。</p>
+        <p className={styles.empty}>暂无可选模型，请先在设置中配置提供商。</p>
       )}
     </div>
   )
@@ -161,7 +165,7 @@ function EffortRows({
   const choices =
     reasoning.defaultEffort === undefined
       ? [
-          { id: undefined, name: '默认', description: '使用提供方的默认推理等级' },
+          { id: undefined, name: '默认', description: '使用提供商的默认推理等级' },
           ...reasoning.efforts,
         ]
       : reasoning.efforts
@@ -227,31 +231,147 @@ function ModelMenuStatus({
   )
 }
 
+function useModelSelectorDraft(options: {
+  readonly disabled: boolean
+  readonly dismiss: () => void
+  readonly openRef: { current: boolean }
+  readonly pendingOpenRef: { current: boolean }
+  readonly setOpen: (open: boolean) => void
+  readonly setDraftError: (error: string | null) => void
+}) {
+  const store = useWorkspaceStore()
+  const snapshot = useWorkspaceSnapshot()
+  const [preparingSession, setPreparingSession] = useState(false)
+  const { disabled, dismiss, openRef, pendingOpenRef, setOpen, setDraftError } = options
+
+  useEffect(() => {
+    if (disabled) {
+      dismiss()
+      return
+    }
+    if (pendingOpenRef.current && snapshot.selectedSessionId !== null) {
+      pendingOpenRef.current = false
+      setDraftError(null)
+      return
+    }
+    dismiss()
+  }, [dismiss, snapshot.selectedSessionId, disabled, pendingOpenRef, setDraftError])
+
+  const openDraftModels = useCallback(async () => {
+    if (preparingSession || snapshot.creatingSession) return
+    openRef.current = true
+    pendingOpenRef.current = true
+    setDraftError(null)
+    setPreparingSession(true)
+    setOpen(true)
+    try {
+      const sessionId = await store.ensureComposerSession?.()
+      if (!openRef.current) return
+      if (sessionId === null || sessionId === undefined) {
+        pendingOpenRef.current = false
+        setDraftError(store.getSnapshot?.()?.error ?? '无法创建新会话以读取模型列表')
+        return
+      }
+      void store.loadSessionModels(false, sessionId)
+    } finally {
+      setPreparingSession(false)
+    }
+  }, [
+    openRef,
+    pendingOpenRef,
+    preparingSession,
+    setDraftError,
+    setOpen,
+    snapshot.creatingSession,
+    store,
+  ])
+
+  return { preparingSession, openDraftModels }
+}
+
+function ModelTriggerButton({
+  triggerRef,
+  open,
+  busy,
+  disabled,
+  label,
+  modelLabel,
+  effort,
+  onClick,
+}: {
+  readonly triggerRef: RefObject<HTMLButtonElement | null>
+  readonly open: boolean
+  readonly busy: boolean
+  readonly disabled: boolean
+  readonly label: string
+  readonly modelLabel: string
+  readonly effort: string | undefined
+  readonly onClick: () => void
+}) {
+  return (
+    <ElasticPress>
+      <button
+        ref={triggerRef}
+        className={`${styles.trigger} ${styles.modelTrigger}`}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-busy={busy}
+        aria-label={`模型：${label}`}
+        disabled={disabled}
+        title={`模型：${label}`}
+        onClick={onClick}
+      >
+        {busy && <LoaderCircle className="spin" size={15} aria-hidden="true" />}
+        <span>
+          {modelLabel}
+          {effort !== undefined && <span className={styles.triggerEffort}> · {effort}</span>}
+        </span>
+        <ChevronUp className={open ? styles.chevronOpen : undefined} size={13} aria-hidden="true" />
+      </button>
+    </ElasticPress>
+  )
+}
+
 /** 打开模型列表；选择强度时一次提交模型与等级，成功后归还输入区焦点。 */
 export function ModelSelector({ disabled = false }: { readonly disabled?: boolean }) {
   const store = useWorkspaceStore()
   const snapshot = useWorkspaceSnapshot()
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState<EffortMenu | null>(null)
+  const [draftError, setDraftError] = useState<string | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const openRef = useRef(false)
+  const pendingOpenRef = useRef(false)
   const submenuId = useId()
   const directory = snapshot.sessionModels
   const current = directory?.current
   const model = directory?.groups
     .find(group => group.id === current?.provider)
     ?.models.find(option => option.id === current?.model)
-  const modelLabel =
-    model?.name ?? current?.model ?? (snapshot.loadingSessionModels ? '读取模型…' : '选择模型')
+
+  const dismiss = useCallback(() => {
+    openRef.current = false
+    pendingOpenRef.current = false
+    setOpen(false)
+    setActive(null)
+    setDraftError(null)
+  }, [])
+  const { preparingSession, openDraftModels } = useModelSelectorDraft({
+    disabled,
+    dismiss,
+    openRef,
+    pendingOpenRef,
+    setOpen,
+    setDraftError,
+  })
+  const busyLoading = snapshot.loadingSessionModels || preparingSession
+  const modelLabel = model?.name ?? current?.model ?? (busyLoading ? '读取模型…' : '选择模型')
   const effectiveEffort = current?.reasoningEffort ?? model?.reasoning?.defaultEffort
   const effort = model?.reasoning ? effortName(model, effectiveEffort) : undefined
   const label = effort === undefined ? modelLabel : `${modelLabel} · ${effort}`
-  const blocked = disabled || snapshot.selectingSessionModel
-
-  const dismiss = useCallback(() => {
-    setOpen(false)
-    setActive(null)
-  }, [])
-  useEffect(dismiss, [dismiss, snapshot.selectedSessionId, disabled])
+  const blocked =
+    disabled || snapshot.selectingSessionModel || preparingSession || snapshot.creatingSession
 
   const choose = async (selection: ModelSelection) => {
     if (blocked) return
@@ -268,6 +388,10 @@ export function ModelSelector({ disabled = false }: { readonly disabled?: boolea
     void choose(selection)
   }
   const refresh = () => {
+    if (snapshot.selectedSessionId === null) {
+      void openDraftModels()
+      return
+    }
     void store.loadSessionModels(true, snapshot.selectedSessionId)
   }
 
@@ -283,39 +407,28 @@ export function ModelSelector({ disabled = false }: { readonly disabled?: boolea
         }
       }}
     >
-      <ElasticPress>
-        <button
-          ref={triggerRef}
-          className={`${styles.trigger} ${styles.modelTrigger}`}
-          type="button"
-          aria-haspopup="menu"
-          aria-expanded={open}
-          aria-busy={snapshot.loadingSessionModels || snapshot.selectingSessionModel}
-          aria-label={`模型：${label}`}
-          disabled={disabled}
-          title={`模型：${label}`}
-          onClick={() => {
-            if (open) dismiss()
-            else {
-              setOpen(true)
-              if (directory === null && !snapshot.loadingSessionModels) refresh()
-            }
-          }}
-        >
-          {(snapshot.loadingSessionModels || snapshot.selectingSessionModel) && (
-            <LoaderCircle className="spin" size={15} aria-hidden="true" />
-          )}
-          <span>
-            {modelLabel}
-            {effort !== undefined && <span className={styles.triggerEffort}> · {effort}</span>}
-          </span>
-          <ChevronUp
-            className={open ? styles.chevronOpen : undefined}
-            size={13}
-            aria-hidden="true"
-          />
-        </button>
-      </ElasticPress>
+      <ModelTriggerButton
+        triggerRef={triggerRef}
+        open={open}
+        busy={busyLoading || snapshot.selectingSessionModel}
+        disabled={disabled}
+        label={label}
+        modelLabel={modelLabel}
+        effort={effort}
+        onClick={() => {
+          if (open) {
+            dismiss()
+            return
+          }
+          if (snapshot.selectedSessionId === null) {
+            void openDraftModels()
+            return
+          }
+          openRef.current = true
+          setOpen(true)
+          if (directory === null && !snapshot.loadingSessionModels) refresh()
+        }}
+      />
       <AnchoredMenu
         open={open}
         anchorRef={triggerRef}
@@ -345,9 +458,9 @@ export function ModelSelector({ disabled = false }: { readonly disabled?: boolea
         }
       >
         <ModelMenuStatus
-          error={snapshot.sessionModelsError}
+          error={snapshot.sessionModelsError ?? draftError}
           canRetry={directory === null}
-          loading={snapshot.loadingSessionModels}
+          loading={busyLoading}
           onRetry={refresh}
         />
         {directory && (
@@ -362,7 +475,7 @@ export function ModelSelector({ disabled = false }: { readonly disabled?: boolea
         )}
         {directory !== null && !directory.routable && (
           <p className={styles.routeWarning} role="alert">
-            当前模型提供方不可用，发送已暂停。
+            当前提供商不可用，发送已暂停。
           </p>
         )}
       </AnchoredMenu>

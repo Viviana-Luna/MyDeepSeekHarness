@@ -1,0 +1,83 @@
+/* 提供商官方标志样式：中立微透底板承托官方彩色 SVG，单色官方标志经 CSS 遮罩自适应明暗与强制色彩。 */
+
+.models-provider-emblem {
+  --provider-logo-size: 22px;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 78%, transparent);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--text) 6%, var(--surface));
+  color: var(--text);
+  box-shadow: inset 0 1px var(--island-rim);
+}
+
+.models-provider-emblem--lg {
+  --provider-logo-size: 24px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+}
+
+.models-provider-emblem--sm {
+  --provider-logo-size: 15px;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.models-provider-emblem[data-brand='custom'] {
+  color: var(--muted);
+}
+
+.models-provider-emblem__img {
+  display: block;
+  width: var(--provider-logo-size);
+  height: var(--provider-logo-size);
+  object-fit: contain;
+  user-select: none;
+}
+
+.models-provider-emblem__mask {
+  display: block;
+  width: var(--provider-logo-size);
+  height: var(--provider-logo-size);
+  background-color: currentColor;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+}
+
+:root[data-color-scheme='light'] .models-provider-emblem:not(.models-provider-emblem--sm) {
+  border-color: var(--line);
+  background: color-mix(in srgb, #ffffff 82%, var(--surface));
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-color-scheme='dark']) .models-provider-emblem:not(.models-provider-emblem--sm) {
+    border-color: var(--line);
+    background: color-mix(in srgb, #ffffff 82%, var(--surface));
+  }
+}
+
+@media (forced-colors: active) {
+  .models-provider-emblem:not(.models-provider-emblem--sm) {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    box-shadow: none;
+  }
+
+  .models-provider-emblem__mask {
+    background-color: CanvasText;
+    forced-color-adjust: none;
+  }
+}

@@ -50,7 +50,10 @@
   transition: none;
 }
 .app-shell[data-tab-actions-floating='true']:not([data-workspace-split])
-  .main-island:has(> .windows-chrome):has([data-composer-overlay])
+  .main-island:has(> .windows-chrome):has(> .work-tab-panel:not([hidden]) [data-composer-overlay])
+  .conversation-tools,
+.app-shell[data-tab-actions-floating='true']:not([data-workspace-split])
+  .main-island:not(.workbench-surface):has(> .windows-chrome):has([data-composer-overlay])
   .conversation-tools {
   top: calc(80px + var(--window-controls-height, 32px));
 }
@@ -64,12 +67,12 @@
   .conversation-tools::after {
   top: -70px;
 }
-/* 分屏时右上角独立竖向胶囊（66px 高）位于右侧窗格上方，仅右侧窗格会话工具列下移避让并保持右缘同轴对齐。 */
+/* 分屏时右上角独立横向胶囊（34px 高）位于右侧窗格顶缘，仅右侧窗格会话工具列下移避让并保持右缘同轴对齐。 */
 .app-shell[data-tab-actions-floating='true'][data-workspace-split]
   .main-island
   .work-tab-panel[data-split-pane='right']
   .conversation-tools {
-  top: 88px;
+  top: 50px;
   right: 12px;
 }
 @media (prefers-reduced-motion: reduce) {

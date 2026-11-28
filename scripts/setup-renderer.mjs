@@ -66,7 +66,6 @@ function hashDirectoryListing(hash, root, directoryPath) {
 
 function computeSetupFingerprint(root) {
   const hash = createHash('sha256')
-  hash.update(`node:${process.versions.node}\0`)
   hashFileIfExists(hash, root, 'package.json')
   hashFileIfExists(hash, root, 'pnpm-lock.yaml')
   hashFileIfExists(hash, root, 'src/renderer/src/app.tsx')

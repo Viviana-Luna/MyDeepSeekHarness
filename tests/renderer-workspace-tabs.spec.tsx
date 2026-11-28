@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
     | ((id: string, x: number, y: number, phase: 'detach' | 'move' | 'drop' | 'cancel') => boolean),
   selectSession: vi.fn(),
   closeSession: vi.fn(),
+  closeProjectTabs: vi.fn(),
   selectFile: vi.fn(),
   closeFile: vi.fn(),
   pin: vi.fn(),
@@ -58,6 +59,7 @@ vi.mock('../src/renderer/src/features/project-workspace/ProjectWorkspaceProvider
     fileDirty: true,
     selectSessionTab: mocks.selectSession,
     closeSessionTab: mocks.closeSession,
+    closeProjectTabs: mocks.closeProjectTabs,
     selectFileTab: mocks.selectFile,
     closeFileTab: mocks.closeFile,
     pinFile: mocks.pin,
@@ -108,15 +110,17 @@ function makeWorkTab(
 }
 
 describe('统一工作标签导航', () => {
-  it('侧栏展开时不重复显示标签组选择，收起后恢复入口、保留标签状态且顶栏不显示搜索按钮', () => {
+  it('侧栏展开与收起时顶栏均不显示左上角标签组按钮与搜索按钮，并保留既有标签状态', () => {
     const view = render(<Topbar visible />)
     const file = screen.getByRole('tab', { name: 'demo.ts' })
     expect(screen.queryByRole('button', { name: /切换标签组/u })).toBeNull()
+    expect(document.querySelector('.session-group-switcher')).toBeNull()
     expect(document.querySelector('.session-search-trigger')).toBeNull()
     expect(file.getAttribute('aria-selected')).toBe('true')
     mocks.navigationCollapsed = true
     view.rerender(<Topbar visible />)
-    expect(screen.getByRole('button', { name: '切换标签组：项目' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /切换标签组/u })).toBeNull()
+    expect(document.querySelector('.session-group-switcher')).toBeNull()
     expect(document.querySelector('.session-search-trigger')).toBeNull()
     expect(screen.getByRole('tab', { name: 'demo.ts' })).toBe(file)
     mocks.navigationCollapsed = false
@@ -127,23 +131,14 @@ describe('统一工作标签导航', () => {
     expect(mocks.selectSession).not.toHaveBeenCalled()
   })
 
-  it('展开侧栏时卸载已打开的标签组菜单，再收起不自动重开', () => {
+  it('平铺选择标签弹窗按工作区分组并提供整组关闭入口', () => {
     mocks.navigationCollapsed = true
-    const view = render(<Topbar visible />)
-    fireEvent.click(screen.getByRole('button', { name: '切换标签组：项目' }))
-    expect(screen.getByRole('menu', { name: '切换标签组' })).toBeTruthy()
-    mocks.navigationCollapsed = false
-    view.rerender(<Topbar visible />)
-    expect(screen.queryByRole('menu', { name: '切换标签组' })).toBeNull()
-    expect(screen.queryByRole('button', { name: /切换标签组/u })).toBeNull()
-    mocks.navigationCollapsed = true
-    view.rerender(<Topbar visible />)
-    expect(
-      screen.getByRole('button', { name: '切换标签组：项目' }).getAttribute('aria-expanded'),
-    ).toBe('false')
-    expect(screen.queryByRole('menu', { name: '切换标签组' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: '切换标签组：项目' }))
-    expect(screen.getByRole('menu', { name: '切换标签组' })).toBeTruthy()
+    render(<Topbar visible />)
+    fireEvent.click(screen.getByRole('button', { name: '平铺选择标签' }))
+    expect(screen.getByRole('textbox', { name: '搜索工作标签' })).toBeTruthy()
+    const closeGroupButton = screen.getByRole('button', { name: '关闭 项目 的全部标签' })
+    fireEvent.click(closeGroupButton)
+    expect(mocks.closeProjectTabs).toHaveBeenCalledWith(['chat'], expect.any(Function))
   })
 
   it('无项目聊天即使使用相同工作目录，也按会话归属切换顶部组', () => {
@@ -314,7 +309,7 @@ describe('统一工作标签导航', () => {
     expect(empty.activeGroup?.id).toBe('p1')
     expect(empty.groupTabs).toHaveLength(0)
     expect(shouldShowSessionTabs(false, empty.groupTabs.length)).toBe(false)
-    expect(shouldShowSessionTabs(true, empty.groupTabs.length)).toBe(true)
+    expect(shouldShowSessionTabs(true, empty.groupTabs.length)).toBe(false)
 
     const single = resolveWorkTabGroups(
       [makeWorkTab({ id: 'c1', kind: 'session', projectId: 'p1', active: true })],
@@ -323,7 +318,24 @@ describe('统一工作标签导航', () => {
     )
     expect(single.groupTabs).toHaveLength(1)
     expect(shouldShowSessionTabs(false, single.groupTabs.length)).toBe(false)
-    expect(shouldShowSessionTabs(true, single.groupTabs.length)).toBe(true)
+    expect(shouldShowSessionTabs(false, single.groupTabs)).toBe(false)
+    expect(shouldShowSessionTabs(true, single.groupTabs)).toBe(false)
+
+    const singleTerminal = resolveWorkTabGroups(
+      [makeWorkTab({ id: 'terminal:a:1', kind: 'terminal', projectId: 'p1', active: true })],
+      projects,
+      'p1',
+    )
+    expect(shouldShowSessionTabs(false, singleTerminal.groupTabs)).toBe(true)
+    expect(shouldShowSessionTabs(true, singleTerminal.groupTabs)).toBe(true)
+
+    const singleBrowser = resolveWorkTabGroups(
+      [makeWorkTab({ id: 'browser:b1', kind: 'browser', projectId: 'p1', active: true })],
+      projects,
+      'p1',
+    )
+    expect(shouldShowSessionTabs(false, singleBrowser.groupTabs)).toBe(true)
+    expect(shouldShowSessionTabs(true, singleBrowser.groupTabs)).toBe(true)
 
     const withSsh = resolveWorkTabGroups(
       [
@@ -335,6 +347,7 @@ describe('统一工作标签导航', () => {
     )
     expect(withSsh.groupTabs).toHaveLength(2)
     expect(shouldShowSessionTabs(false, withSsh.groupTabs.length)).toBe(true)
+    expect(shouldShowSessionTabs(true, withSsh.groupTabs.length)).toBe(true)
   })
 
   it('顶栏隐藏时渲染唯一 Liquid Glass 浮动操作胶囊，且打开平铺选择与新建菜单互不重复', () => {

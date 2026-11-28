@@ -98,6 +98,12 @@ function projectToggle(projectId: string): HTMLButtonElement {
   return button
 }
 
+function projectHeading(projectId: string): HTMLElement | null {
+  return document.querySelector<HTMLElement>(
+    `[data-project-group="${projectId}"] .project-group-heading`,
+  )
+}
+
 describe('项目与会话树', () => {
   it('选中空白会话时进入项目但不把它显示为历史项', async () => {
     const blankSession: SessionSummary = {
@@ -498,5 +504,54 @@ describe('项目与会话树', () => {
     const archiving = within(actions).getByRole('button', { name: '正在归档聊天' })
     expect((archiving as HTMLButtonElement).disabled).toBe(true)
     expect(archiving.parentElement?.getAttribute('title')).toBe('正在归档聊天')
+  })
+
+  it('在全部项目模式下为当前所属工作区展示唯一选中态，覆盖空白会话、草稿态与活动标签切换', () => {
+    const blankSession: SessionSummary = {
+      sessionId: 'a-blank',
+      title: '新会话',
+      cwd: '/work/a',
+      updatedAt: 400,
+      running: false,
+      blank: true,
+    }
+    const view = render(
+      <ProjectSessionNavigation
+        projects={projects}
+        sessions={[blankSession, ...sessions]}
+        selectedProjectId={null}
+        selectedSessionId="a-blank"
+        initialized
+        loadingSessions={false}
+        onSelectSession={() => {}}
+      />,
+    )
+
+    expect(projectHeading('project-a')?.classList.contains('has-selected-session')).toBe(true)
+    expect(projectHeading('project-a')?.dataset.activeWorkspace).toBe('true')
+    expect(projectToggle('project-a').getAttribute('title')).toBe('甲项目（当前所属工作区）')
+    expect(projectHeading('project-b')?.classList.contains('has-selected-session')).toBe(false)
+    expect(projectHeading('project-b')?.dataset.activeWorkspace).toBeUndefined()
+
+    // 新会话草稿或跨项目终端/浏览器标签通过 activeProjectId 显式切换所属工作区时，选中态保持唯一同步。
+    view.rerender(
+      <ProjectSessionNavigation
+        projects={projects}
+        sessions={[blankSession, ...sessions]}
+        selectedProjectId={null}
+        activeProjectId="project-b"
+        selectedSessionId={null}
+        initialized
+        loadingSessions={false}
+        onSelectSession={() => {}}
+      />,
+    )
+
+    expect(projectHeading('project-a')?.classList.contains('has-selected-session')).toBe(false)
+    expect(projectHeading('project-a')?.dataset.activeWorkspace).toBeUndefined()
+    expect(projectToggle('project-a').getAttribute('title')).toBe('甲项目')
+    expect(projectHeading('project-b')?.classList.contains('has-selected-session')).toBe(true)
+    expect(projectHeading('project-b')?.dataset.activeWorkspace).toBe('true')
+    expect(projectToggle('project-b').getAttribute('title')).toBe('乙项目（当前所属工作区）')
   })
 })

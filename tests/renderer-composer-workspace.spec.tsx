@@ -4,7 +4,11 @@
  */
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { projectIdForCwd, type ProjectSummary } from '../src/renderer/src/domain/project.ts'
+import {
+  UNGROUPED_PROJECT_ID,
+  projectIdForCwd,
+  type ProjectSummary,
+} from '../src/renderer/src/domain/project.ts'
 import type { SessionSummary } from '../src/renderer/src/domain/session.ts'
 import type {
   DesktopBridge,
@@ -17,6 +21,10 @@ const uiMocks = vi.hoisted(() => ({
     selectedSessionId: 'session-a' as string | null,
     selectedProjectId: null as string | null,
     newSessionProjectId: null as string | null,
+    navigationCollapsed: false,
+    activeView: 'conversation',
+    openedSessionIds: ['session-a'] as string[],
+    unreadSessionIds: [] as string[],
     creatingSession: false,
     workspaceCapability: 'available' as const,
     hostStatus: { kind: 'ready' as const, ownership: 'external' as const, identity: {} },
@@ -39,6 +47,12 @@ const uiMocks = vi.hoisted(() => ({
   rootSnapshot: null as Record<string, unknown> | null,
   store: {
     getSnapshot: vi.fn(),
+    selectedProject: vi.fn<() => ProjectSummary | undefined>(() => undefined),
+    selectProject: vi.fn(),
+    selectSession: vi.fn(),
+    selectSessionTab: vi.fn(),
+    closeSessionTab: vi.fn(),
+    enterNewSessionWelcome: vi.fn(),
     switchDraftWorkspace: vi.fn(async (_projectId: string, _sessionId?: string | null) => true),
     createWorkspace: vi.fn(async () => true),
     clearError: vi.fn(),
@@ -122,6 +136,10 @@ beforeEach(() => {
   uiMocks.snapshot.selectedSessionId = 'session-a'
   uiMocks.snapshot.selectedProjectId = null
   uiMocks.snapshot.newSessionProjectId = null
+  uiMocks.snapshot.navigationCollapsed = false
+  uiMocks.snapshot.activeView = 'conversation'
+  uiMocks.snapshot.openedSessionIds = ['session-a']
+  uiMocks.snapshot.unreadSessionIds = []
   uiMocks.snapshot.creatingSession = false
   uiMocks.snapshot.pendingInteractions = []
   uiMocks.snapshot.hostStatus = { kind: 'ready', ownership: 'external', identity: {} }
@@ -197,7 +215,7 @@ describe('输入区上方工作区胶囊', () => {
     })
   })
 
-  it('在 ChatComposer 中仅对空会话与未选会话渲染工作区条，已有消息会话不渲染', () => {
+  it('在 ChatComposer 中展开侧栏时仅空会话渲染工作区条，收起侧栏后已有消息会话也显示工作区选择按钮', () => {
     const view = render(<ChatComposer />)
     expect(screen.getByRole('group', { name: '当前工作区' })).toBeTruthy()
 
@@ -206,6 +224,90 @@ describe('输入区上方工作区胶囊', () => {
     ]
     view.rerender(<ChatComposer />)
     expect(screen.queryByRole('group', { name: '当前工作区' })).toBeNull()
+
+    uiMocks.snapshot.navigationCollapsed = true
+    view.rerender(<ChatComposer />)
+    expect(screen.getByRole('group', { name: '当前工作区' })).toBeTruthy()
+    expect(
+      screen.getByRole('group', { name: '当前工作区' }).getAttribute('data-workspace-bar-mode'),
+    ).toBe('switch')
+  })
+
+  it('左侧栏收缩且处于已有消息会话时，工作区胶囊提示后台未读并切换工作区而非改写当前会话目录', () => {
+    uiMocks.snapshot.navigationCollapsed = true
+    uiMocks.snapshot.sessions = [
+      { sessionId: 'session-a', cwd: '/work/alpha', updatedAt: 200, running: false, blank: false },
+      { sessionId: 'session-b', cwd: '/work/beta', updatedAt: 100, running: false, blank: false },
+    ]
+    uiMocks.snapshot.openedSessionIds = ['session-a', 'session-b']
+    uiMocks.snapshot.unreadSessionIds = ['session-b']
+
+    render(<ComposerWorkspaceBar />)
+
+    const trigger = screen.getByRole('button', {
+      name: '工作区：AlphaProject，其他工作区有 1 个会话更新',
+    })
+    expect(trigger.querySelector('[data-workspace-unread="true"]')?.textContent).toBe('1')
+
+    fireEvent.click(trigger)
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /BetaProject/u }))
+
+    expect(uiMocks.store.selectSessionTab).toHaveBeenCalledWith('session-b')
+    expect(uiMocks.store.switchDraftWorkspace).not.toHaveBeenCalled()
+  })
+
+  it('左侧栏收缩且空白会话无草稿时优先切入目标工作区已打开的未读标签；有未发草稿时仍迁移草稿', () => {
+    uiMocks.snapshot.navigationCollapsed = true
+    uiMocks.snapshot.openedSessionIds = ['session-a', 'session-b']
+    uiMocks.snapshot.unreadSessionIds = ['session-b']
+    uiMocks.snapshot.sessionDrafts = {}
+
+    const view = render(<ComposerWorkspaceBar />)
+    fireEvent.click(screen.getByRole('button', { name: /工作区：AlphaProject/u }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /BetaProject/u }))
+    expect(uiMocks.store.selectSessionTab).toHaveBeenCalledWith('session-b')
+    expect(uiMocks.store.switchDraftWorkspace).not.toHaveBeenCalled()
+
+    vi.clearAllMocks()
+    uiMocks.snapshot.sessionDrafts = { 'session-a': '待带走的新任务草稿' }
+    view.rerender(<ComposerWorkspaceBar />)
+    fireEvent.click(screen.getByRole('button', { name: /工作区：AlphaProject/u }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /BetaProject/u }))
+    expect(uiMocks.store.switchDraftWorkspace).toHaveBeenCalledWith(projectB.id, 'session-a')
+  })
+
+  it('左侧栏收缩时菜单保留已打开的无项目对话分组（project:ungrouped）并支持双向切换', () => {
+    const ungroupedProject: ProjectSummary = {
+      source: 'legacy',
+      id: UNGROUPED_PROJECT_ID,
+      name: '无项目对话',
+      displayPath: '未绑定 Durable Workspace',
+      sessionIds: ['session-ungrouped'],
+      sessionCount: 1,
+      lastActivity: 50,
+    }
+    uiMocks.snapshot.navigationCollapsed = true
+    uiMocks.snapshot.projects = [projectA, ungroupedProject]
+    uiMocks.snapshot.sessions = [
+      { sessionId: 'session-a', cwd: '/work/alpha', updatedAt: 200, running: false, blank: false },
+      {
+        sessionId: 'session-ungrouped',
+        cwd: '/tmp/other',
+        updatedAt: 50,
+        running: false,
+        blank: false,
+      },
+    ]
+    uiMocks.snapshot.selectedSessionId = 'session-a'
+    uiMocks.snapshot.openedSessionIds = ['session-a', 'session-ungrouped']
+
+    render(<ComposerWorkspaceBar />)
+
+    fireEvent.click(screen.getByRole('button', { name: '工作区：AlphaProject' }))
+    const ungroupedOption = screen.getByRole('menuitemradio', { name: /无项目对话/u })
+    expect(ungroupedOption.getAttribute('aria-checked')).toBe('false')
+    fireEvent.click(ungroupedOption)
+    expect(uiMocks.store.selectSessionTab).toHaveBeenCalledWith('session-ungrouped')
   })
 })
 

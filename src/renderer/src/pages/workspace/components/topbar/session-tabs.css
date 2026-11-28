@@ -164,34 +164,6 @@
   flex: none;
   align-items: center;
 }
-.session-group-switcher {
-  display: flex;
-  max-width: min(200px, 24vw);
-  height: 28px;
-  flex: none;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--muted);
-  font-size: var(--text-caption);
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-}
-.session-group-switcher:hover,
-.session-group-switcher[aria-expanded='true'] {
-  background: var(--surface-hover);
-  color: var(--text);
-}
-.session-group-switcher svg {
-  flex: none;
-}
-.session-group-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .session-group-unread {
   display: inline-grid;
   min-width: 16px;
@@ -203,14 +175,6 @@
   background: var(--accent);
   color: var(--accent-contrast, white);
   font-size: 10px;
-}
-.project-focus-menu.session-group-menu > button {
-  grid-template-columns: 16px minmax(0, 1fr) auto auto;
-}
-.session-group-menu > button > span:nth-child(2) {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
 }
 .session-tab-unread {
   position: absolute;
@@ -526,46 +490,6 @@
   opacity: 1;
 }
 
-.session-group-row {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  border-radius: 7px;
-}
-.session-group-row > button:first-child {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto auto;
-  flex: 1;
-  gap: 8px;
-  align-items: center;
-  min-width: 0;
-  padding: 8px;
-  text-align: left;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  border-radius: 7px;
-}
-.session-group-row > button:first-child > span:nth-child(2) {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-}
-.session-group-row > button:hover {
-  background: var(--surface-hover);
-}
-.session-group-close {
-  display: grid;
-  flex: none;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  margin-right: 4px;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-}
 .tab-split-preview {
   position: absolute;
   display: grid;
@@ -693,14 +617,56 @@ body[data-workbench-dragging] * {
   }
 }
 
+.tab-overview-groups {
+  display: grid;
+  gap: 20px;
+  max-height: 65vh;
+  margin-top: 18px;
+  overflow: auto;
+  padding: 2px;
+}
+.tab-overview-group {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.tab-overview-group__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.tab-overview-group__header strong {
+  color: var(--text);
+  font-size: var(--text-control);
+  font-weight: var(--weight-semibold);
+}
+.tab-overview-group__header > span {
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+.tab-overview-group__close {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  margin-left: auto;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-caption);
+  cursor: pointer;
+}
+.tab-overview-group__close:hover,
+.tab-overview-group__close:focus-visible {
+  background: var(--surface-hover);
+  color: var(--text);
+}
 .tab-overview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: 16px;
-  max-height: 65vh;
-  margin-top: 20px;
-  overflow: auto;
-  padding: 2px;
 }
 .tab-overview-card {
   position: relative;
@@ -814,21 +780,22 @@ body[data-workbench-dragging] * {
   }
 }
 
-/* 轻液态玻璃竖向浮动操作胶囊：在会话、浏览器、终端等所有视图下保持统一 36px 竖排形态与 27px 右侧按钮轴线。 */
+/* 轻液态玻璃浮动操作胶囊：
+   - 终端、浏览器、文件、Git 差异、SSH/数据库及分屏视图下采用 34px 高横向胶囊，精准垂直居中于 42px 顶部工具栏右端，不跨行压线或侵占视口；
+   - 对话/轨迹单窗格视图下转为 36px 宽竖向胶囊，与下方会话工具列共用同一块完整玻璃外衣。 */
 .floating-tab-actions {
   position: relative;
   grid-column: 2;
   grid-row: var(--workspace-row);
   justify-self: end;
   align-self: start;
-  margin: 10px 9px 0 0;
+  margin: 5px 9px 0 0;
   z-index: 12;
   display: inline-flex;
-  width: 36px;
-  flex-direction: column;
+  height: 34px;
   align-items: center;
   gap: 2px;
-  padding: 3px;
+  padding: 2px;
   border: 1px solid var(--floating-glass-border);
   border-radius: 999px;
   background: var(--floating-glass-bg);
@@ -840,21 +807,36 @@ body[data-workbench-dragging] * {
   animation: floating-tab-actions-enter 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Windows 窗口按钮（32px 高、无底边）落入主浮岛时避让其精确高度，与下方会话工具列玻璃外衣 0px 对齐。 */
+/* Windows 窗口按钮（32px 高、无底边）落入主浮岛时避让其精确高度。 */
 .app-shell:has(.main-island:not([hidden]) > .windows-chrome) .floating-tab-actions {
-  margin-top: calc(var(--window-controls-height, 32px) + 10px);
+  margin-top: calc(var(--window-controls-height, 32px) + 5px);
 }
 
-/* 对话/轨迹单窗格视图下启用浮动胶囊时，与下方会话工具列共用同一块完整玻璃外衣，消除两段拼缝。 */
+/* 对话/轨迹单窗格视图下启用浮动胶囊时，转为竖排并与下方会话工具列共用同一块完整玻璃外衣，消除两段拼缝。 */
 .app-shell[data-tab-actions-floating='true']:not([data-workspace-split]):has(
     .main-island:not([hidden]) > .work-tab-panel:not([hidden]) .conversation-tools,
     .main-island:not([hidden]):not(.workbench-surface) .conversation-tools
   )
   .floating-tab-actions {
+  width: 36px;
+  height: auto;
+  flex-direction: column;
+  margin-top: 10px;
+  padding: 3px;
   border-color: transparent;
   background: transparent;
   box-shadow: none;
   overflow: visible;
+}
+
+.app-shell[data-tab-actions-floating='true']:not([data-workspace-split]):has(
+    .main-island:not([hidden]) > .windows-chrome
+  ):has(
+    .main-island:not([hidden]) > .work-tab-panel:not([hidden]) .conversation-tools,
+    .main-island:not([hidden]):not(.workbench-surface) .conversation-tools
+  )
+  .floating-tab-actions {
+  margin-top: calc(var(--window-controls-height, 32px) + 10px);
 }
 
 .app-shell[data-tab-actions-floating='true']:not([data-workspace-split]):has(

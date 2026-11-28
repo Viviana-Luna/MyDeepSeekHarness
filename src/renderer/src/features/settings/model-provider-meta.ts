@@ -11,15 +11,20 @@ import {
   type HostSettingsNamespace,
 } from './settings-model.ts'
 
-/** 受官方矢量标志支持的模型厂商标识。 */
+/** 受官方矢量标志支持的提供商标识。 */
 export type ProviderBrandKey =
   | 'deepseek'
   | 'google'
+  | 'gemini'
+  | 'vertexai'
   | 'openai'
   | 'anthropic'
+  | 'claude'
   | 'zhipu'
+  | 'zai'
   | 'qwen'
   | 'moonshot'
+  | 'kimi'
   | 'minimax'
   | 'xai'
   | 'mistral'
@@ -28,9 +33,33 @@ export type ProviderBrandKey =
   | 'volcengine'
   | 'azure'
   | 'bedrock'
+  | 'cloudflare'
+  | 'fireworks'
+  | 'githubcopilot'
+  | 'groq'
+  | 'huggingface'
+  | 'meta'
+  | 'nvidia'
+  | 'together'
+  | 'vercel'
+  | 'cerebras'
+  | 'baseten'
+  | 'xiaomi'
+  | 'ling'
+  | 'opencode'
+  | 'typesafe'
+  | 'siliconcloud'
+  | 'perplexity'
+  | 'cohere'
+  | 'stepfun'
+  | 'baichuan'
+  | 'hunyuan'
+  | 'spark'
+  | 'wenxin'
+  | 'yi'
   | 'custom'
 
-/** 提供方视觉品牌元数据。 */
+/** 提供商视觉品牌元数据。 */
 export interface ProviderBrandMeta {
   readonly key: ProviderBrandKey
   readonly label: string
@@ -121,19 +150,39 @@ const BRAND_RULES: readonly {
     meta: { key: 'openrouter', label: 'OpenRouter' },
   },
   {
-    pattern: /anthropic|claude/iu,
+    pattern: /vertex/iu,
+    meta: { key: 'vertexai', label: 'Google Vertex AI' },
+  },
+  {
+    pattern: /google|googleapis\.com/iu,
+    meta: { key: 'google', label: 'Google' },
+  },
+  {
+    pattern: /gemini/iu,
+    meta: { key: 'gemini', label: 'Gemini' },
+  },
+  {
+    pattern: /github[-_\s]?copilot|\bcopilot\b/iu,
+    meta: { key: 'githubcopilot', label: 'GitHub Copilot' },
+  },
+  {
+    pattern: /anthropic/iu,
     meta: { key: 'anthropic', label: 'Anthropic' },
   },
   {
-    pattern: /google|gemini|vertex|googleapis\.com/iu,
-    meta: { key: 'google', label: 'Google Gemini' },
+    pattern: /claude/iu,
+    meta: { key: 'claude', label: 'Claude' },
   },
   {
     pattern: /openai|chatgpt|codex/iu,
     meta: { key: 'openai', label: 'OpenAI' },
   },
   {
-    pattern: /zhipu|智谱|bigmodel\.cn|\bglm\b|glm[-_]|^zai$|z\.ai/iu,
+    pattern: /\bzai\b|zai[-_]|z\.ai/iu,
+    meta: { key: 'zai', label: 'Z.ai' },
+  },
+  {
+    pattern: /zhipu|智谱|bigmodel\.cn|\bglm\b|glm[-_]/iu,
     meta: { key: 'zhipu', label: '智谱' },
   },
   {
@@ -141,7 +190,11 @@ const BRAND_RULES: readonly {
     meta: { key: 'qwen', label: '通义千问' },
   },
   {
-    pattern: /moonshot|kimi/iu,
+    pattern: /kimi/iu,
+    meta: { key: 'kimi', label: 'Kimi' },
+  },
+  {
+    pattern: /moonshot/iu,
     meta: { key: 'moonshot', label: 'Moonshot' },
   },
   {
@@ -164,6 +217,98 @@ const BRAND_RULES: readonly {
     pattern: /volcengine|volces|火山|豆包|doubao|ark\.cn/iu,
     meta: { key: 'volcengine', label: '火山引擎' },
   },
+  {
+    pattern: /cloudflare/iu,
+    meta: { key: 'cloudflare', label: 'Cloudflare' },
+  },
+  {
+    pattern: /fireworks/iu,
+    meta: { key: 'fireworks', label: 'Fireworks' },
+  },
+  {
+    pattern: /\bgroq\b|api\.groq\.com/iu,
+    meta: { key: 'groq', label: 'Groq' },
+  },
+  {
+    pattern: /huggingface|hf\.co/iu,
+    meta: { key: 'huggingface', label: 'Hugging Face' },
+  },
+  {
+    pattern: /\bmeta\b|llama\.com/iu,
+    meta: { key: 'meta', label: 'Meta' },
+  },
+  {
+    pattern: /nvidia|integrate\.api\.nvidia/iu,
+    meta: { key: 'nvidia', label: 'NVIDIA' },
+  },
+  {
+    pattern: /together/iu,
+    meta: { key: 'together', label: 'Together' },
+  },
+  {
+    pattern: /vercel/iu,
+    meta: { key: 'vercel', label: 'Vercel' },
+  },
+  {
+    pattern: /cerebras/iu,
+    meta: { key: 'cerebras', label: 'Cerebras' },
+  },
+  {
+    pattern: /baseten/iu,
+    meta: { key: 'baseten', label: 'Baseten' },
+  },
+  {
+    pattern: /xiaomi|mimo/iu,
+    meta: { key: 'xiaomi', label: '小米' },
+  },
+  {
+    pattern: /ant[-_]?ling/iu,
+    meta: { key: 'ling', label: 'Ant Ling' },
+  },
+  {
+    pattern: /opencode/iu,
+    meta: { key: 'opencode', label: 'OpenCode' },
+  },
+  {
+    pattern: /typesafe/iu,
+    meta: { key: 'typesafe', label: 'TypeSafe' },
+  },
+  {
+    pattern: /siliconcloud|siliconflow|硅基流动/iu,
+    meta: { key: 'siliconcloud', label: '硅基流动' },
+  },
+  {
+    pattern: /perplexity/iu,
+    meta: { key: 'perplexity', label: 'Perplexity' },
+  },
+  {
+    pattern: /cohere/iu,
+    meta: { key: 'cohere', label: 'Cohere' },
+  },
+  {
+    pattern: /stepfun|阶跃/iu,
+    meta: { key: 'stepfun', label: '阶跃星辰' },
+  },
+  {
+    pattern: /baichuan|百川/iu,
+    meta: { key: 'baichuan', label: '百川' },
+  },
+  {
+    pattern: /hunyuan|混元|tencent/iu,
+    meta: { key: 'hunyuan', label: '腾讯混元' },
+  },
+  {
+    pattern: /\bspark\b|xfyun|星火/iu,
+    meta: { key: 'spark', label: '讯飞星火' },
+  },
+  {
+    pattern: /wenxin|qianfan|baidu|文心/iu,
+    meta: { key: 'wenxin', label: '百度千帆' },
+  },
+  {
+    pattern: /lingyiwanwu|\byi\b|零一万物/iu,
+    meta: { key: 'yi', label: '零一万物' },
+  },
 ]
 
 /** 将不可信值收敛为键值对象，非对象时返回空对象。 */
@@ -176,7 +321,7 @@ export function asString(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 
-/** 综合 provider ID、显示名称与自定义端点域名识别厂商官方品牌标志键。 */
+/** 综合 provider ID、显示名称与自定义端点域名识别提供商官方品牌标志键。 */
 export function resolveProviderBrand(
   providerId: string,
   displayName: string,
@@ -186,7 +331,7 @@ export function resolveProviderBrand(
   for (const rule of BRAND_RULES) {
     if (rule.pattern.test(haystack)) return rule.meta
   }
-  return { key: 'custom', label: displayName.trim() || providerId.trim() || '自定义服务' }
+  return { key: 'custom', label: displayName.trim() || providerId.trim() || '自定义提供商' }
 }
 
 /** 将 API 协议枚举转为「中文说明（协议代号）」，未知枚举回退原值。 */
@@ -429,7 +574,7 @@ export function buildValidatedModelDraft(
   return { draft: next }
 }
 
-/** 将 `reasoningEfforts` 格式化为模型目录行的简洁能力摘要，未显式配置时返回 null。 */
+/** 将 `reasoningEfforts` 格式化为模型行的简洁能力摘要，未显式配置时返回 null。 */
 export function formatReasoningSummary(value: unknown): string | null {
   if (value === false) return '不启用思考'
   if (!isRecord(value)) return null
@@ -457,7 +602,7 @@ export function decodeModelKey(value: string): ModelSelection | null {
   }
 }
 
-/** 判断一个提供方是否由用户配置新增且不在只读基础层中，决定是否允许移除。 */
+/** 判断一个提供商是否由用户配置新增且不在只读基础层中，决定是否允许移除。 */
 export function isProviderRemovable(
   provider: HostModelProvider,
   namespace?: HostSettingsNamespace,

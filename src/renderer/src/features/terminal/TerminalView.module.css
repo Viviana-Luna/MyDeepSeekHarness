@@ -45,6 +45,7 @@
   background: color-mix(in srgb, var(--surface) 94%, transparent);
 }
 
+/* 浮动横向操作胶囊（宽 64px、高 34px）居中停靠于 42px 终端顶栏最右端，不延伸进下方输出区，终端主体保持满宽。 */
 :global(.app-shell[data-tab-actions-floating='true']:not([data-workspace-split]) .main-island)
   .toolbar,
 :global(
@@ -53,19 +54,7 @@
       .work-tab-panel[data-split-pane='right']
   )
   .toolbar {
-  padding-right: 56px;
-}
-
-/* 竖向浮动胶囊向下延伸至终端输出区顶部，为终端内容与滚动条预留 56px 右侧轨道同时保留连续底色。 */
-:global(.app-shell[data-tab-actions-floating='true']:not([data-workspace-split]) .main-island)
-  .terminalHost,
-:global(
-    .app-shell[data-tab-actions-floating='true'][data-workspace-split]
-      .main-island
-      .work-tab-panel[data-split-pane='right']
-  )
-  .terminalHost {
-  padding-right: 56px;
+  padding-right: 84px;
 }
 
 .tabs,

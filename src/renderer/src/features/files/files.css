@@ -494,7 +494,8 @@
   .main-island
   .work-tab-panel[data-split-pane='right']
   .file-breadcrumb {
-  padding-right: 56px;
+  min-height: 42px;
+  padding-right: 84px;
 }
 .file-breadcrumb > div {
   display: flex;

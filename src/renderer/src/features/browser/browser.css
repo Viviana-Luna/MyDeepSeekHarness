@@ -7,41 +7,45 @@
   height: 100%;
 }
 .browser-toolbar {
+  container: browser-toolbar / inline-size;
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 6px 0;
+  min-height: 42px;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
 }
-/* 竖向浮动胶囊高度 66px 会向下延伸到网页视口行；原生 WebContentsView 位于 DOM 之上，需在整个面板右侧预留 56px 轨道避免遮挡胶囊。 */
+/* 横向浮动操作胶囊（宽 64px、高 34px）完全落在 42px 地址栏右端，不与下方原生 WebContentsView 重叠，网页视口保持满宽。 */
 .app-shell[data-tab-actions-floating='true']:not([data-workspace-split])
   .main-island
-  .browser-panel,
+  .browser-toolbar,
 .app-shell[data-tab-actions-floating='true'][data-workspace-split]
   .main-island
   .work-tab-panel[data-split-pane='right']
-  .browser-panel {
-  padding-right: 56px;
+  .browser-toolbar {
+  padding-right: 84px;
 }
-.browser-toolbar button,
+.browser-nav-button,
 .browser-caption button {
-  width: 25px;
+  width: 28px;
   height: 28px;
   display: grid;
   place-items: center;
   padding: 0;
   flex-shrink: 0;
   border: 0;
-  border-radius: 5px;
+  border-radius: 6px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
 }
-.browser-toolbar button:hover:not(:disabled),
+.browser-nav-button:hover:not(:disabled),
 .browser-caption button:hover {
   background: var(--surface-hover);
   color: var(--text);
 }
-.browser-toolbar button:disabled {
+.browser-nav-button:disabled {
   opacity: 0.35;
   cursor: default;
 }
@@ -50,7 +54,7 @@
   align-items: center;
   flex: none;
   height: 22px;
-  margin-inline: 4px 2px;
+  margin-inline: 2px;
   padding: 0 7px;
   border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
   border-radius: 999px;
@@ -60,23 +64,121 @@
   font-weight: var(--weight-medium);
   white-space: nowrap;
 }
-.browser-toolbar input {
+.browser-address-field {
+  display: flex;
+  flex: 1;
+  min-width: 84px;
+  height: 30px;
+  align-items: center;
+  gap: 4px;
+  padding: 0 3px 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-hover);
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    box-shadow 140ms ease;
+}
+.browser-address-field:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line-strong));
+  background: var(--surface);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.browser-address-field input {
   width: 0;
   flex: 1;
   min-width: 45px;
-  height: 29px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 0 7px;
-  background: var(--surface-hover);
+  height: 100%;
+  border: 0;
+  padding: 0;
+  outline: 0;
+  background: transparent;
   color: var(--text);
   font: inherit;
   font-size: 12px;
+}
+.browser-go-button {
+  display: inline-flex;
+  height: 22px;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease,
+    opacity 120ms ease;
+}
+.browser-go-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 44%, transparent);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.browser-go-button:disabled {
+  border-color: transparent;
+  background: transparent;
+  color: var(--faint);
+  opacity: 0.52;
+  cursor: default;
+}
+.browser-external-button {
+  display: inline-flex;
+  height: 28px;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease,
+    opacity 120ms ease;
+}
+.browser-external-button:hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.browser-external-button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+@container browser-toolbar (max-width: 440px) {
+  .browser-action-label {
+    display: none;
+  }
+  .browser-go-button {
+    padding: 0 6px;
+  }
+  .browser-external-button {
+    width: 28px;
+    justify-content: center;
+    padding: 0;
+  }
 }
 .browser-caption {
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--line);
   color: var(--muted);
   font-size: 11px;
   min-height: 26px;
@@ -91,7 +193,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 6px;
+  margin: 6px 8px 0;
   padding: 5px 10px;
   border-radius: 7px;
   border: 1px solid color-mix(in srgb, var(--negative) 35%, var(--line));
@@ -127,7 +229,35 @@
   opacity: 0.55;
   cursor: default;
 }
+@media (prefers-reduced-motion: reduce) {
+  .browser-address-field,
+  .browser-go-button,
+  .browser-external-button {
+    transition: none;
+  }
+}
 @media (forced-colors: active) {
+  .browser-toolbar,
+  .browser-caption {
+    border-color: CanvasText;
+  }
+  .browser-address-field {
+    border-color: CanvasText;
+    background: Field;
+    box-shadow: none;
+  }
+  .browser-go-button,
+  .browser-external-button {
+    border: 1px solid ButtonText;
+    background: ButtonFace;
+    color: ButtonText;
+  }
+  .browser-go-button:disabled,
+  .browser-external-button:disabled {
+    border-color: GrayText;
+    color: GrayText;
+    opacity: 1;
+  }
   .browser-takeover-bar {
     border-color: CanvasText;
     background: Canvas;
@@ -143,7 +273,6 @@
   position: relative;
   flex: 1;
   min-height: 180px;
-  border-radius: 8px;
   overflow: hidden;
   background: var(--surface);
 }

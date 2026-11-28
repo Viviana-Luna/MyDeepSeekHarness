@@ -1,5 +1,5 @@
 /**
- * 模型设置页：以「提供方卡片总览 + 返回式子详情页」管理默认模型、服务提供方与凭据。
+ * 模型设置页：按「提供商 → 模型」两级结构管理默认模型、提供商配置与凭据。
  * 运行在 renderer；通过工作台 Store 与设置中心回调完成配置读写，不直接操作本地凭据文件。
  */
 import { Button } from 'antd'
@@ -69,7 +69,7 @@ async function removeProviderWithCredentials(options: {
         valueAtPath(namespaceOf(document, provider.settingsNs)?.value, provider.settingsPath),
       ) === ref,
   )
-  // 共用密钥仍有消费者时保留；独占密钥先删除，失败时保留提供方以便重试。
+  // 共用密钥仍有消费者时保留；独占密钥先删除，失败时保留提供商以便重试。
   if (!shared && credentials[ref]?.configured && credentials[ref]?.writable) {
     await store.callHost('unsetCredential', { ref })
   }
@@ -111,12 +111,12 @@ function ConfiguredProvidersSection({
       <header className="settings-section__header-row">
         <div className="settings-section__header">
           <div className="models-section-title-row">
-            <h3>模型服务</h3>
+            <h3>提供商</h3>
             {configured.length > 0 && (
-              <span className="settings-count-pill">共 {configured.length} 项</span>
+              <span className="settings-count-pill">共 {configured.length} 个</span>
             )}
           </div>
-          <p>点击服务卡片管理 API 密钥、自定义端点与可用模型目录。</p>
+          <p>点击提供商配置 API 密钥、端点与模型。</p>
         </div>
         <Button
           type="primary"
@@ -124,7 +124,7 @@ function ConfiguredProvidersSection({
           disabled={blocked || !canAddAny}
           onClick={onAdd}
         >
-          添加提供方
+          添加提供商
         </Button>
       </header>
 
@@ -167,8 +167,8 @@ function ConfiguredProvidersSection({
             <span className="models-empty-card__badge" aria-hidden="true">
               <Server size={20} />
             </span>
-            <strong>尚未配置模型服务</strong>
-            <small>点击右上角“添加提供方”接入预置服务或自定义兼容端点。</small>
+            <strong>尚未配置提供商</strong>
+            <small>点击右上角“添加提供商”添加内置提供商或自定义提供商。</small>
           </div>
         )}
       </div>
@@ -272,11 +272,11 @@ function ModelsOverviewContent({
     >
       <header className="settings-page__heading">
         <h2 id="settings-models-title">模型</h2>
-        <p>配置默认对话模型、服务提供方与 API 密钥。</p>
+        <p>管理默认模型、提供商与 API 密钥。</p>
       </header>
       {document === null && (
         <CapabilityNotice title="模型设置暂不可用" tone="warning">
-          运行核心就绪后即可读取提供方和模型目录。
+          运行核心就绪后即可读取提供商与模型。
         </CapabilityNotice>
       )}
       <SessionDefaultsSection
@@ -287,7 +287,7 @@ function ModelsOverviewContent({
         mutate={mutate}
       />
       {modelCatalog !== null && modelCatalog.failures.length > 0 && (
-        <CapabilityNotice title="部分模型目录加载失败" tone="warning">
+        <CapabilityNotice title="部分提供商模型加载失败" tone="warning">
           {modelCatalog.failures.map(failure => `${failure.name}：${failure.message}`).join('；')}
         </CapabilityNotice>
       )}
@@ -322,7 +322,7 @@ function ModelsOverviewContent({
   )
 }
 
-/** 渲染「模型」设置页，支持提供方卡片总览、新增弹窗与点击进入子详情页编辑。 */
+/** 渲染「模型」设置页，按「提供商 → 模型」两级管理提供商卡片、新增弹窗与下属模型。 */
 export function ModelsSettings({
   document,
   modelCatalog,
@@ -376,7 +376,7 @@ export function ModelsSettings({
       if (activeProviderId === removedId) setActiveProviderId(null)
       await reload()
     } catch (cause) {
-      setRemoveError(cause instanceof Error ? cause.message : '移除提供方失败，请重试。')
+      setRemoveError(cause instanceof Error ? cause.message : '移除提供商失败，请重试。')
     } finally {
       setRemoveBusy(false)
     }

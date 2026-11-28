@@ -9,6 +9,7 @@ import {
   clickTrustedElement,
   dragTrustedElementHorizontally,
 } from '../desktop-verifier.ts'
+import { verifyWindowControls } from '../window-verifier.ts'
 import { seedComposerReadings } from '../session-projection-fixture.ts'
 import { type LocalVerifyState, assertSuiteInvariants, ensureInitialShellSampled } from './state.ts'
 import {
@@ -63,8 +64,11 @@ export async function runPanelsStep2(bag: LocalVerifyState): Promise<void> {
   bag.collapsedHeaderBounds = (await bag.bridge.win.webContents.executeJavaScript(
     PANELS_SCRIPT_2,
   )) as {
+    windowEdge: number
+    sessionTabsVisible: boolean
     sidebarTop: number
     sidebarBottom: number
+    mainTop: number
     chromeTop: number
     chromeBottom: number
     searchHidden: boolean
@@ -80,6 +84,13 @@ export async function runPanelsStep2(bag: LocalVerifyState): Promise<void> {
     settingsRight: number
     settingsBottom: number
   }
+  const topClearanceValid =
+    process.platform === 'win32' && !bag.collapsedHeaderBounds.sessionTabsVisible
+      ? nearPanelValue(
+          bag.collapsedHeaderBounds.sidebarTop,
+          bag.collapsedHeaderBounds.windowEdge,
+        ) && nearPanelValue(bag.collapsedHeaderBounds.mainTop, bag.collapsedHeaderBounds.windowEdge)
+      : bag.collapsedHeaderBounds.sidebarTop > bag.collapsedHeaderBounds.chromeBottom
   if (
     readTrafficLightLayout(bag.bridge.win).some(
       button =>
@@ -91,7 +102,7 @@ export async function runPanelsStep2(bag: LocalVerifyState): Promise<void> {
             (bag.collapsedHeaderBounds.chromeTop + bag.collapsedHeaderBounds.chromeBottom) / 2,
         ) > 1,
     ) ||
-    bag.collapsedHeaderBounds.sidebarTop <= bag.collapsedHeaderBounds.chromeBottom ||
+    !topClearanceValid ||
     !bag.collapsedHeaderBounds.searchHidden ||
     !nearPanelValue(bag.collapsedHeaderBounds.railTop, bag.collapsedHeaderBounds.sidebarTop) ||
     !nearPanelValue(
@@ -109,11 +120,24 @@ export async function runPanelsStep2(bag: LocalVerifyState): Promise<void> {
       bag.collapsedHeaderBounds.railLeft + bag.collapsedHeaderBounds.railRight,
     )
   )
-    throw new Error('收起侧栏后红绿灯、搜索隐藏状态、菜单宽度、设置位置或栏位材质不正确')
+    throw new Error('收起侧栏后红绿灯、顶栏收放、搜索隐藏状态、菜单宽度、设置位置或栏位材质不正确')
+  await verifyWindowControls(bag.bridge.win, false)
   writeFileSync(
     bag.bridge.artifactPath('verify-sidebar-collapsed.png'),
     (await captureVerifiedPage(bag.bridge.win)).toPNG(),
   )
+  // 左右栏同时收起且顶栏隐藏时，Windows 三枚窗口控制按钮应落入主浮岛顶缘并与右侧悬浮胶囊准确对齐。
+  if (process.platform === 'win32' && !bag.collapsedHeaderBounds.sessionTabsVisible) {
+    await clickTrustedElement(bag.bridge.win, '.panel-divider--information .panel-divider__capsule')
+    await bag.readPanelGeometry()
+    await verifyWindowControls(bag.bridge.win, false)
+    writeFileSync(
+      bag.bridge.artifactPath('verify-both-collapsed.png'),
+      (await captureVerifiedPage(bag.bridge.win)).toPNG(),
+    )
+    await clickTrustedElement(bag.bridge.win, '.panel-divider--information .panel-divider__capsule')
+    await bag.readPanelGeometry()
+  }
 }
 
 /** 执行 panels 验收套件第 3 阶段。 */

@@ -142,6 +142,7 @@
   opacity: 0.46;
 }
 .project-group-heading {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   width: 100%;
@@ -149,11 +150,45 @@
   align-items: center;
   border-radius: 7px;
   color: var(--muted);
+  transition:
+    background-color 140ms ease,
+    box-shadow 140ms ease,
+    color 140ms ease;
+}
+.project-group-heading::before {
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 0;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0;
+  transform: scaleY(0.4);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+  content: '';
+  pointer-events: none;
 }
 .project-group-heading:hover,
 .project-group-heading:focus-within {
   background: var(--surface-hover);
   color: var(--text);
+}
+.project-group-heading.has-selected-session {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.project-group-heading.has-selected-session::before {
+  opacity: 1;
+  transform: scaleY(1);
+}
+.project-group-heading.has-selected-session:hover,
+.project-group-heading.has-selected-session:focus-within {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-hover));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent);
 }
 .project-group-toggle {
   display: grid;
@@ -161,7 +196,7 @@
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 7px;
-  padding: 4px 6px;
+  padding: 4px 6px 4px 8px;
   cursor: pointer;
   background: transparent;
   color: inherit;
@@ -172,10 +207,13 @@
 }
 .project-group-folder {
   color: var(--muted);
+  transition: color 140ms ease;
 }
-.project-group-heading:hover .project-group-folder,
-.project-group-heading.has-selected-session .project-group-folder {
+.project-group-heading:hover .project-group-folder {
   color: var(--text);
+}
+.project-group-heading.has-selected-session .project-group-folder {
+  color: var(--accent);
 }
 .project-group-toggle strong {
   overflow: hidden;
@@ -190,9 +228,41 @@
   color: var(--faint);
   font: var(--weight-medium) var(--text-caption)/1 var(--font-mono);
 }
+.project-group-heading.has-selected-session .project-group-toggle span,
+.project-group-heading.has-selected-session .project-group-chevron {
+  color: color-mix(in srgb, var(--accent) 72%, var(--muted));
+}
 .project-group-chevron {
   color: var(--faint);
   transition: transform 120ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .project-group-heading,
+  .project-group-heading::before,
+  .project-group-folder,
+  .project-group-chevron {
+    transition: none;
+  }
+}
+@media (prefers-contrast: more) {
+  .project-group-heading.has-selected-session {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 52%, var(--line-strong));
+  }
+}
+@media (forced-colors: active) {
+  .project-group-heading.has-selected-session {
+    background: Canvas;
+    box-shadow: none;
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+  .project-group-heading.has-selected-session::before {
+    background: Highlight;
+    forced-color-adjust: none;
+  }
+  .project-group-heading.has-selected-session .project-group-folder {
+    color: Highlight;
+  }
 }
 .project-session-group.is-expanded .project-group-chevron {
   transform: rotate(90deg);

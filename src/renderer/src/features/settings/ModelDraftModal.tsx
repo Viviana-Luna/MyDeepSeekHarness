@@ -85,7 +85,7 @@ function ModelModalityField({
         </div>
         <small className="models-field__hint">
           {modalities === undefined
-            ? '当前继承提供方默认输入能力。'
+            ? '当前继承提供商默认输入能力。'
             : '已自定义输入能力；至少保留一种输入类型。'}
         </small>
       </div>
@@ -205,7 +205,7 @@ function ModelReasoningField({
         />
 
         {mode === 'inherit' && (
-          <small className="models-field__hint">沿用提供方内置目录或默认推理配置。</small>
+          <small className="models-field__hint">沿用提供商默认推理配置。</small>
         )}
         {mode === 'disabled' && (
           <small className="models-field__hint">明确关闭思考能力，会话中不展示推理强度切换。</small>
@@ -526,7 +526,7 @@ export function ModelDraftModal(props: ModelDraftModalProps) {
       destroyOnHidden
       width={540}
       footer={null}
-      title={mode === 'add' ? '手动添加模型' : '编辑模型配置'}
+      title={mode === 'add' ? '添加模型' : '编辑模型'}
       classNames={{
         container: 'mydsh-glass-dialog models-glass-modal',
         mask: 'mydsh-glass-mask',

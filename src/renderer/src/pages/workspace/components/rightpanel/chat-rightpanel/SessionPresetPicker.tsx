@@ -59,19 +59,33 @@ export function SessionPresetPicker() {
   const projected = session?.projections?.values?.agentPreset
   const selected = typeof projected === 'string' ? projected : session?.agentPreset
   const currentPreset = selected ?? roster?.presets.find(preset => preset.isDefault)?.id
+  const draftProjectId = snapshot.newSessionProjectId ?? null
+  const draftReady =
+    session === undefined &&
+    draftProjectId !== null &&
+    (snapshot.projects ?? []).some(
+      item =>
+        item.id === draftProjectId &&
+        item.source === 'workspace' &&
+        (snapshot.selectedProjectId === null ||
+          snapshot.selectedProjectId === undefined ||
+          snapshot.selectedProjectId === item.id),
+    )
   const disabled =
     !ready ||
     roster === null ||
     snapshot.creatingSession ||
-    session?.blank !== true ||
-    session.running ||
     snapshot.sendingMessage ||
-    snapshot.awaitingResponseSessionIds.includes(session.sessionId)
+    snapshot.sendingNewSession === true ||
+    (!draftReady &&
+      (session?.blank !== true ||
+        session.running ||
+        snapshot.awaitingResponseSessionIds.includes(session.sessionId)))
   const select = async (agentPreset: string) => {
     if (
       disabled ||
       savingRequest.current !== null ||
-      session === undefined ||
+      (session === undefined && !draftReady) ||
       agentPreset === currentPreset
     )
       return
@@ -80,6 +94,13 @@ export function SessionPresetPicker() {
     setSaving(true)
     setError(null)
     try {
+      if (session === undefined) {
+        const createdId = await store.ensureComposerSession(agentPreset)
+        if (createdId === null && savingRequest.current === request) {
+          setError(store.getSnapshot?.()?.error ?? '切换预设失败')
+        }
+        return
+      }
       await store.callHost('selectSessionAgentPreset', {
         sessionId: session.sessionId,
         agentPreset,

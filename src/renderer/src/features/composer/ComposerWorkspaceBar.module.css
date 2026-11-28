@@ -102,6 +102,13 @@ button.pill[aria-expanded='true'] > svg {
   color: var(--text);
 }
 
+.row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+}
+
 .option,
 .createAction {
   display: grid;
@@ -119,7 +126,41 @@ button.pill[aria-expanded='true'] > svg {
 }
 
 .option {
-  grid-template-columns: 18px minmax(0, 1fr);
+  flex: 1;
+  min-width: 0;
+  grid-template-columns: 18px minmax(0, 1fr) auto auto;
+}
+
+.unreadBadge {
+  display: inline-grid;
+  min-width: 16px;
+  height: 16px;
+  flex: none;
+  padding: 0 4px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-contrast, white);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.closeGroup {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  place-items: center;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.closeGroup:hover,
+.closeGroup:focus-visible {
+  background: var(--surface-hover);
+  color: var(--text);
 }
 
 .createAction {

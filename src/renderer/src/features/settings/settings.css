@@ -703,7 +703,7 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
-/* 模型提供方卡片按钮基础复位（完整视觉由 models-settings.css 定义） */
+/* 提供商卡片按钮基础复位（完整视觉由 models-settings.css 定义） */
 .settings-provider-summary {
   width: 100%;
   cursor: pointer;

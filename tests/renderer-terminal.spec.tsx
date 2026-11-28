@@ -259,6 +259,37 @@ describe('用户终端视图', () => {
       expect(screen.queryByRole('button', { name: '关闭共享 终端 1' })).toBeNull()
     })
     expect(harness.terminal.close).toHaveBeenCalledTimes(2)
+    expect(harness.terminal.create).toHaveBeenCalledTimes(1)
+    view.unmount()
+  })
+
+  it('关闭共享终端标签时立即从界面移除而不阻塞等待后台 PTY 退出，且不重复关闭', async () => {
+    const harness = createBridge()
+    window.dshDesktop = harness.bridge
+    let finishClose!: () => void
+    vi.mocked(harness.terminal.close).mockImplementationOnce(
+      () =>
+        new Promise<void>(resolve => {
+          finishClose = resolve
+        }),
+    )
+    const view = render(content(true))
+    await waitFor(() => {
+      expect(harness.terminal.ready).toHaveBeenCalledWith('终端-1')
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭共享 终端 1' }))
+
+    // 后台 close 尚未返回前，标签已从共享标签组摘除，且只发起一次后台关闭调用。
+    expect(screen.queryByRole('button', { name: '关闭共享 终端 1' })).toBeNull()
+    expect(harness.terminal.close).toHaveBeenCalledTimes(1)
+    expect(harness.terminal.close).toHaveBeenCalledWith('终端-1')
+
+    await act(async () => {
+      finishClose()
+      await Promise.resolve()
+    })
+    expect(harness.terminal.close).toHaveBeenCalledTimes(1)
     view.unmount()
   })
 

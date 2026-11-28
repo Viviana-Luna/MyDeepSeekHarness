@@ -59,6 +59,7 @@ import {
   type DesktopWorkspaceView,
 } from '../../../../shared/workspace-capabilities.ts'
 import {
+  UNGROUPED_PROJECT_ID,
   deriveProjects,
   deriveWorkspaceProjects,
   parseDesktopProjects,
@@ -257,7 +258,7 @@ function errorMessage(error: unknown): string {
     .replace(/^(?:gateway|session)\/[\w-]+:\s*/u, '')
   // 移植层的技术诊断保留在后台；界面把已知的凭据缺失指向 MyDSH 自己的设置入口。
   if (/no API key for provider route/iu.test(message))
-    return '当前模型尚未配置 API Key，请在“设置 → 模型”中配置对应提供方的凭据后重试。'
+    return '当前模型尚未配置 API Key，请在“设置 → 模型”中配置对应提供商的凭据后重试。'
   return message
 }
 
@@ -1559,16 +1560,16 @@ export class WorkspaceStore {
   }
 
   /**
-   * 关闭最后一个浏览器或终端标签后返回欢迎新聊天界面，不向顶栏追加新的会话标签；
-   * 若存在持久化工作区，则直接进入该工作区的新会话草稿态，方便用户立即输入并开启新会话。
+   * 关闭最后一个浏览器或终端标签后返回欢迎新聊天界面：
+   * 若目标工作区已有未发送消息的空会话，直接复用该空会话以保留完整的预设、模型与权限控件（单会话标签本身自动隐藏顶栏）；
+   * 否则进入该工作区的新会话草稿态，方便用户直接选预设、选模型或输入首条消息开启新会话。
    */
   enterNewSessionWelcome(preferredProjectId?: string | null): void {
     const preferred =
       preferredProjectId !== undefined && preferredProjectId !== null && preferredProjectId !== ''
-        ? this.snapshot.projects.find(
-            item => item.id === preferredProjectId && item.source === 'workspace',
-          )
+        ? this.snapshot.projects.find(item => item.id === preferredProjectId)
         : undefined
+    const preferredWorkspace = preferred?.source === 'workspace' ? preferred : undefined
     const selected =
       this.snapshot.selectedProjectId === null
         ? undefined
@@ -1576,7 +1577,21 @@ export class WorkspaceStore {
             item => item.id === this.snapshot.selectedProjectId && item.source === 'workspace',
           )
     const fallback = this.snapshot.projects.find(item => item.source === 'workspace')
-    const targetProject = preferred ?? selected ?? fallback
+    const targetProject = preferredWorkspace ?? selected ?? fallback
+    const reuseProject = preferred ?? targetProject
+    const blankSession =
+      reuseProject === undefined
+        ? undefined
+        : sessionsForProject(this.snapshot.sessions, reuseProject).find(session => session.blank)
+    if (blankSession !== undefined && reuseProject !== undefined) {
+      const openedSessionIds = this.snapshot.openedSessionIds.includes(blankSession.sessionId)
+        ? this.snapshot.openedSessionIds
+        : [...this.snapshot.openedSessionIds, blankSession.sessionId]
+      const nextSelectedProjectId =
+        this.snapshot.selectedProjectId === null ? null : reuseProject.id
+      this.selectSessionWithConversation(blankSession, nextSelectedProjectId, openedSessionIds)
+      return
+    }
     const newSessionProjectId = targetProject?.id ?? null
     const preservedDraft =
       newSessionProjectId !== null && newSessionProjectId === this.snapshot.newSessionProjectId
@@ -2519,8 +2534,8 @@ export class WorkspaceStore {
     }
   }
 
-  /** 将当前输入草稿实体化为会话但不发送消息，供授权等首轮前操作使用。 */
-  async ensureComposerSession(): Promise<string | null> {
+  /** 将当前输入草稿实体化为会话但不发送消息，供授权、切换预设或选择模型等首轮前操作使用。 */
+  async ensureComposerSession(agentPreset?: string): Promise<string | null> {
     if (this.snapshot.selectedSessionId !== null) return this.snapshot.selectedSessionId
     const projectId = this.snapshot.newSessionProjectId
     const project = this.snapshot.projects.find(item => item.id === projectId)
@@ -2529,6 +2544,7 @@ export class WorkspaceStore {
     try {
       const value = await this.bridge.host.call('createSessionForWorkspace', {
         workspaceId: project.workspaceId,
+        ...(agentPreset ? { agentPreset } : {}),
       })
       const sessionId = createdSessionId(value)
       if (sessionId === undefined) throw new Error('运行核心创建新会话后没有返回有效标识')
@@ -2544,7 +2560,9 @@ export class WorkspaceStore {
         throw new Error('新会话已创建，但尚未出现在会话列表中')
       // 采用等待期间的最新文字，不能用点击授权前的旧副本覆盖继续输入的草稿。
       const draft = this.snapshot.newSessionDraft
-      this.set({ sessionDrafts: { ...this.snapshot.sessionDrafts, [sessionId]: draft } })
+      if (draft !== '') {
+        this.set({ sessionDrafts: { ...this.snapshot.sessionDrafts, [sessionId]: draft } })
+      }
       this.selectSession(sessionId)
       return sessionId
     } catch (error) {
@@ -4109,6 +4127,11 @@ export class WorkspaceStore {
         ? undefined
         : this.snapshot.projects.find(project => project.id === this.snapshot.newSessionProjectId)
     }
+    const workspaceOwner = this.snapshot.projects.find(
+      project =>
+        project.id !== UNGROUPED_PROJECT_ID && sessionsForProject([session], project).length > 0,
+    )
+    if (workspaceOwner !== undefined) return workspaceOwner
     return session.cwd === undefined
       ? undefined
       : this.snapshot.projects.find(project => project.cwd === session.cwd)

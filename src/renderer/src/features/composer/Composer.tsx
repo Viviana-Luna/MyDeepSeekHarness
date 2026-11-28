@@ -828,7 +828,7 @@ export function Composer({ showReadings = true }: { readonly showReadings?: bool
                 : newSessionDraftActive
                   ? '输入第一条消息以创建会话…'
                   : snapshot.sessionModels?.routable === false
-                    ? '当前模型提供方不可用，请先选择其他模型'
+                    ? '当前提供商不可用，请先选择其他模型'
                     : session?.running
                       ? snapshot.busyEnter === 'steer'
                         ? 'Enter 插话发送，Cmd/Ctrl + Enter 加入队列…'
@@ -905,7 +905,7 @@ export function Composer({ showReadings = true }: { readonly showReadings?: bool
               name="composer.actions"
               scopeKey={sessionId ?? `draft:${newSessionProjectId ?? 'no-project'}`}
             />
-            <ModelSelector disabled={session === undefined || !hostReady} />
+            <ModelSelector disabled={!composerReady || !hostReady} />
             {commandActive && commandExecution !== null && (
               <span
                 className="composer-command-state"

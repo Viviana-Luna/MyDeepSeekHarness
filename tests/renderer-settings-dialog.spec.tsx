@@ -528,7 +528,7 @@ describe('完整设置中心', () => {
     expect(screen.queryByRole('button', { name: /移除.*背景图片/u })).toBeNull()
   })
 
-  it('自定义提供方校验必填项，将配置和密钥分别保存', async () => {
+  it('自定义提供商校验必填项，将配置和密钥分别保存', async () => {
     const namespace = settingsNamespace(
       'llm-pi-ai',
       { providers: { existing: { api: 'openai-completions' } } },
@@ -550,36 +550,45 @@ describe('完整设置中心', () => {
     })
     await renderAndOpen(createBridge(ready, hostCall))
     fireEvent.click(screen.getByRole('menuitem', { name: '模型' }))
-    fireEvent.click(await screen.findByRole('button', { name: '添加提供方' }))
-    const addModal = (await screen.findByText('自定义服务')).closest(
+    expect(await screen.findByRole('heading', { level: 3, name: '提供商' })).toBeTruthy()
+    expect(screen.queryByText('模型服务')).toBeNull()
+    const deepseekEmblem = document.querySelector<HTMLElement>(
+      '.models-provider-emblem[data-brand="deepseek"]',
+    )
+    expect(deepseekEmblem?.dataset.brandMode).toBe('color')
+    expect(deepseekEmblem?.querySelector('img.models-provider-emblem__img')).toBeTruthy()
+    fireEvent.click(await screen.findByRole('button', { name: '添加提供商' }))
+    const addModal = (await screen.findByText('自定义提供商')).closest(
       '[role="dialog"]',
     ) as HTMLElement
-    fireEvent.click(within(addModal).getByText('自定义服务'))
-    fireEvent.click(await within(addModal).findByRole('button', { name: '创建提供方' }))
-    expect(await within(addModal).findByText(/Provider ID 必须/u)).toBeTruthy()
+    fireEvent.click(within(addModal).getByText('自定义提供商'))
+    fireEvent.click(await within(addModal).findByRole('button', { name: '创建提供商' }))
+    expect(await within(addModal).findByText(/提供商 ID 必须/u)).toBeTruthy()
     expect(hostCall.mock.calls.some(([operation]) => operation === 'mutateSettings')).toBe(false)
-    fireEvent.change(within(addModal).getByLabelText('Provider ID'), {
+    fireEvent.change(within(addModal).getByLabelText('提供商 ID'), {
       target: { value: 'my-gateway' },
     })
-    fireEvent.change(within(addModal).getByLabelText('提供方显示名称'), {
-      target: { value: '我的服务' },
+    fireEvent.change(within(addModal).getByLabelText('提供商显示名称'), {
+      target: { value: '我的提供商' },
     })
     fireEvent.change(within(addModal).getByLabelText('API 地址'), {
       target: { value: 'https://example.invalid/v1' },
     })
-    fireEvent.change(within(addModal).getByLabelText('自定义提供方 API 密钥'), {
+    fireEvent.change(within(addModal).getByLabelText('自定义提供商 API 密钥'), {
       target: { value: 'test-only-key' },
     })
     fireEvent.click(within(addModal).getByRole('button', { name: '手动添加' }))
-    const draftModal = (await screen.findByText('手动添加模型')).closest(
-      '[role="dialog"]',
-    ) as HTMLElement
+    const draftModal = (
+      await screen.findByText('添加模型', { selector: '.ant-modal-title' })
+    ).closest('[role="dialog"]') as HTMLElement
     fireEvent.change(within(draftModal).getByLabelText('模型 ID'), {
       target: { value: 'my-model' },
     })
     fireEvent.click(within(draftModal).getByRole('button', { name: '添加模型' }))
-    await waitFor(() => expect(screen.queryByText('手动添加模型')).toBeNull())
-    fireEvent.click(within(addModal).getByRole('button', { name: '创建提供方' }))
+    await waitFor(() =>
+      expect(screen.queryByText('添加模型', { selector: '.ant-modal-title' })).toBeNull(),
+    )
+    fireEvent.click(within(addModal).getByRole('button', { name: '创建提供商' }))
     await waitFor(() =>
       expect(hostCall).toHaveBeenCalledWith('mutateSettings', {
         ns: 'llm-pi-ai',
@@ -589,7 +598,7 @@ describe('完整设置中心', () => {
             op: 'set',
             path: ['providers', 'my-gateway'],
             value: {
-              displayName: '我的服务',
+              displayName: '我的提供商',
               baseURL: 'https://example.invalid/v1',
               api: 'openai-completions',
               apiKeyEnv: 'MY_GATEWAY_API_KEY',
@@ -607,7 +616,7 @@ describe('完整设置中心', () => {
     )
   })
 
-  it('内置提供方获取可用模型时不附带误判协议，并展示返回的模型目录', async () => {
+  it('内置提供商拉取模型时不附带误判协议，并采用官方标志与两级文案', async () => {
     const namespace = settingsNamespace(
       'llm-pi-ai',
       { providers: { google: { apiKeyEnv: 'GOOGLE_API_KEY' } } },
@@ -656,8 +665,16 @@ describe('完整设置中心', () => {
     })
     await renderAndOpen(createBridge(ready, hostCall))
     fireEvent.click(screen.getByRole('menuitem', { name: '模型' }))
-    fireEvent.click(await screen.findByRole('button', { name: '编辑 google' }))
-    fireEvent.click(await screen.findByRole('button', { name: '拉取可用模型' }))
+    const googleButton = await screen.findByRole('button', { name: '编辑 google' })
+    const googleEmblem = googleButton.querySelector<HTMLElement>(
+      '.models-provider-emblem[data-brand="google"]',
+    )
+    expect(googleEmblem?.dataset.brandMode).toBe('color')
+    expect(googleEmblem?.querySelector('img.models-provider-emblem__img')).toBeTruthy()
+    fireEvent.click(googleButton)
+    expect(await screen.findByRole('button', { name: '返回提供商' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: '模型' })).toBeTruthy()
+    fireEvent.click(await screen.findByRole('button', { name: '拉取模型' }))
     expect(await screen.findByText('选择要添加的模型（1）')).toBeTruthy()
     expect(screen.getByText('Gemini 4 Neon')).toBeTruthy()
     expect(hostCall).toHaveBeenCalledWith('discoverProviderModels', {

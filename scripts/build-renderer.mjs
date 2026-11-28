@@ -44,7 +44,6 @@ function hashDirectoryTree(hash, root, directoryPath) {
 
 function computeRendererFingerprint(root) {
   const hash = createHash('sha256')
-  hash.update(`node:${process.versions.node}\0`)
   for (const file of [
     'package.json',
     'pnpm-lock.yaml',

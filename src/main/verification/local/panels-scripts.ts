@@ -92,15 +92,20 @@ export const PANELS_SCRIPT_1 = `(async () => {
 
 /** 浏览器端验收探测脚本（panels #2）。 */
 export const PANELS_SCRIPT_2 = `(() => {
+      const shell = document.querySelector('.app-shell')
       const sidebar = document.querySelector('.sidebar-island').getBoundingClientRect()
+      const main = document.querySelector('.main-island').getBoundingClientRect()
       const chrome = document.querySelector('.session-chrome').getBoundingClientRect()
       const railElement = document.querySelector('.mode-rail')
       const rail = railElement.getBoundingClientRect()
       const settings = document.querySelector('#open-settings').getBoundingClientRect()
-      const shellStyle = getComputedStyle(document.querySelector('.app-shell'))
+      const shellStyle = getComputedStyle(shell)
       return {
+        windowEdge: Number.parseFloat(shellStyle.getPropertyValue('--window-edge')),
+        sessionTabsVisible: shell.getAttribute('data-session-tabs-visible') === 'true',
         sidebarTop: sidebar.top,
         sidebarBottom: sidebar.bottom,
+        mainTop: main.top,
         chromeTop: chrome.top,
         chromeBottom: chrome.bottom,
         searchHidden: document.querySelector('.session-search-trigger') === null,

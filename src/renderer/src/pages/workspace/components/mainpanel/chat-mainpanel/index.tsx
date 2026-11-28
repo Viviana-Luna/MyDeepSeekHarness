@@ -55,6 +55,7 @@ export const ChatMainPanel = memo(function ChatMainPanel({
             ? '输入并发送第一条消息后才会创建会话。'
             : '选择左侧已有聊天，或在当前项目中新建聊天。'
         }
+        preset={newSessionDraftActive ? <SessionPresetPicker /> : undefined}
       />
     )
   }
@@ -173,8 +174,9 @@ export function ChatComposer({
   const showReadings = dockFitsReadings
   const session = snapshot.sessions.find(item => item.sessionId === snapshot.selectedSessionId)
   const todos = parseHubTodos(session?.projections?.values?.todos)
+  const isDraftSession = session === undefined || session.blank === true
   const showWorkspaceBar =
-    pendingInteraction === undefined && (session === undefined || session.blank === true)
+    pendingInteraction === undefined && (isDraftSession || snapshot.navigationCollapsed === true)
   const effectiveCollapsed = collapsible && collapsed && pendingInteraction === undefined
   const toggle = () => {
     const next = !effectiveCollapsed

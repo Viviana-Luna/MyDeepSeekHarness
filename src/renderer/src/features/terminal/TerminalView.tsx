@@ -11,7 +11,7 @@ import {
   TerminalSquare,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import {
   DESKTOP_TERMINAL_LIMITS,
@@ -37,11 +37,13 @@ interface TerminalTab {
   title: string
   processTitle: string | null
   taskId?: string
+  preservedTerminalId?: string
   exitCode: number | null
 }
 
 interface TerminalPaneActions {
-  close(): Promise<void>
+  detachTerminalId(): string | null
+  restoreTerminalId(id: string): void
   copy(): Promise<void>
   paste(): Promise<void>
   clear(): void
@@ -53,6 +55,7 @@ interface TerminalPaneProps {
   api: DesktopTerminalApi
   projectId: string
   taskId?: string
+  existingTerminalId?: string
   active: boolean
   onActions(tabKey: string, actions: TerminalPaneActions | null): void
   onStatus(
@@ -106,6 +109,7 @@ function TerminalPane({
   api,
   projectId,
   taskId,
+  existingTerminalId,
   active,
   onActions,
   onStatus,
@@ -114,12 +118,15 @@ function TerminalPane({
   const hostRef = useRef<HTMLDivElement | null>(null)
   const activeRef = useRef(active)
   activeRef.current = active
+  const existingTerminalIdRef = useRef(existingTerminalId)
+  existingTerminalIdRef.current = existingTerminalId
 
   useEffect(() => {
     const host = hostRef.current
     if (host === null) return undefined
     let disposed = false
-    let terminalId: string | null = null
+    const initialTerminalId = existingTerminalIdRef.current ?? null
+    let terminalId: string | null = initialTerminalId
     const notify = (caught: unknown): void => {
       if (disposed) return
       onError(errorMessage(caught))
@@ -160,10 +167,15 @@ function TerminalPane({
       await api.clipboard('paste')
     }
     const actions: TerminalPaneActions = {
-      close: async () => {
-        if (terminalId !== null) {
-          await api.close(terminalId)
-          terminalId = null
+      detachTerminalId: () => {
+        const id = terminalId
+        terminalId = null
+        return id
+      },
+      restoreTerminalId: id => {
+        if (!disposed) {
+          terminalId = id
+          host.dataset.terminalId = id
         }
       },
       copy: async () => {
@@ -219,29 +231,34 @@ function TerminalPane({
     })
     themeObserver.observe(document.documentElement, { attributes: true })
 
-    void (async () => {
-      try {
-        fitTerminal()
-        const descriptor = await api.create({
-          projectId,
-          ...(taskId === undefined ? {} : { taskId }),
-          columns: Math.max(DESKTOP_TERMINAL_LIMITS.minColumns, terminal.cols || 80),
-          rows: Math.max(DESKTOP_TERMINAL_LIMITS.minRows, terminal.rows || 24),
-        })
-        if (disposed) {
-          await api.close(descriptor.id).catch(() => undefined)
-          return
+    if (initialTerminalId !== null) {
+      host.dataset.terminalId = initialTerminalId
+      if (activeRef.current) terminal.focus()
+    } else {
+      void (async () => {
+        try {
+          fitTerminal()
+          const descriptor = await api.create({
+            projectId,
+            ...(taskId === undefined ? {} : { taskId }),
+            columns: Math.max(DESKTOP_TERMINAL_LIMITS.minColumns, terminal.cols || 80),
+            rows: Math.max(DESKTOP_TERMINAL_LIMITS.minRows, terminal.rows || 24),
+          })
+          if (disposed) {
+            await api.close(descriptor.id).catch(() => undefined)
+            return
+          }
+          terminalId = descriptor.id
+          host.dataset.terminalId = descriptor.id
+          onStatus(tabKey, 'running', descriptor)
+          await api.resize(descriptor.id, terminal.cols, terminal.rows)
+          await api.ready(descriptor.id)
+          if (activeRef.current) terminal.focus()
+        } catch (caught) {
+          fail(caught)
         }
-        terminalId = descriptor.id
-        host.dataset.terminalId = descriptor.id
-        onStatus(tabKey, 'running', descriptor)
-        await api.resize(descriptor.id, terminal.cols, terminal.rows)
-        await api.ready(descriptor.id)
-        if (activeRef.current) terminal.focus()
-      } catch (caught) {
-        fail(caught)
-      }
-    })()
+      })()
+    }
 
     return () => {
       disposed = true
@@ -309,11 +326,18 @@ export function TerminalView({
   const nextNumber = useRef(0)
   const actions = useRef(new Map<string, TerminalPaneActions>())
   const closing = useRef(new Set<string>())
+  const failedCloseIds = useRef(new Map<string, string>())
+  const mountedRef = useRef(true)
   const activated = useRef(false)
   const consumedLaunchKey = useRef(0)
   const [tabs, setTabs] = useState<TerminalTab[]>([])
+  const [closingKeys, setClosingKeys] = useState<ReadonlySet<string>>(() => new Set())
   const tabsRef = useRef<readonly TerminalTab[]>(tabs)
   tabsRef.current = tabs
+  const visibleTabs = useMemo(
+    () => tabs.filter(tab => !closingKeys.has(tab.key)),
+    [closingKeys, tabs],
+  )
   const [activeKey, setActiveKey] = useState('')
   const [error, setError] = useState<string | null>(null)
   const clearError = useCallback(() => {
@@ -323,8 +347,14 @@ export function TerminalView({
   tabCountListener.current = onTabCountChange
 
   useEffect(() => {
-    tabCountListener.current?.(tabs.length)
-  }, [tabs.length])
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+  useEffect(() => {
+    tabCountListener.current?.(visibleTabs.length)
+  }, [visibleTabs.length])
   useEffect(
     () => () => {
       tabCountListener.current?.(0)
@@ -336,7 +366,9 @@ export function TerminalView({
     setTabs(current => current.map(tab => (tab.key === key ? { ...tab, ...patch } : tab)))
   }, [])
   const createTab = useCallback(() => {
-    if (!canCreate || tabsRef.current.length >= DESKTOP_TERMINAL_LIMITS.maxTerminals) return
+    const activeTabCount = tabsRef.current.filter(tab => !closing.current.has(tab.key)).length
+    if (!canCreate || activeTabCount >= DESKTOP_TERMINAL_LIMITS.maxTerminals) return
+    activated.current = true
     const number = nextNumber.current + 1
     nextNumber.current = number
     const tab: TerminalTab = {
@@ -352,40 +384,85 @@ export function TerminalView({
     setTabs(current => [...current, tab])
     setActiveKey(tab.key)
   }, [canCreate])
-  const closeTab = useCallback(async (key: string) => {
-    if (closing.current.has(key)) return
-    closing.current.add(key)
-    try {
-      await actions.current.get(key)?.close()
-      const index = tabsRef.current.findIndex(tab => tab.key === key)
-      const remaining = tabsRef.current.filter(tab => tab.key !== key)
-      tabsRef.current = remaining
-      actions.current.delete(key)
-      setTabs(remaining)
-      setActiveKey(current =>
-        current === key ? (remaining[Math.min(index, remaining.length - 1)]?.key ?? '') : current,
+  const closeTab = useCallback(
+    async (key: string) => {
+      if (closing.current.has(key)) return
+      closing.current.add(key)
+      activated.current = true
+      // 先同步接管 PTY 标识并立即摘除可见标签，避免 Windows 下等待 Shell 进程退出时卡住界面切换；
+      // 若后台关闭失败则恢复标签与原 PTY 标识，不重复创建终端并允许重试。
+      const closingTerminalId =
+        actions.current.get(key)?.detachTerminalId() ?? failedCloseIds.current.get(key) ?? null
+      const previousTabs = tabsRef.current
+      const index = previousTabs.findIndex(tab => tab.key === key)
+      const visibleRemaining = previousTabs.filter(
+        tab => tab.key !== key && !closing.current.has(tab.key),
       )
-    } catch (cause) {
-      setError(errorMessage(cause))
-    } finally {
-      closing.current.delete(key)
-    }
-  }, [])
+      setClosingKeys(current => {
+        const next = new Set(current)
+        next.add(key)
+        return next
+      })
+      setActiveKey(current =>
+        current === key
+          ? (visibleRemaining[Math.min(Math.max(0, index), visibleRemaining.length - 1)]?.key ?? '')
+          : current,
+      )
+      try {
+        if (closingTerminalId !== null && api !== undefined) {
+          await api.close(closingTerminalId)
+        }
+        failedCloseIds.current.delete(key)
+        actions.current.delete(key)
+        const remaining = tabsRef.current.filter(tab => tab.key !== key)
+        tabsRef.current = remaining
+        if (mountedRef.current) setTabs(remaining)
+      } catch (cause) {
+        if (closingTerminalId !== null) {
+          failedCloseIds.current.set(key, closingTerminalId)
+          actions.current.get(key)?.restoreTerminalId(closingTerminalId)
+          if (mountedRef.current) {
+            setTabs(current =>
+              current.map(tab =>
+                tab.key === key ? { ...tab, preservedTerminalId: closingTerminalId } : tab,
+              ),
+            )
+          }
+        }
+        if (mountedRef.current) {
+          setError(errorMessage(cause))
+          setActiveKey(current => (current === '' ? key : current))
+        }
+      } finally {
+        closing.current.delete(key)
+        if (mountedRef.current) {
+          setClosingKeys(current => {
+            if (!current.has(key)) return current
+            const next = new Set(current)
+            next.delete(key)
+            return next
+          })
+        }
+      }
+    },
+    [api],
+  )
   const restartTab = useCallback(
     (key: string) => {
       clearError()
+      failedCloseIds.current.delete(key)
       setTabs(current =>
-        current.map(tab =>
-          tab.key === key
-            ? {
-                ...tab,
-                restart: tab.restart + 1,
-                status: 'starting',
-                processTitle: null,
-                exitCode: null,
-              }
-            : tab,
-        ),
+        current.map(tab => {
+          if (tab.key !== key) return tab
+          const { preservedTerminalId: _preserved, ...rest } = tab
+          return {
+            ...rest,
+            restart: tab.restart + 1,
+            status: 'starting',
+            processTitle: null,
+            exitCode: null,
+          }
+        }),
       )
     },
     [clearError],
@@ -423,7 +500,10 @@ export function TerminalView({
     (request: ProjectTaskLaunchRequest) => {
       const existing = request.allowConcurrent
         ? undefined
-        : tabsRef.current.find(tab => tab.kind === 'task' && tab.taskId === request.taskId)
+        : tabsRef.current.find(
+            tab =>
+              !closing.current.has(tab.key) && tab.kind === 'task' && tab.taskId === request.taskId,
+          )
       if (existing !== undefined) {
         setActiveKey(existing.key)
         if (existing.status === 'exited' || existing.status === 'error') restartTab(existing.key)
@@ -433,7 +513,8 @@ export function TerminalView({
           })
         return
       }
-      if (!canCreate || tabsRef.current.length >= DESKTOP_TERMINAL_LIMITS.maxTerminals) {
+      const activeTabCount = tabsRef.current.filter(tab => !closing.current.has(tab.key)).length
+      if (!canCreate || activeTabCount >= DESKTOP_TERMINAL_LIMITS.maxTerminals) {
         setError(`一个窗口最多同时打开 ${String(DESKTOP_TERMINAL_LIMITS.maxTerminals)} 个终端`)
         return
       }
@@ -469,14 +550,14 @@ export function TerminalView({
     activated.current = true
     if (tabsRef.current.length === 0) createTab()
   }, [createTab, launchRequest, visible])
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (projectId === null) return
     publishTerminalGroup?.({
       projectAccessId: projectId,
       activeKey,
-      tabs: tabs.map(tab => ({ ...tab, description: statusLabel(tab) })),
+      tabs: visibleTabs.map(tab => ({ ...tab, description: statusLabel(tab) })),
       select: key => {
-        if (!tabsRef.current.some(tab => tab.key === key)) return
+        if (!tabsRef.current.some(tab => tab.key === key && !closing.current.has(tab.key))) return
         setActiveKey(key)
         requestAnimationFrame(() => {
           actions.current.get(key)?.focus()
@@ -485,7 +566,7 @@ export function TerminalView({
       close: closeTab,
       create: createTab,
       render: (key, shown) => {
-        const tab = tabs.find(item => item.key === key)
+        const tab = visibleTabs.find(item => item.key === key)
         if (!tab || !api) return null
         const action = actions.current.get(key)
         return (
@@ -564,6 +645,9 @@ export function TerminalView({
                 api={api}
                 projectId={projectId}
                 {...(tab.taskId === undefined ? {} : { taskId: tab.taskId })}
+                {...(tab.preservedTerminalId === undefined
+                  ? {}
+                  : { existingTerminalId: tab.preservedTerminalId })}
                 active={shown}
                 onActions={registerActions}
                 onStatus={handleStatus}
@@ -579,7 +663,7 @@ export function TerminalView({
     closeTab,
     projectId,
     publishTerminalGroup,
-    tabs,
+    visibleTabs,
     createTab,
     api,
     projectName,
@@ -629,7 +713,7 @@ export function TerminalView({
             {error}
           </AppAlert>
         )}
-        {tabs.length === 0 && (
+        {visibleTabs.length === 0 && (
           <div className={styles.empty}>
             <TerminalSquare size={24} />
             <strong>没有打开的终端</strong>
@@ -655,7 +739,7 @@ export function TerminalView({
           aria-label="终端操作入口"
         >
           {sharedTabs === null &&
-            tabs.map(tab => (
+            visibleTabs.map(tab => (
               <div
                 key={tab.key}
                 className={styles.tab}
@@ -699,7 +783,7 @@ export function TerminalView({
             className={styles.iconButton}
             aria-label="新建终端"
             title="新建终端"
-            disabled={!canCreate || tabs.length >= DESKTOP_TERMINAL_LIMITS.maxTerminals}
+            disabled={!canCreate || visibleTabs.length >= DESKTOP_TERMINAL_LIMITS.maxTerminals}
             onClick={createTab}
           >
             <MessageSquarePlus size={16} aria-hidden="true" />
@@ -777,7 +861,7 @@ export function TerminalView({
             {error}
           </AppAlert>
         )}
-        {tabs.length === 0 ? (
+        {visibleTabs.length === 0 && (
           <div className={styles.empty}>
             <TerminalSquare size={24} aria-hidden="true" />
             <strong>没有打开的终端</strong>
@@ -786,21 +870,23 @@ export function TerminalView({
               新建终端
             </button>
           </div>
-        ) : (
-          tabs.map(tab => (
-            <TerminalPane
-              key={`${tab.key}:${String(tab.restart)}`}
-              tabKey={tab.key}
-              api={api}
-              projectId={projectId}
-              {...(tab.taskId === undefined ? {} : { taskId: tab.taskId })}
-              active={visible && tab.key === activeKey}
-              onActions={registerActions}
-              onStatus={handleStatus}
-              onError={setError}
-            />
-          ))
         )}
+        {tabs.map(tab => (
+          <TerminalPane
+            key={`${tab.key}:${String(tab.restart)}`}
+            tabKey={tab.key}
+            api={api}
+            projectId={projectId}
+            {...(tab.taskId === undefined ? {} : { taskId: tab.taskId })}
+            {...(tab.preservedTerminalId === undefined
+              ? {}
+              : { existingTerminalId: tab.preservedTerminalId })}
+            active={visible && !closingKeys.has(tab.key) && tab.key === activeKey}
+            onActions={registerActions}
+            onStatus={handleStatus}
+            onError={setError}
+          />
+        ))}
       </div>
     </section>
   )

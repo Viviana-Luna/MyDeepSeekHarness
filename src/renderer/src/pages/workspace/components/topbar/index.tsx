@@ -3,8 +3,6 @@
  * 运行在 renderer；按顶栏显隐状态自动在 `.session-chrome` 与 `.floating-tab-actions` 之间切换操作控件。
  */
 import {
-  Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   FileCode2,
@@ -30,7 +28,6 @@ import {
 import { useWorkspaceSnapshot, useWorkspaceStore } from '../../../../hooks/useWorkspace.ts'
 import { useProjectWorkspace } from '../../../../features/project-workspace/ProjectWorkspaceProvider.tsx'
 import { useSessionTabGlass } from './useSessionTabGlass.ts'
-import { AnchoredMenu } from '../../../../shared/ui/AnchoredMenu.tsx'
 import { ElasticPress } from '../../../../shared/ui/ElasticPress.tsx'
 import { NewTabMenu, type NewTabMenuItem } from './NewTabMenu.tsx'
 import { WindowControls } from '../../../../features/window/WindowControls.tsx'
@@ -54,10 +51,6 @@ function tabKindLabel(tab: WorkTab) {
     diff: 'Git 差异',
     file: '文件',
   }[tab.kind]
-}
-
-function unreadCount(group: { tabs: readonly WorkTab[] }) {
-  return group.tabs.filter(tab => tab.unread).length
 }
 
 /** 顶栏收起时渲染于主浮岛右上角的苹果 Liquid Glass 液态玻璃操作胶囊。 */
@@ -142,7 +135,7 @@ export function Topbar({
     snapshot.projects,
     project?.id,
   )
-  const overviewGroups = [...groups, { name: 'SSH', tabs: sshTabs }]
+  const overviewGroups = [...groups, { id: 'ssh', name: 'SSH', tabs: sshTabs }]
   const visited = new Set<string>()
   const tabUnits = groupTabs.flatMap(tab => {
     if (visited.has(tab.id)) return []
@@ -161,15 +154,6 @@ export function Topbar({
     ]
   })
   const tabs = tabUnits.flatMap(unit => unit.tabs)
-  const [groupMenuOpen, setGroupMenuOpen] = useState(false)
-  useEffect(() => {
-    // 展开侧栏后入口卸载，同时清掉菜单状态，避免再次收起侧栏时旧菜单自动弹出。
-    if (!snapshot.navigationCollapsed) setGroupMenuOpen(false)
-  }, [snapshot.navigationCollapsed])
-  const groupMenuAnchor = useRef<HTMLButtonElement>(null)
-  const otherGroups = groups.filter(group => group !== activeGroup)
-  const otherUnread = otherGroups.reduce((count, group) => count + unreadCount(group), 0)
-  const otherRunning = otherGroups.some(group => group.tabs.some(tab => tab.running))
   const tabLayout = JSON.stringify([
     activeGroup?.id,
     tabUnits.map(unit => unit.tabs.map(tab => [tab.id, tab.title, tab.preview, tab.running])),
@@ -541,6 +525,9 @@ export function Topbar({
 
   const [overview, setOverview] = useState(false)
   const [query, setQuery] = useState('')
+  useEffect(() => {
+    if (overview && resources.length === 0) setOverview(false)
+  }, [overview, resources.length])
   const closeTab = (id: string) => {
     const tab = resources.find(item => item.id === id)
     if (!tab || tab.closeDisabled) return
@@ -559,9 +546,8 @@ export function Topbar({
     terminalTabs?.merge(id)
   }
 
-  const closeGroup = (group: (typeof groups)[number]) => {
-    setGroupMenuOpen(false)
-    groupMenuAnchor.current?.focus()
+  const closeGroup = (group: { id: string; tabs: readonly WorkTab[] }) => {
+    setOverview(false)
     const sessions = group.tabs.filter(tab => tab.kind === 'session').map(tab => tab.id)
     const closeOthers = () => {
       for (const tab of group.tabs) {
@@ -617,6 +603,12 @@ export function Topbar({
       window.removeEventListener('keydown', keydown, true)
     }
   }, [selectedId, resources, overview])
+  const terminalOwner =
+    (activeGroup?.id !== undefined && activeGroup.id !== 'unassigned'
+      ? snapshot.projects.find(item => item.id === activeGroup.id)
+      : undefined) ??
+    project ??
+    snapshot.projects.find(item => item.projectAccessId !== undefined)
   const newItems = [
     {
       key: 'session',
@@ -629,7 +621,7 @@ export function Topbar({
       label: '新终端',
       icon: <TerminalSquare size={15} />,
       disabled:
-        !project?.projectAccessId ||
+        !terminalOwner?.projectAccessId ||
         (terminalTabs?.terminalGroups.reduce((count, group) => count + group.tabs.length, 0) ??
           0) >= DESKTOP_TERMINAL_LIMITS.maxTerminals,
     },
@@ -648,8 +640,11 @@ export function Topbar({
           : (activeGroup?.id ?? snapshot.selectedProjectId ?? undefined),
       )
     else if (key === 'terminal') {
+      if (terminalOwner?.projectAccessId !== undefined) {
+        terminalTabs?.selectTerminalProject(terminalOwner.projectAccessId)
+      }
       const group = terminalTabs?.terminalGroups.find(
-        item => item.projectAccessId === project?.projectAccessId,
+        item => item.projectAccessId === terminalOwner?.projectAccessId,
       )
       group?.create?.()
       store.setView('terminal')
@@ -657,7 +652,7 @@ export function Topbar({
       const browserProjectId =
         activeGroup?.id !== undefined && activeGroup.id !== 'unassigned'
           ? activeGroup.id
-          : (project?.id ?? 'unassigned')
+          : (project?.id ?? snapshot.projects[0]?.id ?? 'unassigned')
       terminalTabs?.openBrowser(browserProjectId)
       store.setView('browser')
     }
@@ -704,96 +699,6 @@ export function Topbar({
         aria-hidden={!visible}
         inert={!visible}
       >
-        {snapshot.navigationCollapsed && groups.length > 0 && activeGroup !== undefined && (
-          <>
-            <button
-              type="button"
-              className="session-group-switcher"
-              ref={groupMenuAnchor}
-              aria-label={`切换标签组：${activeGroup.name}${otherUnread > 0 ? `，其他组有 ${String(otherUnread)} 个会话更新` : ''}`}
-              aria-haspopup="menu"
-              aria-expanded={groupMenuOpen}
-              title={
-                otherUnread > 0 ? `其他组有 ${String(otherUnread)} 个会话更新` : activeGroup.name
-              }
-              onClick={() => {
-                setGroupMenuOpen(open => !open)
-              }}
-            >
-              <span className="session-group-name">{activeGroup.name}</span>
-              {otherRunning && (
-                <LoaderCircle className="spin" size={12} aria-label="其他组进行中" />
-              )}
-              {otherUnread > 0 && <span className="session-group-unread">{otherUnread}</span>}
-              <ChevronDown size={12} aria-hidden="true" />
-            </button>
-            <AnchoredMenu
-              open={visible && groupMenuOpen}
-              anchorRef={groupMenuAnchor}
-              side="bottom"
-              motion="morph"
-              className="project-focus-menu session-group-menu"
-              label="切换标签组"
-              onDismiss={() => {
-                setGroupMenuOpen(false)
-              }}
-            >
-              {groups.map(group => (
-                <div className="session-group-row" key={group.id}>
-                  <button
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={group === activeGroup}
-                    onClick={() => {
-                      const target =
-                        group === activeGroup
-                          ? undefined
-                          : (group.tabs.find(tab => tab.unread) ?? group.tabs[0])
-                      if (target !== undefined) target.select()
-                      else if (group !== activeGroup) workspace.selectProject(group.id)
-                      setGroupMenuOpen(false)
-                      groupMenuAnchor.current?.focus()
-                    }}
-                  >
-                    <span className="project-focus-menu__mark">
-                      {group === activeGroup && <Check size={14} aria-hidden="true" />}
-                    </span>
-                    <span>
-                      <strong>{group.name}</strong>
-                      <small>
-                        {group.tabs.length} 个标签
-                        {unreadCount(group) > 0
-                          ? ` · ${String(unreadCount(group))} 个会话有更新`
-                          : ''}
-                      </small>
-                    </span>
-                    {group.tabs.some(tab => tab.running) && (
-                      <LoaderCircle className="spin" size={13} aria-label="进行中" />
-                    )}
-                    {unreadCount(group) > 0 && (
-                      <span className="session-group-unread" aria-label="有未读更新">
-                        {unreadCount(group)}
-                      </span>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="session-group-close"
-                    aria-label={`关闭 ${group.name} 的全部标签`}
-                    title="关闭此工作区的全部标签"
-                    disabled={group.tabs.length === 0}
-                    onClick={() => {
-                      closeGroup(group)
-                    }}
-                  >
-                    <X size={15} />
-                  </button>
-                </div>
-              ))}
-            </AnchoredMenu>
-          </>
-        )}
         <div
           className="session-tabs-frame"
           data-overflow={overflow || undefined}
@@ -871,10 +776,15 @@ export function Topbar({
                                     },
                                     { key: 'merge', label: '合并分屏', disabled: !pairedGroup },
                                     { key: 'close', label: '关闭标签' },
+                                    ...(activeGroup !== undefined && activeGroup.tabs.length > 0
+                                      ? [{ key: 'close-group', label: '关闭当前工作区全部标签' }]
+                                      : []),
                                   ],
                                   onClick: ({ key }) => {
                                     if (key === 'merge') mergeSplit(tab.id)
                                     else if (key === 'close') closeTab(tab.id)
+                                    else if (key === 'close-group' && activeGroup !== undefined)
+                                      closeGroup(activeGroup)
                                     else splitTab(tab.id, key as 'left' | 'right')
                                   },
                                 }}
@@ -1157,7 +1067,7 @@ export function Topbar({
           }}
         />
         <div
-          className="tab-overview-grid"
+          className="tab-overview-groups"
           onKeyDown={event => {
             if (
               !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(
@@ -1180,49 +1090,71 @@ export function Topbar({
             buttons[next]?.focus()
           }}
         >
-          {overviewGroups.flatMap(group =>
-            group.tabs
-              .filter(tab =>
-                `${group.name} ${tab.title} ${tab.description}`
-                  .toLocaleLowerCase()
-                  .includes(query.trim().toLocaleLowerCase()),
-              )
-              .map(tab => (
-                <article
-                  key={tab.id}
-                  className="tab-overview-card"
-                  data-active={tab.active || undefined}
-                >
+          {overviewGroups.map(group => {
+            const matchedTabs = group.tabs.filter(tab =>
+              `${group.name} ${tab.title} ${tab.description}`
+                .toLocaleLowerCase()
+                .includes(query.trim().toLocaleLowerCase()),
+            )
+            if (matchedTabs.length === 0) return null
+            return (
+              <section key={group.id} className="tab-overview-group" aria-label={group.name}>
+                <header className="tab-overview-group__header">
+                  <strong>{group.name}</strong>
+                  <span>{group.tabs.length} 个标签</span>
                   <button
                     type="button"
-                    className="tab-overview-select"
+                    className="session-group-close tab-overview-group__close"
+                    aria-label={`关闭 ${group.name} 的全部标签`}
+                    title="关闭此工作区的全部标签"
                     onClick={() => {
-                      tab.select()
-                      setOverview(false)
+                      closeGroup(group)
                     }}
                   >
-                    <span className="tab-overview-type">
-                      {tabKindLabel(tab)}
-                      {tab.running ? ' · 进行中' : ''}
-                    </span>
-                    <strong>{tab.title}</strong>
-                    <span>{tab.description}</span>
-                    <small>{group.name}</small>
+                    <X size={13} aria-hidden="true" />
+                    <span>关闭整组</span>
                   </button>
-                  <button
-                    type="button"
-                    className="tab-overview-close"
-                    disabled={tab.closeDisabled}
-                    aria-label={`关闭标签：${tab.title}`}
-                    onClick={() => {
-                      closeTab(tab.id)
-                    }}
-                  >
-                    <X size={14} />
-                  </button>
-                </article>
-              )),
-          )}
+                </header>
+                <div className="tab-overview-grid">
+                  {matchedTabs.map(tab => (
+                    <article
+                      key={tab.id}
+                      className="tab-overview-card"
+                      data-active={tab.active || undefined}
+                    >
+                      <button
+                        type="button"
+                        className="tab-overview-select"
+                        onClick={() => {
+                          tab.select()
+                          setOverview(false)
+                        }}
+                      >
+                        <span className="tab-overview-type">
+                          {tabKindLabel(tab)}
+                          {tab.running ? ' · 进行中' : ''}
+                        </span>
+                        <strong>{tab.title}</strong>
+                        <span>{tab.description}</span>
+                        <small>{group.name}</small>
+                      </button>
+                      <button
+                        type="button"
+                        className="tab-overview-close"
+                        disabled={tab.closeDisabled}
+                        aria-label={`关闭标签：${tab.title}`}
+                        onClick={() => {
+                          closeTab(tab.id)
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )
+          })}
           {resources.length === 0 && <p>没有已打开的标签</p>}
         </div>
       </Modal>

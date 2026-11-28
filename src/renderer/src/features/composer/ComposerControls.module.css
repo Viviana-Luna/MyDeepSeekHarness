@@ -267,11 +267,20 @@
   position: sticky;
   z-index: 1;
   top: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
   padding: 5px 8px 3px;
   background: var(--surface);
   color: var(--muted);
   font: var(--weight-medium) var(--text-meta)/1.5 var(--font-ui);
+}
+.providerGroupName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .effortMenu {
   width: 152px;

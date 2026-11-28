@@ -1,5 +1,5 @@
 /**
- * 添加模型提供方弹窗：统一承接「预置服务」与「自定义服务」接入流程，替代旧版虚线按钮区。
+ * 添加提供商弹窗：统一承接「内置提供商」与「自定义提供商」接入流程。
  * 运行在 renderer；通过 useModelProviderForm 复用配置写入、模型拉取与凭据重试契约。
  */
 import { Button, Input, Modal, Segmented, Select } from 'antd'
@@ -18,7 +18,7 @@ import {
 } from './settings-model.ts'
 import { useModelProviderForm, type ModelProviderFormState } from './useModelProviderForm.ts'
 
-/** 添加提供方弹窗属性。 */
+/** 添加提供商弹窗属性。 */
 export interface ModelAddModalProps {
   readonly open: boolean
   readonly available: readonly HostModelProvider[]
@@ -46,14 +46,14 @@ function CustomProviderFields({
       <div className="models-field-grid">
         <div className="models-field">
           <label className="models-field__label" htmlFor="custom-provider-id">
-            <span>Provider ID</span>
+            <span>提供商 ID</span>
             <span className="models-field__required">必填</span>
           </label>
           <Input
             id="custom-provider-id"
             className="models-mono-input"
             autoFocus
-            aria-label="Provider ID"
+            aria-label="提供商 ID"
             value={form.route}
             disabled={form.blocked}
             placeholder="例如 my-gateway"
@@ -71,10 +71,10 @@ function CustomProviderFields({
           </label>
           <Input
             id="custom-provider-name"
-            aria-label="提供方显示名称"
+            aria-label="提供商显示名称"
             value={asString(form.draft.displayName)}
             disabled={form.blocked}
-            placeholder="例如我的模型网关"
+            placeholder="例如我的提供商"
             onChange={event => {
               form.setField('displayName', event.target.value)
             }}
@@ -128,7 +128,7 @@ function CustomProviderFields({
         </div>
         <Input.Password
           id="custom-provider-key"
-          aria-label="自定义提供方 API 密钥"
+          aria-label="自定义提供商 API 密钥"
           autoComplete="off"
           spellCheck={false}
           value={form.key}
@@ -254,7 +254,7 @@ function PresetProviderAddForm({
               aria-label="API 地址"
               value={asString(form.draft.baseURL)}
               disabled={form.blocked}
-              placeholder={asString(form.effective.baseURL) || '使用提供方默认地址'}
+              placeholder={asString(form.effective.baseURL) || '使用提供商默认地址'}
               onChange={event => {
                 form.setField('baseURL', event.target.value)
               }}
@@ -280,7 +280,7 @@ function PresetProviderAddForm({
           取消
         </Button>
         <Button type="primary" htmlType="submit" loading={form.busy} disabled={readOnly}>
-          {form.committed ? '重试保存密钥' : '添加提供方'}
+          {form.committed ? '重试保存密钥' : '添加提供商'}
         </Button>
       </div>
     </form>
@@ -329,7 +329,7 @@ function CustomProviderAddForm({
   return (
     <form
       className="models-modal-form"
-      aria-label="添加自定义提供方"
+      aria-label="添加自定义提供商"
       onSubmit={event => {
         event.preventDefault()
         void form.submit()
@@ -371,7 +371,7 @@ function CustomProviderAddForm({
           取消
         </Button>
         <Button type="primary" htmlType="submit" loading={form.busy} disabled={readOnly}>
-          {form.committed ? '重试保存密钥' : '创建提供方'}
+          {form.committed ? '重试保存密钥' : '创建提供商'}
         </Button>
       </div>
     </form>
@@ -410,8 +410,8 @@ function ModelAddModalContent(
         value={mode}
         disabled={locked}
         options={[
-          { value: 'preset', label: '预置服务', disabled: available.length === 0 },
-          { value: 'custom', label: '自定义服务', disabled: customNamespace === undefined },
+          { value: 'preset', label: '内置提供商', disabled: available.length === 0 },
+          { value: 'custom', label: '自定义提供商', disabled: customNamespace === undefined },
         ]}
         onChange={next => {
           setMode(next)
@@ -422,14 +422,14 @@ function ModelAddModalContent(
         <>
           <div className="models-field">
             <label className="models-field__label" htmlFor="preset-provider-select">
-              <span>选择内置服务</span>
-              <span className="models-field__optional">共 {available.length} 项可添加</span>
+              <span>选择提供商</span>
+              <span className="models-field__optional">共 {available.length} 个可添加</span>
             </label>
             <Select<string>
               id="preset-provider-select"
               showSearch
               optionFilterProp="label"
-              aria-label="选择提供方"
+              aria-label="选择提供商"
               value={activePreset.provider}
               disabled={locked}
               options={available.map(provider => ({
@@ -438,7 +438,21 @@ function ModelAddModalContent(
                   provider.displayName === provider.provider
                     ? provider.displayName
                     : `${provider.displayName} (${provider.provider})`,
+                provider,
               }))}
+              optionRender={option => {
+                const item = option.data.provider
+                return (
+                  <span className="models-select-option">
+                    <ProviderBrandIcon
+                      providerId={item.provider}
+                      displayName={item.displayName}
+                      size="sm"
+                    />
+                    <span className="models-select-option__label">{option.data.label}</span>
+                  </span>
+                )
+              }}
               onChange={setSelectedId}
             />
           </div>
@@ -478,7 +492,7 @@ function ModelAddModalContent(
   )
 }
 
-/** 统一添加预置与自定义模型提供方的厚玻璃弹窗。 */
+/** 统一添加内置与自定义提供商的厚玻璃弹窗。 */
 export function ModelAddModal(props: ModelAddModalProps) {
   const [locked, setLocked] = useState(false)
 
@@ -491,7 +505,7 @@ export function ModelAddModal(props: ModelAddModalProps) {
       footer={null}
       closable={!locked}
       mask={{ closable: !locked }}
-      title="添加提供方"
+      title="添加提供商"
       classNames={{
         container: 'mydsh-glass-dialog models-glass-modal',
         mask: 'mydsh-glass-mask',

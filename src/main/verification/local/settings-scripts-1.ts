@@ -133,8 +133,18 @@ export const SETTINGS_SCRIPT_3 = `(async () => {
         const dialog = document.querySelector('.settings-dialog[role="dialog"]')
         const content = dialog?.querySelector('.settings-content')
         const provider = dialog?.querySelector('.settings-provider-summary')
+        const sectionHeading = [...(dialog?.querySelectorAll('h3') ?? [])]
+          .find(node => node.textContent?.trim() === '提供商')
+        const emblem = provider?.querySelector('.models-provider-emblem')
+        const colorImg = emblem?.querySelector('img.models-provider-emblem__img')
+        const monoMask = emblem?.querySelector('.models-provider-emblem__mask')
+        const logoReady =
+          (colorImg instanceof HTMLImageElement && colorImg.complete && colorImg.naturalWidth > 0)
+          || (monoMask instanceof HTMLElement && getComputedStyle(monoMask).maskImage !== 'none')
         if (provider instanceof HTMLButtonElement
           && provider.getAttribute('aria-expanded') === 'false'
+          && sectionHeading instanceof HTMLElement
+          && logoReady
           && dialog?.querySelector('.models-detail-view') === null
           && content instanceof HTMLElement
           && content.scrollWidth <= content.clientWidth + 1) return true

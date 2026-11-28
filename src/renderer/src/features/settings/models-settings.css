@@ -68,220 +68,21 @@
   gap: 8px;
 }
 
-/* 品牌低饱和徽章（暗色默认，配合官方矢量 SVG 标志） */
-.models-provider-emblem {
-  --brand-fg: var(--accent);
-  --brand-bg: color-mix(in srgb, var(--accent) 13%, var(--surface));
-  --brand-border: color-mix(in srgb, var(--accent) 30%, var(--line));
-  display: grid;
-  width: 40px;
-  height: 40px;
-  flex: none;
-  place-items: center;
-  border: 1px solid var(--brand-border);
-  border-radius: 11px;
-  background: var(--brand-bg);
-  color: var(--brand-fg);
-  box-shadow: inset 0 1px var(--island-rim);
+/* 提供商下拉选项行（带官方品牌标志） */
+.models-select-option {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
 }
 
-.models-provider-emblem--lg {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
+.models-select-option__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.models-provider-emblem[data-brand='deepseek'] {
-  --brand-fg: #7a98ff;
-  --brand-bg: color-mix(in srgb, #5b7cff 14%, var(--surface));
-  --brand-border: color-mix(in srgb, #5b7cff 32%, var(--line));
-}
-
-.models-provider-emblem[data-brand='openai'] {
-  --brand-fg: #62c4a3;
-  --brand-bg: color-mix(in srgb, #3eb489 14%, var(--surface));
-  --brand-border: color-mix(in srgb, #3eb489 32%, var(--line));
-}
-
-.models-provider-emblem[data-brand='anthropic'] {
-  --brand-fg: #df9b72;
-  --brand-bg: color-mix(in srgb, #d48256 14%, var(--surface));
-  --brand-border: color-mix(in srgb, #d48256 32%, var(--line));
-}
-
-.models-provider-emblem[data-brand='google'] {
-  --brand-fg: #78b7f0;
-  --brand-bg: color-mix(in srgb, #4f9be6 14%, var(--surface));
-  --brand-border: color-mix(in srgb, #4f9be6 32%, var(--line));
-}
-
-.models-provider-emblem[data-brand='zhipu'] {
-  --brand-fg: #6bc4d8;
-  --brand-bg: color-mix(in srgb, #43acc4 14%, var(--surface));
-  --brand-border: color-mix(in srgb, #43acc4 32%, var(--line));
-}
-
-.models-provider-emblem[data-brand='qwen'] {
-  --brand-fg: #a68df2;
-  --brand-bg: color-mix(in srgb, #8566e6 14%, var(--surface));
-  --brand-border: color-mix(in srgb, #8566e6 32%, var(--line));
-}
-
-.models-provider-emblem[data-brand='moonshot'] {
-  --brand-fg: #89a8e8;
-  --brand-bg: color-mix(in srgb, #6284d4 14%, var(--surface));
-  --brand-border: color-mix(in srgb, #6284d4 32%, var(--line));
-}
-
-.models-provider-emblem[data-brand='minimax'] {
-  --brand-fg: #e88b9c;
-  --brand-bg: color-mix(in srgb, #d4667d 14%, var(--surface));
-  --brand-border: color-mix(in srgb, #d4667d 32%, var(--line));
-}
-
-.models-provider-emblem[data-brand='xai'] {
-  --brand-fg: #cfd6e6;
-  --brand-bg: color-mix(in srgb, #9aa4b8 14%, var(--surface));
-  --brand-border: color-mix(in srgb, #9aa4b8 30%, var(--line));
-}
-
-.models-provider-emblem[data-brand='mistral'] {
-  --brand-fg: #eba15b;
-  --brand-bg: color-mix(in srgb, #de8735 14%, var(--surface));
-  --brand-border: color-mix(in srgb, #de8735 32%, var(--line));
-}
-
-.models-provider-emblem[data-brand='openrouter'] {
-  --brand-fg: #b296f0;
-  --brand-bg: color-mix(in srgb, #9373e2 14%, var(--surface));
-  --brand-border: color-mix(in srgb, #9373e2 32%, var(--line));
-}
-
-.models-provider-emblem[data-brand='ollama'] {
-  --brand-fg: #d0d5df;
-  --brand-bg: color-mix(in srgb, #9da5b4 14%, var(--surface));
-  --brand-border: color-mix(in srgb, #9da5b4 30%, var(--line));
-}
-
-.models-provider-emblem[data-brand='volcengine'] {
-  --brand-fg: #6ba9f5;
-  --brand-bg: color-mix(in srgb, #448ae8 14%, var(--surface));
-  --brand-border: color-mix(in srgb, #448ae8 32%, var(--line));
-}
-
-.models-provider-emblem[data-brand='azure'] {
-  --brand-fg: #63b3ed;
-  --brand-bg: color-mix(in srgb, #3192dc 14%, var(--surface));
-  --brand-border: color-mix(in srgb, #3192dc 32%, var(--line));
-}
-
-.models-provider-emblem[data-brand='bedrock'] {
-  --brand-fg: #5cc8b5;
-  --brand-bg: color-mix(in srgb, #34ae98 14%, var(--surface));
-  --brand-border: color-mix(in srgb, #34ae98 32%, var(--line));
-}
-
-.models-provider-emblem[data-brand='custom'] {
-  --brand-fg: var(--muted);
-  --brand-bg: color-mix(in srgb, var(--surface-raised) 84%, transparent);
-  --brand-border: var(--line-strong);
-}
-
-:root[data-color-scheme='light'] .models-provider-emblem[data-brand='deepseek'] {
-  --brand-fg: #3452c7;
-}
-:root[data-color-scheme='light'] .models-provider-emblem[data-brand='openai'] {
-  --brand-fg: #1d7e5c;
-}
-:root[data-color-scheme='light'] .models-provider-emblem[data-brand='anthropic'] {
-  --brand-fg: #a65429;
-}
-:root[data-color-scheme='light'] .models-provider-emblem[data-brand='google'] {
-  --brand-fg: #246ab2;
-}
-:root[data-color-scheme='light'] .models-provider-emblem[data-brand='zhipu'] {
-  --brand-fg: #1c788e;
-}
-:root[data-color-scheme='light'] .models-provider-emblem[data-brand='qwen'] {
-  --brand-fg: #5f44b8;
-}
-:root[data-color-scheme='light'] .models-provider-emblem[data-brand='moonshot'] {
-  --brand-fg: #37569e;
-}
-:root[data-color-scheme='light'] .models-provider-emblem[data-brand='minimax'] {
-  --brand-fg: #b83c58;
-}
-:root[data-color-scheme='light'] .models-provider-emblem[data-brand='xai'] {
-  --brand-fg: #2d3340;
-}
-:root[data-color-scheme='light'] .models-provider-emblem[data-brand='mistral'] {
-  --brand-fg: #c26215;
-}
-:root[data-color-scheme='light'] .models-provider-emblem[data-brand='openrouter'] {
-  --brand-fg: #6647b5;
-}
-:root[data-color-scheme='light'] .models-provider-emblem[data-brand='ollama'] {
-  --brand-fg: #3c4250;
-}
-:root[data-color-scheme='light'] .models-provider-emblem[data-brand='volcengine'] {
-  --brand-fg: #2563c2;
-}
-:root[data-color-scheme='light'] .models-provider-emblem[data-brand='azure'] {
-  --brand-fg: #0070c0;
-}
-:root[data-color-scheme='light'] .models-provider-emblem[data-brand='bedrock'] {
-  --brand-fg: #1a7f70;
-}
-
-@media (prefers-color-scheme: light) {
-  :root:not([data-color-scheme='dark']) .models-provider-emblem[data-brand='deepseek'] {
-    --brand-fg: #3452c7;
-  }
-  :root:not([data-color-scheme='dark']) .models-provider-emblem[data-brand='openai'] {
-    --brand-fg: #1d7e5c;
-  }
-  :root:not([data-color-scheme='dark']) .models-provider-emblem[data-brand='anthropic'] {
-    --brand-fg: #a65429;
-  }
-  :root:not([data-color-scheme='dark']) .models-provider-emblem[data-brand='google'] {
-    --brand-fg: #246ab2;
-  }
-  :root:not([data-color-scheme='dark']) .models-provider-emblem[data-brand='zhipu'] {
-    --brand-fg: #1c788e;
-  }
-  :root:not([data-color-scheme='dark']) .models-provider-emblem[data-brand='qwen'] {
-    --brand-fg: #5f44b8;
-  }
-  :root:not([data-color-scheme='dark']) .models-provider-emblem[data-brand='moonshot'] {
-    --brand-fg: #37569e;
-  }
-  :root:not([data-color-scheme='dark']) .models-provider-emblem[data-brand='minimax'] {
-    --brand-fg: #b83c58;
-  }
-  :root:not([data-color-scheme='dark']) .models-provider-emblem[data-brand='xai'] {
-    --brand-fg: #2d3340;
-  }
-  :root:not([data-color-scheme='dark']) .models-provider-emblem[data-brand='mistral'] {
-    --brand-fg: #c26215;
-  }
-  :root:not([data-color-scheme='dark']) .models-provider-emblem[data-brand='openrouter'] {
-    --brand-fg: #6647b5;
-  }
-  :root:not([data-color-scheme='dark']) .models-provider-emblem[data-brand='ollama'] {
-    --brand-fg: #3c4250;
-  }
-  :root:not([data-color-scheme='dark']) .models-provider-emblem[data-brand='volcengine'] {
-    --brand-fg: #2563c2;
-  }
-  :root:not([data-color-scheme='dark']) .models-provider-emblem[data-brand='azure'] {
-    --brand-fg: #0070c0;
-  }
-  :root:not([data-color-scheme='dark']) .models-provider-emblem[data-brand='bedrock'] {
-    --brand-fg: #1a7f70;
-  }
-}
-
-/* 总览：模型服务卡片列表 */
+/* 总览：提供商卡片列表 */
 .models-provider-list {
   display: grid;
   gap: 10px;
@@ -754,7 +555,7 @@
   background: color-mix(in srgb, var(--surface-raised) 36%, transparent);
 }
 
-/* 模型目录卡片与只读列表 */
+/* 模型卡片与只读列表 */
 .models-catalog--compact {
   overflow: hidden;
   border: 1px solid var(--line);
@@ -954,7 +755,7 @@
   line-height: 1.5;
 }
 
-/* 弹窗内部布局（添加提供方 / 编辑模型 / 发现模型 / 危险确认） */
+/* 弹窗内部布局（添加提供商 / 编辑模型 / 拉取模型 / 危险确认） */
 .models-add-modal,
 .models-modal-form,
 .models-discovery-modal,
@@ -1297,7 +1098,6 @@
   .models-reasoning-box,
   .models-effort-chip,
   .models-discovery-list,
-  .models-provider-emblem,
   .models-chip,
   .models-code-pill,
   .models-badge,

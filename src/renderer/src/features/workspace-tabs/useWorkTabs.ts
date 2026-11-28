@@ -5,7 +5,10 @@
 import { useWorkspaceSnapshot, useWorkspaceStore } from '../../hooks/useWorkspace.ts'
 import { sessionTitle } from '../../domain/session.ts'
 import { sessionsForProject } from '../../domain/project.ts'
-import { useProjectWorkspace } from '../project-workspace/ProjectWorkspaceProvider.tsx'
+import {
+  useOptionalProjectWorkspace,
+  useProjectWorkspace,
+} from '../project-workspace/ProjectWorkspaceProvider.tsx'
 import { useWorkspaceTabs, type WorkTab } from './WorkspaceTabsProvider.tsx'
 import { diffKey, useOptionalSourceControl } from '../source-control/SourceControlProvider.tsx'
 
@@ -16,18 +19,20 @@ export {
   type WorkTabGroup,
 } from './work-tab-groups.ts'
 
-/** 收集当前工作区全部已打开标签并附加分屏组焦点语义。 */
-export function useWorkTabs(): WorkTab[] {
+function useResolvedWorkTabs(workspace: ReturnType<typeof useOptionalProjectWorkspace>): WorkTab[] {
   const snapshot = useWorkspaceSnapshot()
   const store = useWorkspaceStore()
-  const workspace = useProjectWorkspace()
   const terminalTabs = useWorkspaceTabs()
   const source = useOptionalSourceControl()
-  const project = store.selectedProject()
-  const resources: WorkTab[] = snapshot.openedSessionIds.flatMap(id => {
-    const session = snapshot.sessions.find(item => item.sessionId === id)
+  const project = store.selectedProject?.()
+  const projects = snapshot.projects ?? []
+  const sessions = snapshot.sessions ?? []
+  const openedSessionIds = snapshot.openedSessionIds ?? []
+  const unreadSessionIds = snapshot.unreadSessionIds ?? []
+  const resources: WorkTab[] = openedSessionIds.flatMap(id => {
+    const session = sessions.find(item => item.sessionId === id)
     if (session === undefined) return []
-    const owner = snapshot.projects.find(item => sessionsForProject([session], item).length > 0)
+    const owner = projects.find(item => sessionsForProject([session], item).length > 0)
     return [
       {
         id,
@@ -39,17 +44,19 @@ export function useWorkTabs(): WorkTab[] {
           id === snapshot.selectedSessionId &&
           ['conversation', 'trajectory'].includes(snapshot.activeView),
         running: session.running,
-        unread: snapshot.unreadSessionIds.includes(id),
+        unread: unreadSessionIds.includes(id),
         select: () => {
-          workspace.selectSessionTab(id)
+          if (workspace !== null) workspace.selectSessionTab(id)
+          else store.selectSessionTab?.(id)
         },
         close: () => {
-          workspace.closeSessionTab(id)
+          if (workspace !== null) workspace.closeSessionTab(id)
+          else store.closeSessionTab?.(id)
         },
       },
     ]
   })
-  if (project !== undefined) {
+  if (project !== undefined && workspace !== null) {
     for (const file of workspace.openFiles) {
       const selected = workspace.selectedFile?.relativePath === file.relativePath
       resources.push({
@@ -77,8 +84,13 @@ export function useWorkTabs(): WorkTab[] {
       })
     }
   }
+  const activeTerminalAccessId =
+    project?.projectAccessId ??
+    terminalTabs?.activeTerminalProjectAccessId ??
+    terminalTabs?.terminalGroups?.findLast(item => item.tabs.length > 0)?.projectAccessId ??
+    null
   for (const group of terminalTabs?.terminalGroups ?? []) {
-    const owner = snapshot.projects.find(item => item.projectAccessId === group.projectAccessId)
+    const owner = projects.find(item => item.projectAccessId === group.projectAccessId)
     if (owner === undefined) continue
     for (const tab of group.tabs)
       resources.push({
@@ -89,15 +101,18 @@ export function useWorkTabs(): WorkTab[] {
         title: tab.title,
         description: `${tab.title} · ${tab.description}`,
         active:
-          owner.id === project?.id &&
+          group.projectAccessId === activeTerminalAccessId &&
           snapshot.activeView === 'terminal' &&
           group.activeKey === tab.key,
         running: tab.status === 'starting',
         select: () => {
-          workspace.navigateProjectTab(owner.id, () => {
+          const activate = () => {
+            terminalTabs?.selectTerminalProject(group.projectAccessId)
             group.select(tab.key)
             store.setView('terminal')
-          })
+          }
+          if (workspace !== null) workspace.navigateProjectTab(owner.id, activate)
+          else activate()
         },
         close: () => {
           group.close(tab.key)
@@ -158,7 +173,7 @@ export function useWorkTabs(): WorkTab[] {
         },
       })
   const rawActive = resources.find(tab => tab.active)
-  const group = terminalTabs?.splitGroups.find(
+  const group = terminalTabs?.splitGroups?.find(
     item => rawActive !== undefined && item.tabs.includes(rawActive.id),
   )
   const focused = group?.tabs.includes(terminalTabs?.focusedTabId ?? '')
@@ -176,4 +191,14 @@ export function useWorkTabs(): WorkTab[] {
       },
     })
   })
+}
+
+/** 收集当前工作区全部已打开标签并附加分屏组焦点语义。 */
+export function useWorkTabs(): WorkTab[] {
+  return useResolvedWorkTabs(useProjectWorkspace())
+}
+
+/** 在可能脱离 ProjectWorkspaceProvider 的上下文（如输入框胶囊或单测）中安全收集工作标签。 */
+export function useOptionalWorkTabs(): WorkTab[] {
+  return useResolvedWorkTabs(useOptionalProjectWorkspace())
 }

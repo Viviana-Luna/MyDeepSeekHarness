@@ -16,6 +16,13 @@
 .plugin-manager--standalone .plugin-manager__body {
   padding: 30px 34px 64px;
 }
+/* Windows 独立浮动横向胶囊位于主浮岛顶缘右侧，插件页顶距让出 46px 避免与标题操作区重叠。 */
+.app-shell[data-tab-actions-floating='true']
+  .main-island
+  .plugin-manager--standalone
+  .plugin-manager__body {
+  padding-top: 46px;
+}
 .plugin-manager__header {
   display: flex;
   align-items: flex-start;

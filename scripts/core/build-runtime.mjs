@@ -13,6 +13,7 @@ import { buildDatabase } from '../../packages/connections/database/build.mjs'
 import { buildSsh } from '../../packages/connections/ssh/build.mjs'
 import { buildDesktopServices } from '../../packages/desktop-services/build.mjs'
 import { buildChatGPT } from '../../packages/llm/llm-chatgpt/build.mjs'
+import { buildUiSdk } from '../../packages/ui-sdk/build.mjs'
 import { patchNodePty } from './patch-node-pty.mjs'
 import { prepareWindowsTools } from './windows-tools.mjs'
 
@@ -127,7 +128,6 @@ function hashSingleFileSync(hash, relativeFile) {
 
 function computeLibrariesHash(records) {
   const hash = createHash('sha256')
-  hash.update(`node:${process.versions.node}\0`)
   for (const file of [
     'package.json',
     'pnpm-lock.yaml',
@@ -142,10 +142,36 @@ function computeLibrariesHash(records) {
   return hash.digest('hex')
 }
 
+function hashExactDirectorySync(hash, relativeTarget) {
+  const fullTarget = join(root, relativeTarget)
+  if (!existsSync(fullTarget)) {
+    hash.update(`missing:${relativeTarget}\0`)
+    return
+  }
+  const stack = [fullTarget]
+  while (stack.length > 0) {
+    const current = stack.pop()
+    const entries = readdirSync(current, { withFileTypes: true }).toSorted((a, b) =>
+      b.name.localeCompare(a.name),
+    )
+    for (const entry of entries) {
+      const childPath = join(current, entry.name)
+      if (entry.isDirectory()) {
+        stack.push(childPath)
+      } else {
+        const key = relative(root, childPath).replaceAll('\\', '/')
+        hash.update(`file:${key}\0`)
+        hash.update(readFileSync(childPath))
+        hash.update('\0')
+      }
+    }
+  }
+}
+
 function computeBundleHash(librariesHash) {
   const hash = createHash('sha256')
   hash.update(`libs:${librariesHash}\0platform:${process.platform}\0arch:${process.arch}\0`)
-  for (const file of ['docs/plugin-development.zh.md', 'tsconfig.json', 'tsconfig.renderer.json']) {
+  for (const file of ['docs/plugin-development.zh.md', 'tsconfig.json']) {
     hashSingleFileSync(hash, file)
   }
   for (const directory of [
@@ -156,11 +182,11 @@ function computeBundleHash(librariesHash) {
     'packages/desktop-services',
     'src/runtime',
     'src/shared',
-    'src/renderer/src',
     'scripts/core',
   ]) {
     hashInputPathSync(hash, directory)
   }
+  hashExactDirectorySync(hash, 'packages/ui-sdk/lib')
   return hash.digest('hex')
 }
 
@@ -400,7 +426,6 @@ async function copyRuntimeAssetsAndServices(appVersion, context) {
     filter: path =>
       !relative(join(root, 'packages/plugin-sdk'), path).split(/[\\/]/u).includes('node_modules'),
   })
-  await import('../../packages/ui-sdk/build.mjs')
   await cp(join(root, 'packages/ui-sdk'), join(payload, 'node_modules/@mydsh/ui'), {
     recursive: true,
     filter: path =>
@@ -522,6 +547,7 @@ if (librariesOnly) {
   process.exit(0)
 }
 
+await buildUiSdk({ force: forceBuild })
 const bundleHash = computeBundleHash(steadyLibrariesHash)
 if (!forceBuild && cached.bundleHash === bundleHash && isBundleReady(app.version)) {
   console.log(`MyDSH 离线核心已复用增量缓存（版本 ${app.version}）。`)

@@ -308,15 +308,36 @@ describe('renderer 设置中心 Host 投影', () => {
     ).toBeNull()
   })
 
-  it('综合 ID、名称与自定义地址识别模型厂商官方品牌键', () => {
+  it('综合 ID、名称与自定义地址识别提供商官方品牌键', () => {
     expect(resolveProviderBrand('deepseek-official', 'DeepSeek').key).toBe('deepseek')
+    expect(resolveProviderBrand('google', 'google').key).toBe('google')
     expect(resolveProviderBrand('google-gemini', 'Gemini').key).toBe('google')
+    expect(resolveProviderBrand('google-vertex', 'Google Vertex').key).toBe('vertexai')
+    expect(resolveProviderBrand('anthropic', 'Anthropic').key).toBe('anthropic')
+    expect(resolveProviderBrand('claude-proxy', 'Claude').key).toBe('claude')
+    expect(resolveProviderBrand('openai', 'OpenAI').key).toBe('openai')
+    expect(resolveProviderBrand('zai-coding-cn', 'zai-coding-cn').key).toBe('zai')
+    expect(resolveProviderBrand('kimi-coding', 'kimi-coding').key).toBe('kimi')
+    expect(resolveProviderBrand('moonshotai', 'moonshotai').key).toBe('moonshot')
+    expect(resolveProviderBrand('ant-ling', 'ant-ling').key).toBe('ling')
+    expect(resolveProviderBrand('cloudflare-workers-ai', 'cloudflare-workers-ai').key).toBe(
+      'cloudflare',
+    )
+    expect(resolveProviderBrand('xiaomi-token-plan-cn', 'xiaomi-token-plan-cn').key).toBe('xiaomi')
+    expect(resolveProviderBrand('github-copilot', 'github-copilot').key).toBe('githubcopilot')
+    expect(resolveProviderBrand('vercel-ai-gateway', 'vercel-ai-gateway').key).toBe('vercel')
+    expect(resolveProviderBrand('opencode', 'opencode').key).toBe('opencode')
+    expect(resolveProviderBrand('typesafe', 'typesafe').key).toBe('typesafe')
     expect(
       resolveProviderBrand('my-gateway', '自建网关', 'https://open.bigmodel.cn/api/paas/v4').key,
     ).toBe('zhipu')
     expect(resolveProviderBrand('private-llm', '内部模型', 'https://llm.internal/v1')).toEqual({
       key: 'custom',
       label: '内部模型',
+    })
+    expect(resolveProviderBrand('', '')).toEqual({
+      key: 'custom',
+      label: '自定义提供商',
     })
   })
 

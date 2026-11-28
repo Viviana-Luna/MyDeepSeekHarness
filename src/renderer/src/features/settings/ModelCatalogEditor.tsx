@@ -1,6 +1,6 @@
 /**
- * 模型目录编辑器：以整洁只读列表展示可用模型及其能力芯片，并通过弹窗完成拉取、新增与编辑。
- * 运行在 renderer；仅维护当前目录的编辑与拉取弹窗状态，保存由外层提供方表单统一提交。
+ * 提供商下属模型编辑器：以只读列表展示可用模型及其能力芯片，并通过弹窗完成拉取、新增与编辑。
+ * 运行在 renderer；仅维护当前模型列表的编辑与拉取弹窗状态，保存由外层提供商表单统一提交。
  */
 import { Button, Tooltip } from 'antd'
 import {
@@ -26,7 +26,7 @@ import {
 /** 保留未编辑的模型能力字段，例如 reasoningEfforts、compat 和图片限制。 */
 export type ModelDraft = Record<string, unknown> & { id: string }
 
-/** 模型目录编辑器属性。 */
+/** 模型列表编辑器属性。 */
 export interface ModelCatalogEditorProps {
   readonly models: readonly ModelDraft[]
   readonly inherited: boolean
@@ -48,7 +48,7 @@ export function modelDrafts(value: unknown): ModelDraft[] {
     .map(model => structuredClone(model))
 }
 
-/** 校验模型目录草稿中的必填 ID、重复 ID、正整数容量与思考程度字段，通过时返回 null。 */
+/** 校验模型列表草稿中的必填 ID、重复 ID、正整数容量与思考程度字段，通过时返回 null。 */
 export function modelDraftError(models: readonly ModelDraft[]): string | null {
   const ids = new Set<string>()
   for (const [index, model] of models.entries()) {
@@ -182,11 +182,11 @@ function CatalogToolbarHeader({
     <header className="models-catalog__header">
       <div className="models-catalog__heading">
         <div className="models-catalog__title-row">
-          <strong>模型目录</strong>
+          <strong>模型</strong>
           <span className="settings-count-pill">{count} 个</span>
-          <span className="models-source-tag">{inherited ? '提供方默认目录' : '自定义目录'}</span>
+          <span className="models-source-tag">{inherited ? '提供商默认' : '自定义'}</span>
         </div>
-        {!compact && <small>支持从服务端点拉取目录，或手动添加与微调模型能力参数。</small>}
+        {!compact && <small>支持从端点拉取模型，或手动添加与调整模型能力参数。</small>}
       </div>
       <div className="models-catalog__toolbar">
         {canReset && !inherited && (
@@ -206,7 +206,7 @@ function CatalogToolbarHeader({
           icon={<RefreshCw size={13} aria-hidden="true" />}
           onClick={onDiscover}
         >
-          拉取可用模型
+          拉取模型
         </Button>
         <Button
           size="small"
@@ -221,7 +221,7 @@ function CatalogToolbarHeader({
   )
 }
 
-/** 展示并管理单个提供方的模型目录，支持端点拉取、弹窗编辑与恢复默认。 */
+/** 展示并管理单个提供商下的模型列表，支持端点拉取、弹窗编辑与恢复默认。 */
 export function ModelCatalogEditor({
   models,
   inherited,
@@ -281,7 +281,7 @@ export function ModelCatalogEditor({
   return (
     <section
       className={compact ? 'models-catalog models-catalog--compact' : 'models-card models-catalog'}
-      aria-label="模型目录"
+      aria-label="模型"
     >
       <CatalogToolbarHeader
         count={models.length}
@@ -310,11 +310,11 @@ export function ModelCatalogEditor({
       {models.length === 0 ? (
         <div className="models-empty-box" role="status">
           <Cpu size={18} aria-hidden="true" />
-          <strong>暂无可用模型</strong>
-          <small>点击“拉取可用模型”自动同步，或点击“手动添加”录入模型 ID。</small>
+          <strong>暂无模型</strong>
+          <small>点击“拉取模型”自动同步，或点击“手动添加”录入模型 ID。</small>
         </div>
       ) : (
-        <ul className="models-catalog__list" aria-label="已配置模型列表">
+        <ul className="models-catalog__list" aria-label="模型列表">
           {models.map((model, index) => (
             <ModelCatalogRow
               key={`${model.id}:${index}`}

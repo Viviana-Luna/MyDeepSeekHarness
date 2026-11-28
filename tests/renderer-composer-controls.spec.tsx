@@ -127,6 +127,7 @@ const mocked = vi.hoisted(() => ({
     clearSessionDraft: vi.fn(),
     setSessionDraft: vi.fn(),
     setNewSessionDraft: vi.fn(),
+    ensureComposerSession: vi.fn(async () => '新会话-1' as string | null),
     submitComposerInput: vi.fn(async () => true),
     sendMessage: vi.fn(async () => true),
     cancelSession: vi.fn(async () => undefined),
@@ -665,35 +666,57 @@ describe('Composer 会话控制', () => {
     expect(mocked.store.chooseSessionAttachments).toHaveBeenCalledWith('会话-1')
   })
 
-  it('新增项目没有真实会话时允许输入第一条消息，但保持会话级工具不可用', async () => {
+  it('新增项目没有真实会话时允许输入第一条消息与选择模型，点击模型入口后实体化会话并加载列表', async () => {
+    const previousModels = mocked.snapshot.sessionModels
     mocked.store.selectedSession.mockReturnValue(undefined)
     mocked.snapshot.selectedSessionId = null
     mocked.snapshot.newSessionProjectId = 'project:新项目'
-
-    const view = render(<Composer />)
-    const input = screen.getByPlaceholderText<HTMLTextAreaElement>('输入第一条消息以创建会话…')
-    expect(input).toHaveProperty('disabled', false)
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: '附加图片' })).toHaveProperty(
-      'disabled',
-      true,
-    )
-
-    fireEvent.change(input, { target: { value: '第一条消息' } })
-    expect(mocked.store.setNewSessionDraft).toHaveBeenCalledWith('第一条消息')
-
-    mocked.snapshot.newSessionDraft = '第一条消息'
-    view.rerender(<Composer />)
-    fireEvent.click(screen.getByRole('button', { name: '发送' }))
-
-    await waitFor(() => {
-      expect(mocked.store.submitComposerInput).toHaveBeenCalledWith(
-        '第一条消息',
-        'queue',
-        undefined,
-        undefined,
+    ;(mocked.snapshot as { sessionModels: typeof previousModels | null }).sessionModels = null
+    try {
+      const view = render(<Composer />)
+      const input = screen.getByPlaceholderText<HTMLTextAreaElement>('输入第一条消息以创建会话…')
+      expect(input).toHaveProperty('disabled', false)
+      expect(screen.getByRole<HTMLButtonElement>('button', { name: '附加图片' })).toHaveProperty(
+        'disabled',
+        true,
       )
-    })
-    expect(mocked.store.clearSessionDraft).not.toHaveBeenCalled()
+      const modelTrigger = screen.getByRole<HTMLButtonElement>('button', { name: '模型：选择模型' })
+      expect(modelTrigger.disabled).toBe(false)
+
+      mocked.store.ensureComposerSession.mockResolvedValueOnce(null)
+      mocked.snapshot.error = '创建新会话失败'
+      fireEvent.click(modelTrigger)
+      expect(await screen.findByRole('alert')).toHaveProperty('textContent', '创建新会话失败重试')
+
+      mocked.snapshot.error = null
+      mocked.store.ensureComposerSession.mockResolvedValueOnce('新会话-1')
+      fireEvent.click(screen.getByRole('menuitem', { name: '重试' }))
+      await waitFor(() => {
+        expect(mocked.store.ensureComposerSession).toHaveBeenCalledTimes(2)
+        expect(mocked.store.loadSessionModels).toHaveBeenCalledWith(false, '新会话-1')
+      })
+      expect(screen.getByRole('menu', { name: '选择模型' })).toBeTruthy()
+
+      fireEvent.change(input, { target: { value: '第一条消息' } })
+      expect(mocked.store.setNewSessionDraft).toHaveBeenCalledWith('第一条消息')
+
+      mocked.snapshot.newSessionDraft = '第一条消息'
+      view.rerender(<Composer />)
+      fireEvent.click(screen.getByRole('button', { name: '发送' }))
+
+      await waitFor(() => {
+        expect(mocked.store.submitComposerInput).toHaveBeenCalledWith(
+          '第一条消息',
+          'queue',
+          undefined,
+          undefined,
+        )
+      })
+      expect(mocked.store.clearSessionDraft).not.toHaveBeenCalled()
+    } finally {
+      mocked.snapshot.sessionModels = previousModels
+      mocked.snapshot.error = null
+    }
   })
 
   it('Host 重连期间禁用输入与会话控件，连接恢复后重新启用', () => {

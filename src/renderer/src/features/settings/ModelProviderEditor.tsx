@@ -1,5 +1,5 @@
 /**
- * 模型提供方详情编辑页：采用返回式钻取布局，分卡片呈现连接凭据、模型目录与危险移除区。
+ * 提供商详情编辑页：采用返回式钻取布局，分卡片呈现连接凭据、下属模型与危险移除区。
  * 运行在 renderer；复用 useModelProviderForm 保持设置差分、凭据重试与模型拉取逻辑一致。
  */
 import { Button, Input, Modal, Select } from 'antd'
@@ -17,7 +17,7 @@ import { StatusDot } from './SettingsPrimitives.tsx'
 import type { CredentialState, HostModelProvider, HostSettingsNamespace } from './settings-model.ts'
 import { useModelProviderForm, type ModelProviderFormState } from './useModelProviderForm.ts'
 
-/** 模型提供方子详情页属性。 */
+/** 提供商子详情页属性。 */
 export interface ModelProviderEditorProps {
   readonly provider: HostModelProvider
   readonly namespace: HostSettingsNamespace
@@ -70,7 +70,7 @@ function ProviderDetailHeader({
     <header className="models-detail-header">
       <button type="button" className="models-back-button" disabled={busy} onClick={onBack}>
         <ArrowLeft size={15} aria-hidden="true" />
-        <span>返回模型</span>
+        <span>返回提供商</span>
       </button>
 
       <div className="models-detail-header__row">
@@ -148,7 +148,7 @@ function PresetEndpointCollapse({ form }: { readonly form: ModelProviderFormStat
               aria-label="API 地址"
               value={asString(form.draft.baseURL)}
               disabled={form.blocked}
-              placeholder={asString(form.effective.baseURL) || '使用提供方默认地址'}
+              placeholder={asString(form.effective.baseURL) || '使用提供商默认地址'}
               onChange={event => {
                 form.setField('baseURL', event.target.value)
               }}
@@ -170,10 +170,10 @@ function DeclaredEndpointFields({ form }: { readonly form: ModelProviderFormStat
           </label>
           <Input
             id="provider-detail-display-name"
-            aria-label="提供方显示名称"
+            aria-label="提供商显示名称"
             value={asString(form.draft.displayName)}
             disabled={form.blocked}
-            placeholder="例如我的模型服务"
+            placeholder="例如我的提供商"
             onChange={event => {
               form.setField('displayName', event.target.value)
             }}
@@ -239,7 +239,7 @@ function ConnectionCredentialsCard({
       <header className="models-card__header">
         <div>
           <strong>连接与凭据</strong>
-          <small>管理此服务的 API 密钥、请求端点与协议配置。</small>
+          <small>管理此提供商的 API 密钥、请求端点与协议配置。</small>
         </div>
         <span className="models-chip models-chip--muted">
           <KeyRound size={11} aria-hidden="true" />
@@ -309,7 +309,7 @@ function ProviderDangerZone({
         <div className="models-danger-zone__copy">
           <div className="models-danger-zone__title">
             <ShieldAlert size={15} aria-hidden="true" />
-            <strong>移除提供方</strong>
+            <strong>移除提供商</strong>
           </div>
           <small>
             将移除“{providerName}
@@ -322,7 +322,7 @@ function ProviderDangerZone({
           icon={<Trash2 size={14} aria-hidden="true" />}
           onClick={onRequestRemove}
         >
-          移除提供方
+          移除提供商
         </Button>
       </div>
     </section>
@@ -368,7 +368,7 @@ function RemoveKeyConfirmModal({
       <div className="models-danger-modal-body">
         <p>
           移除“{providerName}
-          ”的本机密钥后，此提供方需要重新填写密钥或通过环境变量提供认证才能继续发起模型请求。
+          ”的本机密钥后，此提供商需要重新填写密钥或通过环境变量提供认证才能继续发起模型请求。
         </p>
         {error !== null && (
           <p className="settings-inline-error" role="alert">
@@ -380,7 +380,7 @@ function RemoveKeyConfirmModal({
   )
 }
 
-/** 渲染单个已配置模型提供方的子详情配置页。 */
+/** 渲染单个已配置提供商的子详情配置页。 */
 export function ModelProviderEditor({
   provider,
   namespace,
@@ -492,7 +492,7 @@ export function ModelProviderEditor({
           <small className="models-detail-footer__hint">
             {form.committed
               ? '配置已写入，仅 API 密钥待重试保存。'
-              : '连接设置与模型目录将在点击保存后统一生效。'}
+              : '连接设置与模型将在点击保存后统一生效。'}
           </small>
           <div className="models-detail-footer__actions">
             <Button disabled={form.busy} onClick={handleBack}>

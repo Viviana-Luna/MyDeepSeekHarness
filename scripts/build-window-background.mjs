@@ -24,8 +24,7 @@ if (process.platform === 'win32') {
   const cacheFile = join(root, '.build', 'native-window-background-cache.json')
   const hash = createHash('sha256')
   hash.update(readFileSync(join(root, 'native', 'window-background.cc')))
-  hash.update(readFileSync(join(root, 'scripts', 'build-window-background.mjs')))
-  hash.update(readFileSync(join(root, 'package.json')))
+  hash.update(readFileSync(join(headers.include_dir, 'node_api.h')))
   const fingerprint = hash.digest('hex')
   if (!process.argv.includes('--force') && existsSync(output) && existsSync(cacheFile)) {
     try {

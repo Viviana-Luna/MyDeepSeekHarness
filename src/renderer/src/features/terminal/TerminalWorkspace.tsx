@@ -5,6 +5,7 @@ import { useWorkspaceSnapshot, useWorkspaceStore } from '../../hooks/useWorkspac
 import type { IslandPresentationProps } from '../../plugins/registry.ts'
 import { CapabilityState } from '../../shared/ui/CapabilityState.tsx'
 import { useProjectTasks } from '../project-tasks/ProjectTasksProvider.tsx'
+import { useWorkspaceTabs } from '../workspace-tabs/WorkspaceTabsProvider.tsx'
 import { TerminalView } from './TerminalView.tsx'
 import styles from './TerminalView.module.css'
 
@@ -18,6 +19,7 @@ export function TerminalWorkspace({ placement, visibility }: IslandPresentationP
   const store = useWorkspaceStore()
   const snapshot = useWorkspaceSnapshot()
   const tasks = useProjectTasks()
+  const sharedTabs = useWorkspaceTabs()
   const visible = visibility === 'foreground'
   const availableProjects = useMemo<TerminalProject[]>(
     () =>
@@ -29,8 +31,12 @@ export function TerminalWorkspace({ placement, visibility }: IslandPresentationP
     [snapshot.projects],
   )
   const selectedProject = store.selectedProject()
-  const activeProjectId = selectedProject?.projectAccessId ?? null
-  const activeProjectName = selectedProject?.name ?? '当前项目'
+  const activeProjectId =
+    selectedProject?.projectAccessId ?? sharedTabs?.activeTerminalProjectAccessId ?? null
+  const activeProjectName =
+    selectedProject?.name ??
+    availableProjects.find(project => project.id === activeProjectId)?.name ??
+    '当前项目'
   const [mountedProjects, setMountedProjects] = useState<ReadonlyMap<string, string>>(
     () => new Map(),
   )

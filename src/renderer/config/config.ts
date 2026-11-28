@@ -1,5 +1,9 @@
+/**
+ * MyDSH 本地 renderer 的 Umi 构建配置：使用内存路由输出本地静态产物，
+ * 启用 Webpack 文件系统持久化缓存以加速日常界面开发迭代。
+ */
 import { defineConfig } from '@umijs/max'
-import { dirname } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import routes from './routes'
 
 /** Pro 的 Umi 工程配置；Electron 只加载本地产物，网络与本机权限归主进程。 */
@@ -26,6 +30,11 @@ export default defineConfig({
     // 当前 Webpack 的内部依赖分析会把 xterm 6 的 TaskQueue 父类替换为 null。
     // 关闭该项分析，保留正常压缩与模块拆分；升级构建依赖后用真实终端验收再评估。
     config.optimization.set('innerGraph', false)
+    config.cache({
+      type: 'filesystem',
+      cacheDirectory: resolve(__dirname, '../../../.build/webpack-cache'),
+      buildDependencies: { config: [__filename] },
+    })
   },
   title: 'MyDSH',
   metas: [

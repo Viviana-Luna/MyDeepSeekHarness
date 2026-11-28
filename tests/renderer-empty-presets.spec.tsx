@@ -6,14 +6,21 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const mocked = vi.hoisted(() => ({
   snapshot: {
-    selectedSessionId: '会话-1',
+    selectedSessionId: '会话-1' as string | null,
+    selectedProjectId: null as string | null,
+    newSessionProjectId: null as string | null,
+    projects: [] as Array<{ id: string; source: 'workspace' | 'inferred' }>,
     sessions: [{ sessionId: '会话-1', blank: true, running: false, agentPreset: 'standard' }],
     hostStatus: { kind: 'ready' },
     awaitingResponseSessionIds: [] as string[],
     creatingSession: false,
     sendingMessage: false,
+    sendingNewSession: false,
+    error: null as string | null,
     pluginRevision: 0,
   },
+  getSnapshot: vi.fn(),
+  ensureComposerSession: vi.fn(async () => '新会话-1' as string | null),
   callHost: vi.fn(async (operation: string) => {
     if (operation === 'listAgentPresets')
       return {
@@ -130,6 +137,33 @@ describe('空会话预设', () => {
     view.rerender(<SessionPresetPicker />)
     expect((screen.getByRole('button', { name: '编码' }) as HTMLButtonElement).disabled).toBe(true)
     mocked.snapshot.sessions[0]!.blank = true
+  })
+
+  it('新会话草稿态允许直接切换预设，实体化会话时透传所选预设并在失败时提示错误', async () => {
+    mocked.snapshot.selectedSessionId = null
+    mocked.snapshot.newSessionProjectId = 'project:alpha'
+    mocked.snapshot.projects = [{ id: 'project:alpha', source: 'workspace' }]
+    mocked.getSnapshot.mockImplementation(() => mocked.snapshot)
+    mocked.ensureComposerSession.mockResolvedValueOnce('新会话-预设')
+
+    render(<SessionPresetPicker />)
+    const coding = await screen.findByRole<HTMLButtonElement>('button', { name: '编码' })
+    expect(coding.disabled).toBe(false)
+    fireEvent.click(coding)
+
+    await waitFor(() => {
+      expect(mocked.ensureComposerSession).toHaveBeenCalledWith('coding')
+    })
+
+    mocked.snapshot.error = '创建新会话失败'
+    mocked.ensureComposerSession.mockResolvedValueOnce(null)
+    fireEvent.click(screen.getByRole('button', { name: '编码' }))
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', '创建新会话失败')
+
+    mocked.snapshot.selectedSessionId = '会话-1'
+    mocked.snapshot.newSessionProjectId = null
+    mocked.snapshot.projects = []
+    mocked.snapshot.error = null
   })
 
   it('超过五项时将余项放进更多，保存期间保留胶囊外观并拦截重复提交', async () => {

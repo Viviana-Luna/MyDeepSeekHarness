@@ -1,6 +1,6 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
   app,
@@ -52,6 +52,7 @@ import {
 } from './host/host-event-stream.ts'
 import { followDshSessionStream } from './host/session-stream.ts'
 import { focusPrimaryWindow } from './lifecycle/app-lifecycle.ts'
+import { startWindowsDevDesktopGuard } from './lifecycle/desktop-session-guard.ts'
 import { pickWorkspaceDirectory } from './runtime/directory-picker.ts'
 import { createGitAiController } from './runtime/git-ai-controller.ts'
 import { callImportController, shutdownImportController } from './runtime/import-controller.ts'
@@ -956,7 +957,16 @@ async function main(): Promise<void> {
   let startupScreenVerified = false
   let verifySessionSeeded = false
   let verifyDeadlineTimer: NodeJS.Timeout | undefined
+  let devReloadWatcher: FSWatcher | undefined
+  let devReloadTimer: NodeJS.Timeout | undefined
   let shutdownPreparation: Promise<void> | undefined
+  const devDesktopGuard = startWindowsDevDesktopGuard({
+    isPackaged: app.isPackaged,
+    isVerifyMode: VERIFY_MODE,
+    onIsolatedDesktop: () => {
+      void shutdown(1)
+    },
+  })
   let liveStreamsController: AbortController | undefined
   let liveStreamsHost: Extract<DshHostState, { kind: 'ready' }> | undefined
   let selectLiveSession: ((sessionId: string | undefined) => void) | undefined
@@ -1778,6 +1788,10 @@ async function main(): Promise<void> {
     unsubscribeHostState?.()
     unsubscribeHostState = undefined
     if (verifyDeadlineTimer !== undefined) clearTimeout(verifyDeadlineTimer)
+    if (devReloadTimer !== undefined) clearTimeout(devReloadTimer)
+    devReloadWatcher?.close()
+    devReloadWatcher = undefined
+    devDesktopGuard.dispose()
     sessionExportController?.abort()
     settingsController.dispose()
     windowController.dispose()
@@ -1905,9 +1919,40 @@ async function main(): Promise<void> {
         })
       }
     }
+    const firstWorkspaceOpen = !workspaceOpened
     workspaceOpened = true
     appearanceMenuItem.enabled = true
     reveal()
+    if (firstWorkspaceOpen && !VERIFY_BACKGROUND) {
+      app.focus({ steal: true })
+      focusPrimaryWindow(win)
+      if (!VERIFY_MODE) {
+        console.info('MyDSH 桌面工作台已就绪。')
+      }
+    }
+    if (
+      firstWorkspaceOpen &&
+      process.env.MYDSH_DEV_WATCH === '1' &&
+      !app.isPackaged &&
+      !VERIFY_MODE
+    ) {
+      try {
+        devReloadWatcher = watch(dirname(RENDERER_PATH), (_eventType, filename) => {
+          if (filename !== null && filename !== 'index.html') return
+          if (devReloadTimer !== undefined) clearTimeout(devReloadTimer)
+          devReloadTimer = setTimeout(() => {
+            devReloadTimer = undefined
+            if (quitting || win.isDestroyed() || rendererDocumentEdited) return
+            if (sameRendererPage(win.webContents.getURL())) {
+              console.info('检测到本地 renderer 产物更新，正在刷新工作台…')
+              win.webContents.reloadIgnoringCache()
+            }
+          }, 250)
+        })
+      } catch (error) {
+        console.warn('启动开发态本地页面监听失败：', error)
+      }
+    }
     if (VERIFY_INTERACTIVE) console.log('desktop-shell-interactive-ready')
     else if (VERIFY_MODE)
       setTimeout(() => {
@@ -1974,6 +2019,11 @@ async function main(): Promise<void> {
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
 if (!hasSingleInstanceLock) {
+  if (!VERIFY_MODE) {
+    console.warn(
+      `检测到已有 ${PRODUCT_NAME} 实例正在运行，已请求聚焦现有窗口后退出。若屏幕上未显示窗口，旧实例可能仍在后台或隔离终端中运行，请先结束残留的 electron 进程后再试。`,
+    )
+  }
   app.quit()
 } else {
   app.on('second-instance', () => {

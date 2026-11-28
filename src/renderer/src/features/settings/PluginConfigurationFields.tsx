@@ -52,9 +52,9 @@ export const PLUGIN_CONFIGURATIONS = [
   {
     ns: 'web-search-deepseek',
     title: '网页搜索',
-    description: 'DeepSeek 搜索提供方。',
+    description: 'DeepSeek 搜索提供商。',
     fields: [
-      ['baseURL', '接口地址', '留空则使用提供方默认地址。', 'text'],
+      ['baseURL', '接口地址', '留空则使用提供商默认地址。', 'text'],
       ['maxUses', '单次请求最多搜索次数', '一次请求在必须作答前最多可以搜索多少次。', 1],
     ],
   },
@@ -230,7 +230,7 @@ function SubagentModels({ state, mutate }: SettingsPageProps) {
           <strong>允许 Agent 为 Subagent 选择模型</strong>
           <small>
             {enabled
-              ? '从授权模型中选择提供方、模型和推理强度，仅影响新会话。'
+              ? '从授权模型中选择提供商、模型和推理强度，仅影响新会话。'
               : '使用默认模型或继承父 Agent 的模型；已选模型会保留。'}
           </small>
         </div>
@@ -248,9 +248,7 @@ function SubagentModels({ state, mutate }: SettingsPageProps) {
       {enabled && (
         <div className="gp-subagent-list-wrap">
           {choices.length === 0 ? (
-            <p className="gp-subagent-empty">
-              暂无可选择的模型，请先在「模型」设置中配置模型服务。
-            </p>
+            <p className="gp-subagent-empty">暂无可选择的模型，请先在「模型」设置中配置提供商。</p>
           ) : (
             <div className="settings-model-permissions gp-subagent-list">
               {choices.map(choice => (
@@ -376,7 +374,7 @@ function SearchCredential({ state, setCredential, unsetCredential }: SettingsPag
           <strong>{reference}</strong>
           <small>
             {configured ? '已保存，留空保留当前密钥。' : '配置后即可使用网页搜索。'}
-            与使用同一密钥的 DeepSeek 提供方共用。
+            与使用同一密钥的 DeepSeek 提供商共用。
           </small>
         </label>
         <div className="settings-plugin-field__control gp-plugin-field__control">
@@ -434,7 +432,7 @@ function SearchCredential({ state, setCredential, unsetCredential }: SettingsPag
         <div className="gp-danger-modal-body">
           <p>
             将移除共用的密钥（<code className="gp-inline-code">{reference}</code>
-            ），使用它的 DeepSeek 模型服务和网页搜索都需要重新配置。
+            ），使用它的 DeepSeek 提供商和网页搜索都需要重新配置。
           </p>
         </div>
       </Modal>

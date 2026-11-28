@@ -97,6 +97,9 @@ importers:
       '@lezer/highlight':
         specifier: ^1.2.3
         version: 1.2.5
+      '@lobehub/icons-static-svg':
+        specifier: ^1.106.0
+        version: 1.106.0
       '@mydsh/cli-bridge':
         specifier: workspace:*
         version: link:packages/cli/cli-bridge
@@ -5650,6 +5653,9 @@ packages:
     engines: {node: '>=8'}
     peerDependencies:
       react: '>=16.3.0'
+
+  '@lobehub/icons-static-svg@1.106.0':
+    resolution: {integrity: sha512-yRLkEGfCsOh6ZDSIPsA6HrI1ynh9gI1LECZaeFIzpuEHv9ON2i+SzwLnE2iYfW/agsms54QL+OhPde9WpEi/uA==}
 
   '@malept/cross-spawn-promise@2.0.0':
     resolution: {integrity: sha512-1DpKU0Z5ThltBwjNySMC14g0CkbyhCaz9FkhxqNsZI6uAPJXFS8cMXlBKo26FJ8ZuW6S9GCMcR9IO5k2X5/9Fg==}
@@ -15256,6 +15262,8 @@ snapshots:
       hoist-non-react-statics: 3.3.2
       react: 19.2.8
       react-is: 16.13.1
+
+  '@lobehub/icons-static-svg@1.106.0': {}
 
   '@malept/cross-spawn-promise@2.0.0':
     dependencies:

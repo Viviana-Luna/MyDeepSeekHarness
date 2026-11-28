@@ -1,5 +1,5 @@
 /**
- * 提供方表单状态 Hook：统一承载预置/自定义提供方的草稿、校验、模型拉取与持久化提交。
+ * 提供商表单状态 Hook：统一承载内置/自定义提供商的草稿、校验、模型拉取与持久化提交。
  * 运行在 renderer；通过工作台 Store 调用 Host 接口，不直接触碰凭据明文日志或文件。
  */
 import { useState } from 'react'
@@ -18,7 +18,7 @@ import {
   type HostSettingsPathOperation,
 } from './settings-model.ts'
 
-/** 初始化提供方表单所需的上下文与回调契约。 */
+/** 初始化提供商表单所需的上下文与回调契约。 */
 export interface UseModelProviderFormOptions {
   readonly provider: HostModelProvider | null
   readonly namespace: HostSettingsNamespace
@@ -31,7 +31,7 @@ export interface UseModelProviderFormOptions {
   onSaved(): void
 }
 
-/** 提供方编辑与新增弹窗共用的派生状态与操作集合。 */
+/** 提供商编辑与新增弹窗共用的派生状态与操作集合。 */
 export interface ModelProviderFormState {
   readonly custom: boolean
   readonly declared: boolean
@@ -150,7 +150,7 @@ function validateProviderForm(input: ValidationContext): string | null {
     !input.committed &&
     (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(input.route) || input.taken.includes(input.route))
   ) {
-    return 'Provider ID 必须以小写字母开头，只能包含小写字母、数字和连字符，且不能与现有提供方重复。'
+    return '提供商 ID 必须以小写字母开头，只能包含小写字母、数字和连字符，且不能与现有提供商重复。'
   }
   if (input.baseURL) {
     try {
@@ -194,7 +194,7 @@ function buildProviderOperations(options: {
       ops.push({ op: 'unset', path: [...options.path, field] })
     }
   }
-  // 预置提供方没有额外设置时，也要创建配置条目来启用它。
+  // 内置提供商没有额外设置时，也要创建配置条目来启用它。
   if (
     options.path.length > 0 &&
     valueAtPath(options.namespaceValue, options.path) === undefined &&
@@ -232,7 +232,7 @@ async function discoverProviderCatalog(
     ...(key.trim() ? { apiKey: key.trim() } : {}),
   })
   if (!isRecord(result) || !Array.isArray(result.models)) {
-    throw new Error('模型服务没有返回有效目录。')
+    throw new Error('提供商没有返回有效模型列表。')
   }
   const drafts = modelDrafts(result.models)
   for (const model of drafts) {
@@ -287,7 +287,7 @@ async function commitProviderSettings(
     expectedRevision: revision,
   })
   if (!parseHostSettingsNamespace(result)) {
-    throw new Error('提供方设置未能保存，请重试。')
+    throw new Error('提供商设置未能保存，请重试。')
   }
 }
 
@@ -349,7 +349,7 @@ async function submitProviderChanges(params: {
       params.setCommitted(true)
     }
     if (secret && !(await options.setCredential(derived.keyRef, secret))) {
-      params.setError('提供方设置已保存，API 密钥保存失败。请重试保存密钥。')
+      params.setError('提供商设置已保存，API 密钥保存失败。请重试保存密钥。')
       return false
     }
     params.setKey('')
@@ -365,8 +365,8 @@ async function submitProviderChanges(params: {
 }
 
 /**
- * 管理单个模型提供方的草稿编辑、远程目录探测、配置差分写入与凭据重试状态。
- * 调用方在切换目标提供方时应通过 React key 重新挂载，确保 revision 与初始快照同步。
+ * 管理单个提供商的草稿编辑、远程模型拉取、配置差分写入与凭据重试状态。
+ * 调用方在切换目标提供商时应通过 React key 重新挂载，确保 revision 与初始快照同步。
  */
 export function useModelProviderForm(options: UseModelProviderFormOptions): ModelProviderFormState {
   const { provider, namespace, readOnly } = options

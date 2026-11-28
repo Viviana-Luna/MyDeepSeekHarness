@@ -162,10 +162,7 @@ function DesktopWorkspace() {
   const displayedSplit = tabs?.splitGroups.find(
     group => activeWorkTab !== undefined && group.tabs.includes(activeWorkTab.id),
   )
-  const sessionTabsVisible = shouldShowSessionTabs(
-    snapshot.navigationCollapsed,
-    activeGroupTabs.length,
-  )
+  const sessionTabsVisible = shouldShowSessionTabs(snapshot.navigationCollapsed, activeGroupTabs)
   // Windows 顶栏右侧由自定义最小化/最大化/关闭按钮占据，单/多标签下均将「新建 / 平铺」留在主区右侧悬浮胶囊内避免误触。
   const floatingTabActions =
     !sessionTabsVisible || document.documentElement.dataset.platform === 'win32'

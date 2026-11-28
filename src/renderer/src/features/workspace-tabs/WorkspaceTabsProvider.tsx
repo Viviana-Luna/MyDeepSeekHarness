@@ -104,6 +104,8 @@ interface WorkspaceTabsState {
   closeBrowser(id: string): Promise<void>
   updateBrowser(id: string, title: string): void
   readonly terminalGroups: readonly TerminalTabGroup[]
+  readonly activeTerminalProjectAccessId: string | null
+  selectTerminalProject(projectAccessId: string | null): void
   publishTerminalGroup(group: TerminalTabGroup): void
   removeTerminalGroup(projectAccessId: string): void
   readonly sshGroup: SshTabGroup | null
@@ -386,21 +388,44 @@ export function WorkspaceTabsProvider({ children }: { children: ReactNode }) {
     setBrowserTabs(next)
   }, [])
   const [terminalGroups, setTerminalGroups] = useState<readonly TerminalTabGroup[]>([])
+  const terminalGroupsRef = useRef(terminalGroups)
+  terminalGroupsRef.current = terminalGroups
+  const [activeTerminalProjectAccessId, selectTerminalProject] = useState<string | null>(null)
   const [sshGroup, publishSshGroup] = useState<SshTabGroup | null>(null)
   const publishTerminalGroup = useCallback((group: TerminalTabGroup) => {
-    setTerminalGroups(current => [
-      ...current.filter(item => item.projectAccessId !== group.projectAccessId),
+    const next = [
+      ...terminalGroupsRef.current.filter(item => item.projectAccessId !== group.projectAccessId),
       group,
-    ])
+    ]
+    terminalGroupsRef.current = next
+    setTerminalGroups(next)
+    if (group.tabs.length > 0) {
+      selectTerminalProject(current => current ?? group.projectAccessId)
+    } else {
+      selectTerminalProject(current =>
+        current === group.projectAccessId
+          ? (next.findLast(item => item.tabs.length > 0)?.projectAccessId ?? null)
+          : current,
+      )
+    }
   }, [])
   const removeTerminalGroup = useCallback((projectAccessId: string) => {
-    setTerminalGroups(current => current.filter(item => item.projectAccessId !== projectAccessId))
+    const next = terminalGroupsRef.current.filter(item => item.projectAccessId !== projectAccessId)
+    terminalGroupsRef.current = next
+    setTerminalGroups(next)
+    selectTerminalProject(current =>
+      current === projectAccessId
+        ? (next.findLast(item => item.tabs.length > 0)?.projectAccessId ?? null)
+        : current,
+    )
   }, [])
   const value = useMemo(
     () => ({
       error,
       clearError,
       terminalGroups,
+      activeTerminalProjectAccessId,
+      selectTerminalProject,
       publishTerminalGroup,
       removeTerminalGroup,
       sshGroup,
@@ -430,6 +455,7 @@ export function WorkspaceTabsProvider({ children }: { children: ReactNode }) {
       error,
       clearError,
       terminalGroups,
+      activeTerminalProjectAccessId,
       publishTerminalGroup,
       removeTerminalGroup,
       sshGroup,

@@ -1,5 +1,5 @@
 /**
- * 模型设置总览子组件：包含会话默认值卡片、提供方概览卡片与移除提供方确认弹窗。
+ * 模型设置总览子组件：包含会话默认值卡片、提供商卡片与移除提供商确认弹窗。
  * 运行在 renderer；均为纯展示与交互回调组件，不包含持久化副作用。
  */
 import { Button, Modal, Tooltip } from 'antd'
@@ -25,13 +25,13 @@ import {
   type HostSettingsPathOperation,
 } from './settings-model.ts'
 
-/** 提供方卡片模型信息条目。 */
+/** 提供商卡片模型信息条目。 */
 export interface PreviewModelItem {
   readonly id: string
   readonly name: string
 }
 
-/** 根据运行时目录或用户配置提取提供方的模型列表，用于统计可用模型数。 */
+/** 根据运行时模型列表或用户配置提取提供商的模型条目，用于统计可用模型数。 */
 export function previewModelsFor(
   catalogModels: readonly ModelCatalogModel[] | undefined,
   profileValue: unknown,
@@ -83,7 +83,7 @@ export function SessionDefaultsSection({
       ? [
           {
             value: selectedKey,
-            label: `${providerName ?? current.provider} / ${current.model}（目录外）`,
+            label: `${providerName ?? current.provider} / ${current.model}（未在列表）`,
           },
         ]
       : []),
@@ -148,7 +148,7 @@ export function SessionDefaultsSection({
           <div className="settings-row">
             <div className="settings-row__copy">
               <strong>默认推理强度</strong>
-              <small>仅适用于当前默认模型；留空时使用模型提供方的默认值。</small>
+              <small>仅适用于当前默认模型；留空时使用提供商默认值。</small>
             </div>
             <div className="settings-row__control">
               <SettingsSelect
@@ -189,7 +189,7 @@ export function SessionDefaultsSection({
   )
 }
 
-/** 渲染单个已配置模型服务卡片，采用官方品牌标志与单行清爽元信息，支持点击钻取与可选移除。 */
+/** 渲染单个已配置提供商卡片，采用官方品牌标志与单行元信息，支持点击进入下属模型页与可选移除。 */
 export function ProviderOverviewCard({
   provider,
   credential,
@@ -280,7 +280,7 @@ export function ProviderOverviewCard({
 
       {removable && (
         <div className="models-provider-card__side">
-          <Tooltip title="移除提供方">
+          <Tooltip title="移除提供商">
             <Button
               size="small"
               type="text"
@@ -298,7 +298,7 @@ export function ProviderOverviewCard({
   )
 }
 
-/** 渲染移除模型提供方的红色危险确认厚玻璃弹窗。 */
+/** 渲染移除提供商的红色危险确认厚玻璃弹窗。 */
 export function RemoveProviderModal({
   provider,
   busy,
@@ -318,8 +318,8 @@ export function RemoveProviderModal({
       centered
       destroyOnHidden
       width={440}
-      title={provider === null ? '移除提供方' : `移除“${provider.displayName}”？`}
-      okText="确认移除提供方"
+      title={provider === null ? '移除提供商' : `移除“${provider.displayName}”？`}
+      okText="确认移除提供商"
       cancelText="取消"
       okButtonProps={{ danger: true }}
       confirmLoading={busy}
@@ -335,8 +335,8 @@ export function RemoveProviderModal({
     >
       <div className="models-danger-modal-body">
         <p>
-          将移除此提供方的配置和独占 API
-          密钥，已有会话记录会保留。使用该提供方的会话需要重新选择模型。
+          将移除此提供商的配置和独占 API
+          密钥，已有会话记录会保留。使用该提供商的会话需要重新选择模型。
         </p>
         {error !== null && (
           <p className="settings-inline-error" role="alert">

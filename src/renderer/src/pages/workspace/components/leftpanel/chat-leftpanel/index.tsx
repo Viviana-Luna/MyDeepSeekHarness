@@ -27,6 +27,7 @@ import { useWorkspaceSnapshot, useWorkspaceStore } from '../../../../../hooks/us
 import { sessionsForProject, type ProjectSummary } from '../../../../../domain/project.ts'
 import { relativeTime, sessionTitle, type SessionSummary } from '../../../../../domain/session.ts'
 import { useProjectWorkspace } from '../../../../../features/project-workspace/ProjectWorkspaceProvider.tsx'
+import { useWorkTabs } from '../../../../../features/workspace-tabs/useWorkTabs.ts'
 import { AnchoredMenu } from '../../../../../shared/ui/AnchoredMenu.tsx'
 import { ElasticPress } from '../../../../../shared/ui/ElasticPress.tsx'
 
@@ -34,6 +35,7 @@ interface ProjectSessionNavigationProps {
   readonly projects: readonly ProjectSummary[]
   readonly sessions: readonly SessionSummary[]
   readonly selectedProjectId: string | null
+  readonly activeProjectId?: string | null
   readonly selectedSessionId: string | null
   readonly initialized: boolean
   readonly loadingSessions: boolean
@@ -551,6 +553,7 @@ export function ProjectSessionNavigation({
   projects,
   sessions,
   selectedProjectId,
+  activeProjectId,
   selectedSessionId,
   initialized,
   loadingSessions,
@@ -592,6 +595,10 @@ export function ProjectSessionNavigation({
     () => projectForSession(projects, sessions, selectedSessionId),
     [projects, selectedSessionId, sessions],
   )
+  const resolvedActiveProjectId =
+    activeProjectId !== undefined
+      ? activeProjectId
+      : (selectedProjectId ?? selectedSessionProject?.id ?? null)
   const pinnedSessionIdSet = useMemo(() => new Set(pinnedSessionIds), [pinnedSessionIds])
   const pinnedSessions = useMemo(
     () =>
@@ -868,9 +875,7 @@ export function ProjectSessionNavigation({
           session => !pinnedSessionIdSet.has(session.sessionId),
         )
         const expanded = expandedProjects.has(project.id)
-        const containsSelectedSession = allProjectSessions.some(
-          session => session.sessionId === selectedSessionId,
-        )
+        const isActiveWorkspace = resolvedActiveProjectId === project.id
         const sessionsId = listId(project.id)
         const projectDropPlacement =
           dropPreview?.kind === 'project' && dropPreview.targetId === project.id
@@ -902,7 +907,8 @@ export function ProjectSessionNavigation({
           >
             {focusedProject === undefined && (
               <div
-                className={`project-group-heading${containsSelectedSession ? ' has-selected-session' : ''}`}
+                className={`project-group-heading${isActiveWorkspace ? ' has-selected-session' : ''}`}
+                data-active-workspace={isActiveWorkspace ? 'true' : undefined}
                 draggable={project.source === 'workspace'}
                 onDragStart={event => {
                   if (
@@ -930,6 +936,7 @@ export function ProjectSessionNavigation({
                   aria-expanded={expanded}
                   aria-controls={sessionsId}
                   data-project-toggle={project.id}
+                  title={isActiveWorkspace ? `${project.name}（当前所属工作区）` : project.name}
                   onClick={() => {
                     toggleProject(project.id)
                   }}
@@ -1163,15 +1170,27 @@ export function ChatLeftPanel() {
   const store = useWorkspaceStore()
   const workspace = useProjectWorkspace()
   const snapshot = useWorkspaceSnapshot()
+  const workTabs = useWorkTabs()
   const focusedProject = snapshot.projects.find(
     project => project.id === snapshot.selectedProjectId,
   )
+  const activeWorkTab = workTabs.find(tab => tab.active)
+  const activeTabProjectId =
+    activeWorkTab !== undefined &&
+    snapshot.projects.some(project => project.id === activeWorkTab.projectId)
+      ? activeWorkTab.projectId
+      : null
+  const activeSessionProjectId =
+    projectForSession(snapshot.projects, snapshot.sessions, snapshot.selectedSessionId)?.id ?? null
+  const activeProjectId =
+    activeTabProjectId ?? store.selectedProject()?.id ?? activeSessionProjectId
   const visibleProjects = focusedProject === undefined ? snapshot.projects : [focusedProject]
   return (
     <ProjectSessionNavigation
       projects={visibleProjects}
       sessions={snapshot.sessions}
       selectedProjectId={snapshot.selectedProjectId}
+      activeProjectId={activeProjectId}
       selectedSessionId={snapshot.selectedSessionId}
       initialized={snapshot.initialized}
       loadingSessions={snapshot.loadingSessions}

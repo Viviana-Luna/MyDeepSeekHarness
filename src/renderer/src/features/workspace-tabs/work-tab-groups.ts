@@ -51,12 +51,19 @@ export function resolveWorkTabGroups(
 }
 
 /**
- * 判断顶部工作标签栏是否需要展开：侧栏收起时常驻承接红绿灯安全区与搜索入口，
- * 侧栏展开且当前分组仅 0 或 1 个标签时自动收起顶栏，改由主浮岛右上角浮动胶囊承接操作。
+ * 判断顶部工作标签栏是否需要展开：无论左侧栏展开或收起，无标签或仅有单个对话标签（沉浸单聊态）时均自动收起顶栏；
+ * 若存在多个标签，或唯一标签为终端、浏览器、文件、Git 差异、SSH 等非对话标签，则展开顶栏以便切换与关闭返回欢迎页。
  */
 export function shouldShowSessionTabs(
-  navigationCollapsed: boolean,
-  activeGroupTabCount: number,
+  _navigationCollapsed: boolean,
+  activeGroupTabsOrCount: number | readonly Pick<WorkTab, 'kind'>[],
 ): boolean {
-  return navigationCollapsed || activeGroupTabCount > 1
+  if (typeof activeGroupTabsOrCount === 'number') {
+    return activeGroupTabsOrCount > 1
+  }
+  if (activeGroupTabsOrCount.length === 0) return false
+  if (activeGroupTabsOrCount.length === 1) {
+    return activeGroupTabsOrCount[0]?.kind !== 'session'
+  }
+  return true
 }

@@ -21,8 +21,7 @@ const cacheFile = join(root, '.build', 'native-computer-use-cache.json')
 function computeComputerUseFingerprint() {
   const hash = createHash('sha256')
   hash.update(`${process.platform}:${process.arch}\0`)
-  hash.update(readFileSync(join(root, 'package.json')))
-  hash.update(readFileSync(join(root, 'scripts', 'build-computer-use.mjs')))
+  hash.update(readFileSync(join(headers.include_dir, 'node_api.h')))
   const sourceName = process.platform === 'darwin' ? 'computer-use-mac.m' : 'computer-use-win.cc'
   const sourcePath = join(root, 'native', sourceName)
   if (existsSync(sourcePath)) hash.update(readFileSync(sourcePath))

@@ -168,7 +168,9 @@ export async function runSessionsStep3(bag: LocalVerifyState): Promise<void> {
   })
   bag.groupNotificationReady = (await bag.bridge.win.webContents.executeJavaScript(`(async () => {
         for (let attempt = 0; attempt < 80; attempt++) {
-          if (document.querySelector('.session-group-switcher .session-group-unread')?.textContent === '1') {
+          if (document.querySelector('.session-group-switcher') === null
+            && document.querySelector('.app-shell')?.getAttribute('data-session-tabs-visible') === 'false'
+            && document.querySelector('.composer-workspace-trigger .session-group-unread')?.textContent === '1') {
             return document.querySelectorAll('.session-tab-group').length === 1
               && ![...document.querySelectorAll('.session-tab')].some(tab => tab.dataset.sessionTab === ${JSON.stringify(bag.originalSessionTab)})
           }
@@ -179,8 +181,19 @@ export async function runSessionsStep3(bag: LocalVerifyState): Promise<void> {
   bag.waitForOtherSessionGroup = async () =>
     (await bag.bridge.win.webContents.executeJavaScript(`(async () => {
         for (let attempt = 0; attempt < 80; attempt += 1) {
-          const option = document.querySelector('.session-group-menu [aria-checked="false"]')
-          if (option instanceof HTMLButtonElement && option.getClientRects().length > 0) return true
+          const menu = document.querySelector('.composer-workspace-menu')
+          const option = menu?.querySelector('[role="menuitemradio"][aria-checked="false"]')
+          if (menu instanceof HTMLElement
+            && menu.dataset.menuMotion === 'open'
+            && option instanceof HTMLButtonElement
+            && option.getClientRects().length > 0) {
+            await Promise.allSettled(
+              menu.getAnimations({ subtree: true })
+                .filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity)
+                .map(animation => animation.finished),
+            )
+            return true
+          }
           await new Promise(resolve => setTimeout(resolve, 25))
         }
         return false
@@ -188,8 +201,8 @@ export async function runSessionsStep3(bag: LocalVerifyState): Promise<void> {
   await bag.bridge.win.webContents
     .executeJavaScript(`Promise.all(document.querySelector('.app-shell').getAnimations({ subtree: true })
         .filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})))`)
-  await clickTrustedElement(bag.bridge.win, '.session-group-switcher')
-  if (!(await bag.waitForOtherSessionGroup())) throw new Error('标签组菜单没有显示其他项目')
+  await clickTrustedElement(bag.bridge.win, '.composer-workspace-trigger')
+  if (!(await bag.waitForOtherSessionGroup())) throw new Error('输入区工作区菜单没有显示其他项目')
   writeFileSync(
     bag.bridge.artifactPath('verify-session-group-menu.png'),
     (await captureVerifiedPage(bag.bridge.win)).toPNG(),
@@ -199,21 +212,35 @@ export async function runSessionsStep3(bag: LocalVerifyState): Promise<void> {
 /** 执行 sessions 验收套件第 4 阶段。 */
 export async function runSessionsStep4(bag: LocalVerifyState): Promise<void> {
   if (bag.originalSessionTab === null) return
-  await clickTrustedElement(bag.bridge.win, '.session-group-menu [aria-checked="false"]')
-  bag.groupSwitchReady =
-    bag.groupNotificationReady &&
-    ((await bag.bridge.win.webContents.executeJavaScript(`(() => {
-        return document.querySelector('.session-tab[aria-selected="true"]')?.dataset.sessionTab === ${JSON.stringify(bag.originalSessionTab)}
-          && document.querySelector('.session-group-switcher .session-group-unread') === null
-          && document.querySelectorAll('.session-tab-group').length === 1
-      })()`)) as boolean)
-  if (!bag.groupSwitchReady) throw new Error('标签组切换或后台更新提示验收失败')
-  await clickTrustedElement(bag.bridge.win, '.session-group-switcher')
-  if (!(await bag.waitForOtherSessionGroup())) throw new Error('标签组菜单没有恢复其他项目')
-  await clickTrustedElement(bag.bridge.win, '.session-group-menu [aria-checked="false"]')
   await clickTrustedElement(
     bag.bridge.win,
-    '.session-tab-shell[data-selected="true"] .session-tab-close',
+    '.composer-workspace-menu [role="menuitemradio"][aria-checked="false"]',
+  )
+  bag.groupSwitchReady =
+    bag.groupNotificationReady &&
+    ((await bag.bridge.win.webContents.executeJavaScript(`(async () => {
+        for (let attempt = 0; attempt < 80; attempt += 1) {
+          const ready = document.querySelector('.session-tab[aria-selected="true"]')?.dataset.sessionTab === ${JSON.stringify(bag.originalSessionTab)}
+            && document.querySelector('.composer-workspace-trigger .session-group-unread') === null
+            && document.querySelectorAll('.session-tab-group').length === 1
+          if (ready) return true
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+        return false
+      })()`)) as boolean)
+  if (!bag.groupSwitchReady) throw new Error('工作区切换或后台更新提示验收失败')
+  await clickTrustedElement(bag.bridge.win, '.composer-workspace-trigger')
+  if (!(await bag.waitForOtherSessionGroup())) throw new Error('输入区工作区菜单没有恢复其他项目')
+  await clickTrustedElement(
+    bag.bridge.win,
+    '.composer-workspace-menu [role="menuitemradio"][aria-checked="false"]',
+  )
+  // 单标签沉浸态顶栏已收起，通过输入区工作区菜单的整组关闭按钮关闭该临时分组标签。
+  await clickTrustedElement(bag.bridge.win, '.composer-workspace-trigger')
+  if (!(await bag.waitForOtherSessionGroup())) throw new Error('输入区工作区菜单未能重新展开')
+  await clickTrustedElement(
+    bag.bridge.win,
+    '.composer-workspace-menu [role="menuitemradio"][aria-checked="true"] ~ .session-group-close',
   )
   if (bag.groupNavigationExpanded)
     await clickTrustedElement(bag.bridge.win, '.panel-divider--navigation .panel-divider__capsule')

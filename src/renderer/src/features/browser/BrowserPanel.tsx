@@ -1,7 +1,8 @@
 import {
   ArrowLeft,
   ArrowRight,
-  ArrowUpRight,
+  CornerDownLeft,
+  ExternalLink,
   Globe,
   LoaderCircle,
   RotateCw,
@@ -291,81 +292,104 @@ export function BrowserPanel({
       >
         <button
           type="button"
+          className="browser-nav-button"
           aria-label="网页后退"
+          title="后退"
           disabled={!state.canGoBack}
           onClick={() => {
             request({ action: 'back' })
           }}
         >
-          <ArrowLeft size={15} />
+          <ArrowLeft size={15} aria-hidden="true" />
         </button>
         <button
           type="button"
+          className="browser-nav-button"
           aria-label="网页前进"
+          title="前进"
           disabled={!state.canGoForward}
           onClick={() => {
             request({ action: 'forward' })
           }}
         >
-          <ArrowRight size={15} />
+          <ArrowRight size={15} aria-hidden="true" />
         </button>
         <button
           type="button"
+          className="browser-nav-button"
           aria-label={state.loading ? '停止加载网页' : '重新加载网页'}
+          title={state.loading ? '停止加载' : '重新加载'}
           disabled={!state.url}
           onClick={() => {
             request({ action: state.loading ? 'stop' : 'reload' })
           }}
         >
-          {state.loading ? <X size={15} /> : <RotateCw size={14} />}
+          {state.loading ? (
+            <X size={15} aria-hidden="true" />
+          ) : (
+            <RotateCw size={14} aria-hidden="true" />
+          )}
         </button>
         {previewPath !== null && (
           <span className="browser-preview-badge" title={`本地项目预览：${previewPath}`}>
             本地预览
           </span>
         )}
-        <input
-          type="text"
-          inputMode="url"
-          aria-label="网页地址"
-          placeholder="输入网址或 localhost 地址"
-          value={address}
-          onChange={event => {
-            setAddress(event.target.value)
-          }}
-          onFocus={event => {
-            event.currentTarget.select()
-          }}
-        />
-        <button type="submit" aria-label="打开网页" disabled={!address.trim() || !api}>
-          <ArrowRight size={15} />
-        </button>
+        <div className="browser-address-field">
+          <input
+            type="text"
+            inputMode="url"
+            aria-label="网页地址"
+            placeholder="输入网址或 localhost 地址"
+            value={address}
+            onChange={event => {
+              setAddress(event.target.value)
+            }}
+            onFocus={event => {
+              event.currentTarget.select()
+            }}
+          />
+          <button
+            type="submit"
+            className="browser-go-button"
+            aria-label="打开网页"
+            title="前往输入的网址（Enter）"
+            disabled={!address.trim() || !api}
+          >
+            <CornerDownLeft size={13} aria-hidden="true" />
+            <span className="browser-action-label">前往</span>
+          </button>
+        </div>
         <button
           type="button"
+          className="browser-external-button"
           aria-label="在系统浏览器中打开"
+          title="在系统浏览器中打开当前网页"
           disabled={!state.url}
           onClick={() => {
             request({ action: 'external' })
           }}
         >
-          <ArrowUpRight size={15} />
+          <ExternalLink size={14} aria-hidden="true" />
+          <span className="browser-action-label">外部打开</span>
         </button>
       </form>
       <BrowserTakeoverBar />
       {state.url && (
         <div className="browser-caption">
-          {state.loading && <LoaderCircle size={12} className="spin" />}
+          {state.loading && <LoaderCircle size={12} className="spin" aria-hidden="true" />}
           <span title={previewPath ?? (state.title || state.url)}>
             {state.title || previewPath || state.url}
           </span>
           <button
             type="button"
             aria-label="关闭网页"
+            title="关闭当前网页"
             onClick={() => {
               request({ action: 'close' })
             }}
           >
-            <X size={13} />
+            <X size={13} aria-hidden="true" />
           </button>
         </div>
       )}
